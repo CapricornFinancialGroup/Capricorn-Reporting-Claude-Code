@@ -55,7 +55,11 @@ export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
   return (OFFICE_DAILY_TARGETS[office]?.[kpi] ?? 0) * 5;
 }
 
-/** Per-office daily targets (strawman screen 2). Unassigned carries no target. */
+// Per-office daily targets. PLACEHOLDER — these are strawman guesses and are now clearly the wrong
+// SCALE (e.g. Hammersmith is HQ with ~88 advisers, not a 35-lead/day office). Capricorn's Datarails
+// "Adviser Mapping" export carries real per-adviser targets ("Weekly Par" / "Monthly Par" / "Written
+// Par" / "Paid Par") — summing those by office is the intended real source once the "Par" semantics
+// are confirmed (see docs). Until then these keep the pace maths runnable. Unassigned carries none.
 export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
   Hammersmith: { leads: 35, applications: 9, referrals: 5, sales: 3 },
   Mayfair: { leads: 28, applications: 7, referrals: 4, sales: 2 },
@@ -63,6 +67,8 @@ export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
   Newmarket: { leads: 21, applications: 5, referrals: 3, sales: 1 },
   "Hong Kong": { leads: 17, applications: 4, referrals: 2, sales: 1 },
   Shanghai: { leads: 14, applications: 4, referrals: 2, sales: 1 },
+  Dubai: { leads: 14, applications: 4, referrals: 2, sales: 1 },
+  "Türkiye": { leads: 14, applications: 4, referrals: 2, sales: 1 },
   [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0 },
 };
 
