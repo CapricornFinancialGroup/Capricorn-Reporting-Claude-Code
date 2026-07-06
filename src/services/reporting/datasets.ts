@@ -556,16 +556,21 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
 // Screen 4 — Funnel Health
 // ---------------------------------------------------------------------------
 
-export async function funnelHealth(config: Config, _f: ReportFilters) {
-  return cached("ds-funnel-health", ttl(config), async () => {
-    const asOf = await dataAsOf(config);
-    const ctx = mtdPacing(asOf);
+export async function funnelHealth(config: Config, f: ReportFilters) {
+  const lakeAsOf = await dataAsOf(config);
+  // Window: an explicit date range (dashboard filter) wins; else the current month to date.
+  const from = f.from ?? mtdPacing(lakeAsOf).windowStart;
+  const to = f.to ?? lakeAsOf;
+  // Operational "as of" for the point-in-time widgets (aged/queues/pipeline): the window end,
+  // but never beyond the freshest loaded day.
+  const asOf = to < lakeAsOf ? to : lakeAsOf;
+  return cached(`ds-funnel-health:${from}:${to}`, ttl(config), async () => {
     const [stagesRows, referralsDaily, salesDaily, aged, queues, pipelineRows, agesRows] = await Promise.all([
-      q<funnelQ.MortgageStageCounts>(config, funnelQ.mortgageStageCounts(ctx.windowStart, asOf)),
-      q<DailyCount>(config, kpiDaily("referrals", ctx.windowStart, asOf)),
-      q<DailyCount>(config, kpiDaily("sales", ctx.windowStart, asOf)),
+      q<funnelQ.MortgageStageCounts>(config, funnelQ.mortgageStageCounts(from, to)),
+      q<DailyCount>(config, kpiDaily("referrals", from, to)),
+      q<DailyCount>(config, kpiDaily("sales", from, to)),
       q<funnelQ.AgedApplications>(config, funnelQ.agedApplications(asOf)),
-      q<funnelQ.ActionQueues>(config, funnelQ.actionQueues(asOf, ctx.windowStart)),
+      q<funnelQ.ActionQueues>(config, funnelQ.actionQueues(asOf, from)),
       q<funnelQ.PipelineSummary>(config, funnelQ.pipelineSummary(asOf)),
       q<funnelQ.StageAges>(config, funnelQ.stageAges(asOf)),
     ]);
@@ -629,7 +634,7 @@ export async function funnelHealth(config: Config, _f: ReportFilters) {
     const revenueLatest = Math.round(pipeline.revenueLatestDay ?? 0);
     return {
       dataAsOf: asOf,
-      window: { from: ctx.windowStart, to: asOf },
+      window: { from, to: asOf },
       stages,
       conversions,
       stageMetrics: [
@@ -669,15 +674,20 @@ export async function funnelHealth(config: Config, _f: ReportFilters) {
 // Screen 5 — Market Momentum
 // ---------------------------------------------------------------------------
 
-export async function marketMomentum(config: Config, _f: ReportFilters) {
-  return cached("ds-market-momentum", ttl(config), async () => {
-    const asOf = await dataAsOf(config);
-    // 13 full ISO weeks ending with the week containing dataAsOf.
-    const thisWeek = weekOf(asOf);
-    const weekStarts: string[] = [];
-    for (let i = 12; i >= 0; i--) weekStarts.push(shiftDays(thisWeek.from, -7 * i));
-    const from = weekStarts[0];
-
+export async function marketMomentum(config: Config, f: ReportFilters) {
+  const lakeAsOf = await dataAsOf(config);
+  // Trend end = an explicit `to` (dashboard filter), capped at the freshest day; default = latest.
+  const asOf = f.to && f.to < lakeAsOf ? f.to : lakeAsOf;
+  // Weeks: an explicit range → whole ISO weeks spanning [from, to]; else rolling 13 weeks.
+  const endWeek = weekOf(asOf);
+  const weekStarts: string[] = [];
+  if (f.from) {
+    for (let w = weekOf(f.from).from; w <= endWeek.from; w = shiftDays(w, 7)) weekStarts.push(w);
+  } else {
+    for (let i = 12; i >= 0; i--) weekStarts.push(shiftDays(endWeek.from, -7 * i));
+  }
+  const from = weekStarts[0];
+  return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
     const [leads, apps, refs, revenue] = await Promise.all([
       q<DailyCount>(config, kpiDaily("leads", from, asOf)),
       q<DailyCount>(config, kpiDaily("applications", from, asOf)),

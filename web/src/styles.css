@@ -103,6 +103,29 @@ button { font: inherit; }
 .dash-tab-wall { margin-left: auto; color: var(--blue); text-decoration: none; }
 .dash-tab-wall:hover { background: var(--blue-bg); }
 
+/* Date-range filter bar (dashboard analytical screens only) */
+.filter-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  max-width: 1920px; margin: 0 auto; width: 100%; padding: 8px 18px 0;
+}
+.filter-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--text-secondary); margin-right: 2px;
+}
+.filter-chip {
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+  border-radius: 20px; padding: 5px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.filter-chip:hover { border-color: var(--blue); color: var(--blue); }
+.filter-chip.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+.filter-chip.clear { color: var(--red); }
+.filter-dates { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px; }
+.filter-dates input[type="date"] {
+  border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; font-size: 12px;
+  color: var(--text-primary); background: var(--surface); font-family: inherit;
+}
+.filter-dash { color: var(--text-secondary); }
+
 /* --------------------------------------------------------------- layout */
 
 .screen { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px 18px; min-height: 0; }
