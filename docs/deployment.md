@@ -22,11 +22,25 @@ az ad app create --display-name "Capricorn Growth OS" \
   --web-redirect-uris "https://smt-capgrowth-app-prod.azurewebsites.net/.auth/login/aad/callback" \
   --enable-id-token-issuance true
 az ad app credential reset --id <appId> --display-name easy-auth --years 2   # note the secret
+
+# REQUIRED — az ad app create makes NO service principal and NO API permissions. Without all three
+# of the following, Easy Auth sign-in fails at the callback with AADSTS650056 (Misconfigured app):
+az ad sp create --id <appId>                                        # 1. enterprise app / SP
+az ad app permission add --id <appId> \
+  --api 00000003-0000-0000-c000-000000000000 \
+  --api-permissions e1fe6dd8-ba31-4d61-89e7-88639da4683d=Scope      # 2. Microsoft Graph User.Read (delegated)
+az ad app permission admin-consent --id <appId>                     # 3. tenant admin consent (AllPrincipals)
 ```
 
 Capricorn users authenticate as B2B guests in this tenant — no extra registration config needed.
-Optionally set "Assignment required" on the enterprise app and assign a `Capricorn Growth OS Users`
-group to restrict who can open the dashboard.
+
+Restrict who can open the dashboard: set "Assignment required" on the enterprise app and assign a
+`Capricorn Growth OS Users` security group (needs Entra ID P1 — present in this tenant). Direct user
+assignment works without P1.
+
+> **AADSTS650056 at the callback** = the app is missing Graph `User.Read` and/or tenant admin
+> consent (the three commands above). Not a cookie or client-side issue — retrying never helps.
+> Fix via the CLI above or the portal: App registration → API permissions → Grant admin consent.
 
 ### 2. Resource group + Bicep
 
