@@ -8,6 +8,7 @@ export interface Meta {
   offices: Array<{ name: string; color: string }>;
   targets: {
     daily: Record<KpiKey, number>;
+    weekly: Record<KpiKey, number>;
     officeDaily: Record<string, Record<KpiKey, number>>;
     revenueDaily: number;
   };
@@ -34,24 +35,33 @@ export interface ChaseChart {
   projection: Array<number | null>;
 }
 
+export interface WeekProgress {
+  actualPct: number | null;
+  expectedPct: number | null;
+  /** +ahead / −behind, percentage points of the weekly target. */
+  gapPp: number | null;
+}
+
 export interface DailyRunChasePayload {
   dataAsOf: string;
-  month: {
+  week: {
     start: string;
     end: string;
-    workingDaysElapsed: number;
-    workingDaysTotal: number;
+    days: string[];
+    /** Cumulative expected share by end of Mon..Fri, % (20.83 / 41.67 / 62.5 / 83.33 / 100). */
+    cumulativeSharesPct: number[];
     fraction: number;
+    expectedPct: number;
     nowLabel: string;
   };
   kpis: Array<{
     key: KpiKey;
     label: string;
-    dailyTarget: number;
-    monthlyTarget: number;
-    mtd: number;
+    weeklyTarget: number;
+    wtd: number;
     latestDay: number;
     pace: Pace;
+    weekProgress: WeekProgress;
     chart: ChaseChart;
   }>;
   leaderboard: Array<{
@@ -70,7 +80,7 @@ export interface DailyRunChasePayload {
 
 export interface OfficeRunChasePayload {
   dataAsOf: string;
-  month: { nowLabel: string; workingDaysElapsed: number; workingDaysTotal: number };
+  week: { nowLabel: string; start: string; end: string; expectedPct: number };
   offices: Array<{
     office: string;
     color: string;

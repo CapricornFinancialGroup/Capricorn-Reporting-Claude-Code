@@ -25,6 +25,36 @@ export type KpiTargets = Record<KpiKey, number>;
 /** Business-wide daily targets (strawman screen 1). */
 export const DAILY_TARGETS: KpiTargets = { leads: 140, applications: 35, referrals: 20, sales: 10 };
 
+// ---------------------------------------------------------------------------
+// Weekly run chase (Conor's principles, 2026-07-06 email)
+// ---------------------------------------------------------------------------
+//
+// Everything is measured against a WEEKLY target, distributed across the five working days with
+// Friday carrying 80% of a Mon–Thu day's weight:
+//   Mon–Thu = 5/24 (20.83%) each, Fri = 4/24 (16.67%)  → cumulative 20.83 / 41.67 / 62.50 / 83.33 / 100%.
+// Targets are meant to refresh each Monday 09:00 from the latest Team Targets — that dynamic
+// source doesn't exist yet, so weeklyTarget() derives from the config daily targets (daily × 5)
+// and is THE seam to re-point when Capricorn provides a live Team Targets feed.
+
+/** Mon..Fri share of the weekly target (sums to 1). */
+export const DAY_WEIGHTS: number[] = [5 / 24, 5 / 24, 5 / 24, 5 / 24, 4 / 24];
+
+/** Cumulative expected share of the weekly target by end of Mon..Fri. */
+export const CUMULATIVE_WEEK_SHARES: number[] = DAY_WEIGHTS.reduce<number[]>((acc, w) => {
+  acc.push((acc[acc.length - 1] ?? 0) + w);
+  return acc;
+}, []);
+
+/** Weekly target for a KPI (business-wide). Team-Targets feed plugs in here. */
+export function weeklyTarget(kpi: KpiKey): number {
+  return DAILY_TARGETS[kpi] * 5;
+}
+
+/** Weekly target for a KPI for one office. */
+export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
+  return (OFFICE_DAILY_TARGETS[office]?.[kpi] ?? 0) * 5;
+}
+
 /** Per-office daily targets (strawman screen 2). Unassigned carries no target. */
 export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
   Hammersmith: { leads: 35, applications: 9, referrals: 5, sales: 3 },

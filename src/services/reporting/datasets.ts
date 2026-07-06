@@ -2,10 +2,11 @@
 // /api/kiosk token-gated) resolve through. One composite payload per screen; a short server-side
 // TTL cache means N wall TVs cost ~one Fabric query set per dataset per TTL.
 //
-// Chase model (v1): the lake is day-grained and rebuilt nightly, so the run chase is MONTH-TO-DATE
-// vs monthly targets (daily target × working days), measured through the latest complete day in the
-// lake ("data as of"). The pacing seam (pacing.ts) is the single plug-point for a future intraday
-// or drip feed.
+// Chase model (Conor's weekly principles, 2026-07-06): the run chase is WEEK-TO-DATE vs weekly
+// targets with weighted days (Mon–Thu 20.83% each, Fri 16.67%), measured through the latest
+// complete day in the nightly lake ("data as of"). The week rolls each Monday automatically.
+// Funnel volumes remain month-to-date. The pacing seam (pacing.ts) is the single plug-point for a
+// future intraday or drip feed and for the live Team-Targets source when Capricorn provides one.
 
 import type { Config } from "../../config.js";
 import { OFFICES, UNASSIGNED, officeOf } from "../../domain/offices.js";
@@ -27,7 +28,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, type ChaseStatus, type Pace } from "./pace.js";
-import { mtdPacing, type PacingContext } from "./pacing.js";
+import { mtdPacing, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import * as tickerQ from "./ticker.js";
@@ -74,20 +75,20 @@ async function dataAsOf(config: Config): Promise<string> {
 }
 
 interface ChaseCore {
-  ctx: PacingContext;
-  /** Business-wide daily counts per KPI across the chase month. */
+  ctx: WeeklyPacingContext;
+  /** Business-wide daily counts per KPI across the chase week (Mon→dataAsOf). */
   daily: Record<KpiKey, DailyCount[]>;
-  /** Daily counts per adviser per KPI across the chase month. */
+  /** Daily counts per adviser per KPI across the chase week. */
   byAdviser: Record<KpiKey, AdviserDailyCount[]>;
 }
 
 async function chaseCore(config: Config): Promise<ChaseCore> {
   return cached("chase-core", ttl(config), async () => {
     const asOf = await dataAsOf(config);
-    const ctx = mtdPacing(asOf);
+    const ctx = weeklyPacing(asOf);
     const [daily, byAdviser] = await Promise.all([
-      loadPerKpi(config, (k) => kpiDaily(k, ctx.monthStart, ctx.dataAsOf)),
-      loadPerKpi(config, (k) => kpiDailyByAdviser(k, ctx.monthStart, ctx.dataAsOf)),
+      loadPerKpi(config, (k) => kpiDaily(k, ctx.windowStart, ctx.dataAsOf)),
+      loadPerKpi(config, (k) => kpiDailyByAdviser(k, ctx.windowStart, ctx.dataAsOf)),
     ]);
     return { ctx, daily: daily as Record<KpiKey, DailyCount[]>, byAdviser: byAdviser as Record<KpiKey, AdviserDailyCount[]> };
   });
@@ -100,26 +101,24 @@ async function loadPerKpi<T>(config: Config, build: (k: KpiKey) => BuiltQuery): 
 
 const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
 
-/** Working days of the chase month (labels for pace-chart x-axes). */
-function chaseDays(ctx: PacingContext): string[] {
-  const days: string[] = [];
-  for (let d = ctx.monthStart; d <= ctx.monthEnd; d = shiftDays(d, 1)) {
-    const dow = new Date(`${d}T00:00:00Z`).getUTCDay();
-    if (dow !== 0 && dow !== 6) days.push(d);
-  }
-  return days;
-}
-
-/** Cumulative counts aligned to `days` — weekend activity folds into the next working day;
- *  null after the data-as-of day (the line stops at the present). */
+/** Cumulative counts aligned to the week's working days. Weekend activity (rows dated after
+ *  Friday) folds into the Friday point once the week is complete; the line is null after the
+ *  data-as-of day (it stops at the present). */
 function cumulativeSeries(daily: DailyCount[], days: string[], asOf: string): Array<number | null> {
-  const byDay = new Map(daily.map((r) => [isoDay(r.d), r.n]));
+  const byDay = new Map<string, number>();
+  for (const r of daily) {
+    const d = isoDay(r.d);
+    byDay.set(d, (byDay.get(d) ?? 0) + r.n);
+  }
   const allDates = [...byDay.keys()].sort();
+  const last = days[days.length - 1];
   let cum = 0;
   let di = 0;
   return days.map((day) => {
     if (day > asOf) return null;
-    while (di < allDates.length && allDates[di] <= day) {
+    // The Friday point absorbs any weekend rows when asOf has passed Friday.
+    const threshold = day === last && asOf > last ? asOf : day;
+    while (di < allDates.length && allDates[di] <= threshold) {
       cum += byDay.get(allDates[di]) ?? 0;
       di++;
     }
@@ -127,9 +126,10 @@ function cumulativeSeries(daily: DailyCount[], days: string[], asOf: string): Ar
   });
 }
 
-/** Straight target pace across the month's working days. */
-function targetPaceSeries(monthlyTarget: number, count: number): number[] {
-  return Array.from({ length: count }, (_, i) => Math.round((monthlyTarget * (i + 1)) / count));
+/** Weighted target pace across the week: cumulative expected count by end of each working day
+ *  (Fri carries 80% of a Mon–Thu day — the kink is intentional). */
+function weeklyTargetPace(weekly: number, cumulativeShares: number[]): number[] {
+  return cumulativeShares.map((s) => Math.round(weekly * s));
 }
 
 /** Dashed projection: null until "now", then a straight line from the current value to the
@@ -161,7 +161,7 @@ interface OfficeCums {
   mtd: KpiTargets;
   /** Latest-day totals per KPI. */
   latest: KpiTargets;
-  /** Cumulative-by-working-day per KPI (aligned to chaseDays). */
+  /** Cumulative-by-working-day per KPI (aligned to the chase week). */
   series: Record<KpiKey, Array<number | null>>;
 }
 
@@ -170,7 +170,7 @@ function emptyKpiRecord(): KpiTargets {
 }
 
 function officeAggregates(core: ChaseCore): OfficeCums[] {
-  const days = chaseDays(core.ctx);
+  const days = core.ctx.weekDays;
   const officeList = [...OFFICES.map((o) => ({ name: o.name, color: o.color })), { name: UNASSIGNED, color: "#64748B" }];
   return officeList.map(({ name, color }) => {
     const mtd = emptyKpiRecord();
@@ -187,13 +187,13 @@ function officeAggregates(core: ChaseCore): OfficeCums[] {
   });
 }
 
-/** % of expected-by-now pace, averaged across the four KPIs (equal weights). Null when no targets. */
-function pctToPace(mtd: KpiTargets, targets: KpiTargets, ctx: PacingContext): number | null {
+/** % of expected-by-now weekly pace, averaged across the four KPIs. Null when no targets. */
+function pctToPace(wtd: KpiTargets, dailyTargets: KpiTargets, ctx: WeeklyPacingContext): number | null {
   const ratios: number[] = [];
   for (const k of KPI_KEYS) {
-    const monthly = targets[k] * ctx.workingDaysTotal;
-    const expected = monthly * ctx.fraction;
-    if (expected > 0) ratios.push(mtd[k] / expected);
+    const weekly = dailyTargets[k] * 5;
+    const expected = weekly * ctx.fraction;
+    if (expected > 0) ratios.push(wtd[k] / expected);
   }
   if (!ratios.length) return null;
   return Math.round((sum(ratios) / ratios.length) * 100);
@@ -210,10 +210,12 @@ function officeStatus(pct: number | null): ChaseStatus {
 
 export async function meta(config: Config) {
   const asOf = await dataAsOf(config);
+  const weekly = Object.fromEntries(KPI_KEYS.map((k) => [k, DAILY_TARGETS[k] * 5])) as KpiTargets;
   return {
     offices: [...OFFICES],
     targets: {
       daily: DAILY_TARGETS,
+      weekly,
       officeDaily: OFFICE_DAILY_TARGETS,
       revenueDaily: REVENUE_DAILY_TARGET,
     },
@@ -233,26 +235,34 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
   return cached("ds-daily-run-chase", ttl(config), async () => {
     const core = await chaseCore(config);
     const { ctx } = core;
-    const days = chaseDays(ctx);
+    const days = ctx.weekDays;
 
     const kpis = KPI_KEYS.map((k) => {
-      const monthlyTarget = DAILY_TARGETS[k] * ctx.workingDaysTotal;
-      const mtd = sum(core.daily[k].map((r) => r.n));
+      const weekly = DAILY_TARGETS[k] * 5;
+      const wtd = sum(core.daily[k].map((r) => r.n));
       const latestDay = dayTotal(core.daily[k], ctx.dataAsOf);
-      const pace: Pace = computePace(monthlyTarget, mtd, ctx.fraction);
+      const pace: Pace = computePace(weekly, wtd, ctx.fraction);
       const actual = cumulativeSeries(core.daily[k], days, ctx.dataAsOf);
+      // Conor's primary-KPI framing: cumulative weekly position in % terms.
+      const actualPct = weekly > 0 ? round((wtd / weekly) * 100, 1) : null;
+      const expectedPct = round(ctx.fraction * 100, 1);
       return {
         key: k,
         label: KPI_LABELS[k],
-        dailyTarget: DAILY_TARGETS[k],
-        monthlyTarget,
-        mtd,
+        weeklyTarget: weekly,
+        wtd,
         latestDay,
         pace,
+        weekProgress: {
+          actualPct,
+          expectedPct,
+          // +ahead / −behind, percentage points of the weekly target.
+          gapPp: actualPct != null && expectedPct != null ? round(actualPct - expectedPct, 1) : null,
+        },
         chart: {
           days,
           actual,
-          targetPace: targetPaceSeries(monthlyTarget, days.length),
+          targetPace: weeklyTargetPace(weekly, ctx.cumulativeShares),
           projection: projectionSeries(actual, pace.projectedFinish),
         },
       };
@@ -277,12 +287,14 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
 
     return {
       dataAsOf: ctx.dataAsOf,
-      month: {
-        start: ctx.monthStart,
-        end: ctx.monthEnd,
-        workingDaysElapsed: ctx.workingDaysElapsed,
-        workingDaysTotal: ctx.workingDaysTotal,
-        fraction: round(ctx.fraction, 3),
+      week: {
+        start: ctx.windowStart,
+        end: ctx.weekDays[4],
+        days,
+        // Cumulative expected share by end of each day, % (20.83 / 41.67 / 62.5 / 83.33 / 100).
+        cumulativeSharesPct: ctx.cumulativeShares.map((s) => round(s * 100, 2)),
+        fraction: round(ctx.fraction, 4),
+        expectedPct: round(ctx.fraction * 100, 1),
         nowLabel: ctx.nowLabel,
       },
       kpis,
@@ -299,33 +311,34 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
   return cached("ds-office-run-chase", ttl(config), async () => {
     const core = await chaseCore(config);
     const { ctx } = core;
-    const days = chaseDays(ctx);
-    const paceLine = Array.from({ length: days.length }, (_, i) => Math.round(((i + 1) / days.length) * 100));
+    const days = ctx.weekDays;
+    // The pace line is the WEIGHTED cumulative expected share (Fri = 80% of a Mon–Thu day).
+    const paceLine = ctx.cumulativeShares.map((s) => Math.round(s * 100));
 
     const offices = officeAggregates(core)
       .map((o) => {
         const targets = OFFICE_DAILY_TARGETS[o.office] ?? emptyKpiRecord();
         const hasTargets = KPI_KEYS.some((k) => targets[k] > 0);
         const kpis = KPI_KEYS.map((k) => {
-          const monthlyTarget = targets[k] * ctx.workingDaysTotal;
-          const pace = computePace(monthlyTarget, o.mtd[k], ctx.fraction);
+          const weekly = targets[k] * 5;
+          const pace = computePace(weekly, o.mtd[k], ctx.fraction);
           return {
             key: k,
             label: KPI_LABELS[k],
             actual: o.mtd[k],
-            target: monthlyTarget,
+            target: weekly,
             expected: pace.expectedByNow,
             gap: pace.aheadBehind,
             status: chaseStatus(o.mtd[k], pace.expectedByNow),
           };
         });
-        // Mini chart: blended % of monthly target achieved by day vs the straight pace line.
+        // Mini chart: blended % of weekly target achieved by day vs the weighted pace line.
         const pctSeries = days.map((_, i) => {
           const ratios: number[] = [];
           for (const k of KPI_KEYS) {
-            const monthly = targets[k] * ctx.workingDaysTotal;
+            const weekly = targets[k] * 5;
             const v = o.series[k][i];
-            if (monthly > 0 && v != null) ratios.push(v / monthly);
+            if (weekly > 0 && v != null) ratios.push(v / weekly);
           }
           return ratios.length ? Math.round((sum(ratios) / ratios.length) * 100) : null;
         });
@@ -352,7 +365,12 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
 
     return {
       dataAsOf: ctx.dataAsOf,
-      month: { nowLabel: ctx.nowLabel, workingDaysElapsed: ctx.workingDaysElapsed, workingDaysTotal: ctx.workingDaysTotal },
+      week: {
+        nowLabel: ctx.nowLabel,
+        start: ctx.windowStart,
+        end: ctx.weekDays[4],
+        expectedPct: Math.round(ctx.fraction * 100),
+      },
       offices: [...ranked, ...unranked],
       champion: ranked[0]?.office ?? null,
     };
@@ -513,11 +531,11 @@ export async function funnelHealth(config: Config, _f: ReportFilters) {
     const asOf = await dataAsOf(config);
     const ctx = mtdPacing(asOf);
     const [stagesRows, referralsDaily, salesDaily, aged, queues, pipelineRows, agesRows] = await Promise.all([
-      q<funnelQ.MortgageStageCounts>(config, funnelQ.mortgageStageCounts(ctx.monthStart, asOf)),
-      q<DailyCount>(config, kpiDaily("referrals", ctx.monthStart, asOf)),
-      q<DailyCount>(config, kpiDaily("sales", ctx.monthStart, asOf)),
+      q<funnelQ.MortgageStageCounts>(config, funnelQ.mortgageStageCounts(ctx.windowStart, asOf)),
+      q<DailyCount>(config, kpiDaily("referrals", ctx.windowStart, asOf)),
+      q<DailyCount>(config, kpiDaily("sales", ctx.windowStart, asOf)),
       q<funnelQ.AgedApplications>(config, funnelQ.agedApplications(asOf)),
-      q<funnelQ.ActionQueues>(config, funnelQ.actionQueues(asOf, ctx.monthStart)),
+      q<funnelQ.ActionQueues>(config, funnelQ.actionQueues(asOf, ctx.windowStart)),
       q<funnelQ.PipelineSummary>(config, funnelQ.pipelineSummary(asOf)),
       q<funnelQ.StageAges>(config, funnelQ.stageAges(asOf)),
     ]);
@@ -581,7 +599,7 @@ export async function funnelHealth(config: Config, _f: ReportFilters) {
     const revenueLatest = Math.round(pipeline.revenueLatestDay ?? 0);
     return {
       dataAsOf: asOf,
-      window: { from: ctx.monthStart, to: asOf },
+      window: { from: ctx.windowStart, to: asOf },
       stages,
       conversions,
       stageMetrics: [
@@ -804,17 +822,17 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
       })),
     ];
 
-    // Milestones from the chase state — the "story of the day" lines between events.
+    // Milestones from the chase state — the "story of the week" lines between events.
     const milestones: Item[] = [];
     for (const k of KPI_KEYS) {
-      const monthlyTarget = DAILY_TARGETS[k] * core.ctx.workingDaysTotal;
-      const mtd = sum(core.daily[k].map((r) => r.n));
-      const pace = computePace(monthlyTarget, mtd, core.ctx.fraction);
+      const weekly = DAILY_TARGETS[k] * 5;
+      const wtd = sum(core.daily[k].map((r) => r.n));
+      const pace = computePace(weekly, wtd, core.ctx.fraction);
       if (pace.status !== "on_pace") {
         milestones.push({
           kind: "milestone",
           icon: pace.status === "ahead" ? "📈" : "📉",
-          text: `${KPI_LABELS[k]}: ${Math.abs(pace.aheadBehind)} ${pace.status === "ahead" ? "ahead of" : "behind"} monthly pace`,
+          text: `${KPI_LABELS[k]}: ${Math.abs(pace.aheadBehind)} ${pace.status === "ahead" ? "ahead of" : "behind"} weekly pace`,
           accent: pace.status === "ahead" ? "green" : "none",
         });
       }

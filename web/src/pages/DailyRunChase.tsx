@@ -1,5 +1,6 @@
-// Screen 1 — Daily Run Chase (month-to-date framing): 4 KPI pace cards, 4 chase charts, office
-// leaderboard, live-feed ticker. Layout mirrors the signed-off strawman.
+// Screen 1 — Weekly Run Chase (Conor's principles): 4 KPI cards with the cumulative Week Progress
+// read, the weekly progress indicator strip (Mon 20.83% → Fri 100%), 4 weighted chase charts,
+// office leaderboard, live-feed ticker.
 
 import { usePayload } from "../api.js";
 import { paceChart } from "../charts.js";
@@ -10,6 +11,8 @@ import { Ticker } from "../components/Ticker.js";
 import { num, shortDate, signed } from "../format.js";
 import type { DailyRunChasePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
+
+const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
 
 export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
@@ -23,17 +26,49 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 key={k.key}
                 name={k.label}
                 pace={k.pace}
+                weekProgress={k.weekProgress}
                 latestDay={k.latestDay}
                 latestLabel={shortDate(data.dataAsOf)}
               />
             ))}
           </div>
 
+          {/* Weekly progress indicator — where the team should be by end of each day. */}
+          <div className="card" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: "8px 14px" }}>
+            <span className="card-title" style={{ marginBottom: 0, whiteSpace: "nowrap" }}>
+              Week Progress <span className="card-sub">{shortDate(data.week.start)} – {shortDate(data.week.end)}</span>
+            </span>
+            <div style={{ display: "flex", flex: 1, gap: 8 }}>
+              {data.week.days.map((d, i) => {
+                const done = d <= data.dataAsOf;
+                return (
+                  <div key={d} style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: done ? "var(--navy)" : "var(--text-secondary)" }}>
+                      {DAY_NAMES[i]}
+                    </div>
+                    <div className="progress-bar-bg" style={{ marginTop: 3 }}>
+                      <div
+                        className="progress-bar-fill"
+                        style={{ width: done ? "100%" : "0%", background: done ? "var(--navy)" : undefined }}
+                      />
+                    </div>
+                    <div style={{ fontSize: 9, color: "var(--text-secondary)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
+                      {data.week.cumulativeSharesPct[i]}%
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <span className="asof" style={{ whiteSpace: "nowrap" }}>
+              Expected by {shortDate(data.dataAsOf)}: <b>{data.week.expectedPct}%</b>
+            </span>
+          </div>
+
           <div className="row cols-4 grow">
             {data.kpis.map((k) => (
               <div className="card" key={k.key}>
                 <div className="card-title">
-                  <span>{k.label} — month chase</span>
+                  <span>{k.label} — week chase</span>
                   <StatusPill
                     status={k.pace.status}
                     label={k.pace.status === "on_pace" ? "On Pace" : `${k.pace.status === "ahead" ? "Ahead" : "Behind"} ${signed(k.pace.aheadBehind)}`}
@@ -41,7 +76,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 </div>
                 <div className="grow">
                   <EChart
-                    height={430}
+                    height={360}
                     option={paceChart({
                       days: k.chart.days,
                       actual: k.chart.actual,
@@ -57,8 +92,8 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
 
           <div className="card">
             <div className="card-title">
-              <span>Office Leaderboard <span className="card-sub">— ranked by leads · month to date</span></span>
-              <span className="asof">Data as of {shortDate(data.dataAsOf)} · day {data.month.workingDaysElapsed} of {data.month.workingDaysTotal}</span>
+              <span>Office Leaderboard <span className="card-sub">— ranked by leads · week to date</span></span>
+              <span className="asof">Data as of {shortDate(data.dataAsOf)} · expected {data.week.expectedPct}% of weekly target</span>
             </div>
             <table className="lb-table">
               <thead>

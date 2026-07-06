@@ -1,44 +1,94 @@
 // The pacing seam — the ONE place that decides "how far through the chase are we?".
 //
-// The lake is day-grained and rebuilt nightly, so the honest v1 chase is MONTH-TO-DATE at day
-// granularity: fraction = working days loaded ÷ working days in the month, and "now" is the latest
-// complete day in the lake. If a true intraday feed (or the simulated "drip" mode) ever lands, it
-// plugs in HERE — pages and datasets consume PacingContext and never know the cadence.
+// The lake is day-grained and rebuilt nightly, so pacing anchors on the latest complete day loaded
+// ("data as of"). Two models live here:
+//
+//   • weeklyPacing (the run chase, per Conor's 2026-07-06 principles): Mon–Fri chase against the
+//     weekly target with WEIGHTED days (Fri = 80% of a Mon–Thu day), fraction = cumulative
+//     expected share by end of the data-as-of day. The week rolls automatically when the lake
+//     loads the first Monday of a new week — the "refresh every Monday 09:00" behaviour, one day
+//     lagged by the nightly load.
+//   • mtdPacing (month-to-date) — used for month-window screens (funnel volumes).
+//
+// If a true intraday feed (or the simulated "drip" mode) ever lands, it plugs in HERE — pages and
+// datasets consume PacingContext and never know the cadence.
 
-import { monthOf } from "./trends.js";
+import { CUMULATIVE_WEEK_SHARES } from "../../domain/targets.js";
+import { monthOf, shiftDays } from "./trends.js";
 import { workingDaysElapsed, workingDaysInMonth } from "../../domain/targets.js";
 
 export interface PacingContext {
   /** The latest complete day loaded in the lake (YYYY-MM-DD) — the chase measures through this day. */
   dataAsOf: string;
-  /** First day of the chase month (YYYY-MM-DD). */
-  monthStart: string;
-  /** Last day of the chase month (YYYY-MM-DD). */
-  monthEnd: string;
-  /** Working days from the 1st through dataAsOf. */
-  workingDaysElapsed: number;
-  /** Working days in the whole month. */
-  workingDaysTotal: number;
-  /** Chase fraction 0..1 — how far through the month the loaded data reaches. */
+  /** First day of the chase window (YYYY-MM-DD). */
+  windowStart: string;
+  /** Last day of the chase window (YYYY-MM-DD). */
+  windowEnd: string;
+  /** Chase fraction 0..1 — expected share of the window target achieved by end of dataAsOf. */
   fraction: number;
   /** Label for the NOW marker on pace charts, e.g. "Jul 5". */
   nowLabel: string;
 }
 
-/** Month-to-date pacing anchored on the lake's latest complete day. */
-export function mtdPacing(dataAsOf: string): PacingContext {
+const DAY_MS = 86_400_000;
+
+function dow(iso: string): number {
+  return new Date(`${iso}T00:00:00Z`).getUTCDay(); // 0=Sun … 6=Sat
+}
+
+/** Monday of the ISO week containing `iso`. */
+export function mondayOf(iso: string): string {
+  const d = dow(iso);
+  const back = d === 0 ? 6 : d - 1;
+  return new Date(new Date(`${iso}T00:00:00Z`).getTime() - back * DAY_MS).toISOString().slice(0, 10);
+}
+
+function shortLabel(iso: string): string {
+  const [, m, d] = iso.split("-").map(Number);
+  const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
+  return `${monthName} ${d}`;
+}
+
+export interface WeeklyPacingContext extends PacingContext {
+  /** The five working days of the chase week (Mon..Fri, YYYY-MM-DD). */
+  weekDays: string[];
+  /** Cumulative expected share of the weekly target by end of each working day (0..1). */
+  cumulativeShares: number[];
+}
+
+/** Weighted weekly chase anchored on the lake's latest complete day. Weekend data-as-of days
+ *  (Sat/Sun) read as the just-finished week at fraction 1. */
+export function weeklyPacing(dataAsOf: string): WeeklyPacingContext {
+  const monday = mondayOf(dataAsOf);
+  const weekDays = Array.from({ length: 5 }, (_, i) =>
+    new Date(new Date(`${monday}T00:00:00Z`).getTime() + i * DAY_MS).toISOString().slice(0, 10),
+  );
+  const d = dow(dataAsOf);
+  // Mon..Fri → cumulative share through that day; Sat/Sun → the week is complete.
+  const fraction = d === 0 || d === 6 ? 1 : CUMULATIVE_WEEK_SHARES[d - 1];
+  return {
+    dataAsOf,
+    windowStart: monday,
+    windowEnd: shiftDays(monday, 6), // include the weekend so weekend activity counts toward the week
+    weekDays,
+    cumulativeShares: [...CUMULATIVE_WEEK_SHARES],
+    fraction,
+    nowLabel: shortLabel(dataAsOf),
+  };
+}
+
+/** Month-to-date pacing (equal-weighted working days) — month-window screens. */
+export function mtdPacing(dataAsOf: string): PacingContext & { workingDaysElapsed: number; workingDaysTotal: number } {
   const month = monthOf(dataAsOf);
   const elapsed = workingDaysElapsed(dataAsOf);
   const total = workingDaysInMonth(dataAsOf);
-  const [, m, d] = dataAsOf.split("-").map(Number);
-  const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];
   return {
     dataAsOf,
-    monthStart: month.from,
-    monthEnd: month.to,
+    windowStart: month.from,
+    windowEnd: month.to,
     workingDaysElapsed: elapsed,
     workingDaysTotal: total,
     fraction: total > 0 ? Math.min(1, elapsed / total) : 1,
-    nowLabel: `${monthName} ${d}`,
+    nowLabel: shortLabel(dataAsOf),
   };
 }
