@@ -28,7 +28,7 @@ import { EMPTY_FILTERS, type ReportFilters } from "./filters.js";
 import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
-import { chaseStatus, computePace, type ChaseStatus, type Pace } from "./pace.js";
+import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
 import { mtdPacing, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
@@ -86,10 +86,15 @@ interface ChaseCore {
 async function chaseCore(config: Config): Promise<ChaseCore> {
   return cached("chase-core", ttl(config), async () => {
     const asOf = await dataAsOf(config);
-    const ctx = weeklyPacing(asOf);
+    const today = tzToday(new Date(), config.reporting.timeZone);
+    const ctx = weeklyPacing(today, asOf);
+    // Load from loadStart (covers both the current week and the day counter's fallback day) up to
+    // the latest lake day. The `to` is clamped ≥ loadStart so an all-future current week (early
+    // Monday) still returns the fallback day's rows rather than an inverted empty range.
+    const to = asOf >= ctx.loadStart ? asOf : ctx.loadStart;
     const [daily, byAdviser] = await Promise.all([
-      loadPerKpi(config, (k) => kpiDaily(k, ctx.windowStart, ctx.dataAsOf)),
-      loadPerKpi(config, (k) => kpiDailyByAdviser(k, ctx.windowStart, ctx.dataAsOf)),
+      loadPerKpi(config, (k) => kpiDaily(k, ctx.loadStart, to)),
+      loadPerKpi(config, (k) => kpiDailyByAdviser(k, ctx.loadStart, to)),
     ]);
     return { ctx, daily: daily as Record<KpiKey, DailyCount[]>, byAdviser: byAdviser as Record<KpiKey, AdviserDailyCount[]> };
   });
@@ -101,6 +106,15 @@ async function loadPerKpi<T>(config: Config, build: (k: KpiKey) => BuiltQuery): 
 }
 
 const sum = (xs: number[]): number => xs.reduce((a, b) => a + b, 0);
+
+/** Keep only rows dated within the current chase week (drops the day-counter fallback day, which
+ *  may sit in the prior week). */
+function weekRows<T extends { d: string }>(rows: T[], ctx: WeeklyPacingContext): T[] {
+  return rows.filter((r) => {
+    const d = isoDay(r.d);
+    return d >= ctx.windowStart && d <= ctx.windowEnd;
+  });
+}
 
 /** Cumulative counts aligned to the week's working days. Weekend activity (rows dated after
  *  Friday) folds into the Friday point once the week is complete; the line is null after the
@@ -179,9 +193,9 @@ function officeAggregates(core: ChaseCore): OfficeCums[] {
     const series = {} as Record<KpiKey, Array<number | null>>;
     for (const k of KPI_KEYS) {
       const mine = core.byAdviser[k].filter((r) => officeOf(r.username) === name);
-      const dailyMine: DailyCount[] = mine.map((r) => ({ d: r.d, n: r.n }));
-      mtd[k] = sum(mine.map((r) => r.n));
-      latest[k] = sum(mine.filter((r) => isoDay(r.d) === core.ctx.dataAsOf).map((r) => r.n));
+      const dailyMine: DailyCount[] = weekRows(mine.map((r) => ({ d: r.d, n: r.n })), core.ctx);
+      mtd[k] = sum(dailyMine.map((r) => r.n)); // week-to-date for this office
+      latest[k] = sum(mine.filter((r) => isoDay(r.d) === core.ctx.latestWorkingDay).map((r) => r.n));
       series[k] = cumulativeSeries(dailyMine, days, core.ctx.dataAsOf);
     }
     return { office: name, color, mtd, latest, series };
@@ -240,9 +254,10 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
 
     const kpis = KPI_KEYS.map((k) => {
       const weekly = DAILY_TARGETS[k] * 5;
-      const wtd = sum(core.daily[k].map((r) => r.n));
+      const thisWeek = weekRows(core.daily[k], ctx);
+      const wtd = sum(thisWeek.map((r) => r.n));
       const pace: Pace = computePace(weekly, wtd, ctx.fraction);
-      const actual = cumulativeSeries(core.daily[k], days, ctx.dataAsOf);
+      const actual = cumulativeSeries(thisWeek, days, ctx.dataAsOf);
       // WTD context (for the trend chart + a secondary line): cumulative weekly position in %.
       const actualPct = weekly > 0 ? round((wtd / weekly) * 100, 1) : null;
       const expectedPct = round(ctx.fraction * 100, 1);
@@ -308,7 +323,9 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         expectedPct: round(ctx.fraction * 100, 1),
         nowLabel: ctx.nowLabel,
         latestWorkingDay: ctx.latestWorkingDay,
+        pending: ctx.currentWeekPending,
       },
+      dataAsOfLagsWeek: ctx.currentWeekPending,
       kpis,
       leaderboard,
     };
@@ -382,6 +399,7 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
         start: ctx.windowStart,
         end: ctx.weekDays[4],
         expectedPct: Math.round(ctx.fraction * 100),
+        pending: ctx.currentWeekPending,
       },
       offices: [...ranked, ...unranked],
       champion: ranked[0]?.office ?? null,
@@ -840,7 +858,7 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
     const milestones: Item[] = [];
     for (const k of KPI_KEYS) {
       const weekly = DAILY_TARGETS[k] * 5;
-      const wtd = sum(core.daily[k].map((r) => r.n));
+      const wtd = sum(weekRows(core.daily[k], core.ctx).map((r) => r.n));
       const pace = computePace(weekly, wtd, core.ctx.fraction);
       if (pace.status !== "on_pace") {
         milestones.push({

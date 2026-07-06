@@ -35,11 +35,11 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
           {/* Weekly progress indicator — where the team should be by end of each day. */}
           <div className="card" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: "8px 14px" }}>
             <span className="card-title" style={{ marginBottom: 0, whiteSpace: "nowrap" }}>
-              Week Progress <span className="card-sub">{shortDate(data.week.start)} – {shortDate(data.week.end)}</span>
+              This Week <span className="card-sub">{shortDate(data.week.start)} – {shortDate(data.week.end)}</span>
             </span>
             <div style={{ display: "flex", flex: 1, gap: 8 }}>
               {data.week.days.map((d, i) => {
-                const done = d <= data.dataAsOf;
+                const done = d >= data.week.start && d <= data.dataAsOf;
                 return (
                   <div key={d} style={{ flex: 1, textAlign: "center" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: done ? "var(--navy)" : "var(--text-secondary)" }}>
@@ -59,7 +59,9 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
               })}
             </div>
             <span className="asof" style={{ whiteSpace: "nowrap" }}>
-              Expected by {shortDate(data.dataAsOf)}: <b>{data.week.expectedPct}%</b>
+              {data.week.pending
+                ? <>Awaiting this week&rsquo;s data · last day {shortDate(data.week.latestWorkingDay)}</>
+                : <>Expected so far: <b>{data.week.expectedPct}%</b></>}
             </span>
           </div>
 

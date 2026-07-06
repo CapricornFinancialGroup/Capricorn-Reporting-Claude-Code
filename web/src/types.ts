@@ -62,6 +62,8 @@ export interface DailyRunChasePayload {
     expectedPct: number;
     nowLabel: string;
     latestWorkingDay: string;
+    /** True when the current week has no loaded data yet (early Monday). */
+    pending: boolean;
   };
   kpis: Array<{
     key: KpiKey;
@@ -89,7 +91,7 @@ export interface DailyRunChasePayload {
 
 export interface OfficeRunChasePayload {
   dataAsOf: string;
-  week: { nowLabel: string; start: string; end: string; expectedPct: number };
+  week: { nowLabel: string; start: string; end: string; expectedPct: number; pending: boolean };
   offices: Array<{
     office: string;
     color: string;

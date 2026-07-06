@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS } from "../../domain/targets.js";
-import { mondayOf, mtdPacing, weeklyPacing } from "./pacing.js";
+import { mtdPacing, weeklyPacing } from "./pacing.js";
 
 describe("weekly weights (Conor's principles)", () => {
   it("Mon–Thu carry 20.83% each, Friday 16.67% (80% of a Mon–Thu day)", () => {
@@ -16,35 +16,29 @@ describe("weekly weights (Conor's principles)", () => {
   });
 });
 
-describe("weeklyPacing", () => {
-  it("anchors the chase week on the Monday of the data-as-of day", () => {
-    expect(mondayOf("2026-07-08")).toBe("2026-07-06"); // Wednesday → that week's Monday
-    const ctx = weeklyPacing("2026-07-08");
-    expect(ctx.windowStart).toBe("2026-07-06");
+describe("weeklyPacing — anchors on the CURRENT week (today), data drives the fraction", () => {
+  it("mid-week: today Wed, data through Tue → this week, expected = end of Tue (41.67%)", () => {
+    const ctx = weeklyPacing("2026-07-08", "2026-07-07"); // today Wed, data as of Tue
+    expect(ctx.windowStart).toBe("2026-07-06"); // Monday of THIS week
     expect(ctx.weekDays).toEqual(["2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10"]);
-    expect(ctx.fraction).toBeCloseTo(15 / 24); // expected by end of Wednesday = 62.5%
-    expect(ctx.latestWorkingDay).toBe("2026-07-08"); // Wednesday itself
-    expect(ctx.latestWorkingDayIndex).toBe(2);
+    expect(ctx.fraction).toBeCloseTo(10 / 24); // through Tuesday
+    expect(ctx.currentWeekPending).toBe(false);
+    expect(ctx.latestWorkingDay).toBe("2026-07-07"); // day counter = Tuesday (has data)
+    expect(ctx.latestWorkingDayIndex).toBe(1);
   });
 
-  it("folds a weekend anchor's day counter back to Friday", () => {
-    const sun = weeklyPacing("2026-07-05"); // Sunday
-    expect(sun.latestWorkingDay).toBe("2026-07-03"); // Friday of the just-finished week
-    expect(sun.latestWorkingDayIndex).toBe(4);
+  it("early Monday: today Mon, data only through Sun → current week is pending, fraction 0", () => {
+    const ctx = weeklyPacing("2026-07-06", "2026-07-05"); // today Mon, data as of Sun
+    expect(ctx.windowStart).toBe("2026-07-06"); // still THIS (current) week, not last week
+    expect(ctx.fraction).toBe(0); // nothing loaded for this week yet
+    expect(ctx.currentWeekPending).toBe(true);
+    expect(ctx.latestWorkingDay).toBe("2026-07-03"); // day counter falls back to last Friday
+    expect(ctx.latestWorkingDayIndex).toBe(4);
+    expect(ctx.loadStart).toBe("2026-07-03"); // load must reach back to the fallback day
   });
 
-  it("Friday reaches 100% of the weekly target", () => {
-    expect(weeklyPacing("2026-07-10").fraction).toBeCloseTo(1);
-  });
-
-  it("weekend data-as-of reads as the just-finished week, complete", () => {
-    const sunday = weeklyPacing("2026-07-05");
-    expect(sunday.windowStart).toBe("2026-06-29"); // the week that just ended
-    expect(sunday.fraction).toBe(1);
-  });
-
-  it("Monday expects 20.83%", () => {
-    expect(weeklyPacing("2026-07-06").fraction).toBeCloseTo(5 / 24);
+  it("Friday with same-day data reaches 100%", () => {
+    expect(weeklyPacing("2026-07-10", "2026-07-10").fraction).toBeCloseTo(1);
   });
 });
 
