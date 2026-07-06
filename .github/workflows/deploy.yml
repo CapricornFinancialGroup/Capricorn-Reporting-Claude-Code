@@ -1,0 +1,66 @@
+# Deploy Capricorn Growth OS to Azure App Service.
+#
+# SKELETON — manual trigger only until this repo lands on its permanent GitHub home and a
+# federated credential is created. To activate:
+#   1. Create an Entra app registration (or reuse one) with a federated credential for this repo:
+#        az ad app federated-credential create --id <appId> --parameters '{
+#          "name":"github-deploy","issuer":"https://token.actions.githubusercontent.com",
+#          "subject":"repo:<org>/<repo>:ref:refs/heads/main","audiences":["api://AzureADTokenExchange"]}'
+#   2. Grant that identity Website Contributor on the app's resource group.
+#   3. Set repo secrets AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID.
+#   4. Change `on:` to include `push: { branches: [main] }`.
+
+name: deploy
+
+on:
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: smt-capgrowth-app-prod
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install, lint, test, build
+        run: |
+          npm ci
+          npm run lint
+          npm test
+          npm run build
+          npm run build:web
+
+      - name: Stage production bundle
+        run: |
+          mkdir stage
+          cp -R dist package.json package-lock.json stage/
+          cd stage && npm ci --omit=dev --ignore-scripts
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: stage
+
+      - name: Smoke
+        run: |
+          sleep 10
+          curl -fsS "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/healthz"
+          curl -fsS "https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net/healthz/lake"
