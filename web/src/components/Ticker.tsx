@@ -20,7 +20,7 @@ export function Ticker({ mode, refreshMs }: { mode: Mode; refreshMs: number }) {
   const secs = Math.max(18, Math.min(40, data.items.length * 1.6));
   return (
     <div className="ticker-wrap">
-      <div className="ticker-label">Live Feed · {data.dayLabel}</div>
+      <div className="ticker-label">Latest Activity · {data.dayLabel}</div>
       <div className="ticker-outer">
         <div className="ticker-track" style={{ ["--ticker-secs" as string]: `${secs}s` }}>
           {items}

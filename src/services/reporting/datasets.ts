@@ -13,6 +13,7 @@ import { OFFICES, UNASSIGNED, officeOf } from "../../domain/offices.js";
 import {
   ALERT_THRESHOLDS,
   DAILY_TARGETS,
+  dayTarget,
   KPI_KEYS,
   KPI_LABELS,
   LEAGUE,
@@ -240,19 +241,29 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     const kpis = KPI_KEYS.map((k) => {
       const weekly = DAILY_TARGETS[k] * 5;
       const wtd = sum(core.daily[k].map((r) => r.n));
-      const latestDay = dayTotal(core.daily[k], ctx.dataAsOf);
       const pace: Pace = computePace(weekly, wtd, ctx.fraction);
       const actual = cumulativeSeries(core.daily[k], days, ctx.dataAsOf);
-      // Conor's primary-KPI framing: cumulative weekly position in % terms.
+      // WTD context (for the trend chart + a secondary line): cumulative weekly position in %.
       const actualPct = weekly > 0 ? round((wtd / weekly) * 100, 1) : null;
       const expectedPct = round(ctx.fraction * 100, 1);
+      // DAY view (the headline counter, per Conor's 2026-07-06 feedback): the latest WORKING day's
+      // actual vs that day's target (weekday-weighted), with a day ahead/behind.
+      const dayActual = dayTotal(core.daily[k], ctx.latestWorkingDay);
+      const target = dayTarget(weekly, ctx.latestWorkingDayIndex);
       return {
         key: k,
         label: KPI_LABELS[k],
         weeklyTarget: weekly,
         wtd,
-        latestDay,
+        // Week pace — drives the trend chart's header status (the chart is the WTD trend).
         pace,
+        day: {
+          date: ctx.latestWorkingDay,
+          actual: dayActual,
+          target,
+          gap: dayActual - target,
+          status: chaseStatus(dayActual, target),
+        },
         weekProgress: {
           actualPct,
           expectedPct,
@@ -296,6 +307,7 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         fraction: round(ctx.fraction, 4),
         expectedPct: round(ctx.fraction * 100, 1),
         nowLabel: ctx.nowLabel,
+        latestWorkingDay: ctx.latestWorkingDay,
       },
       kpis,
       leaderboard,
@@ -769,7 +781,9 @@ export interface FeedItem {
 export async function liveFeed(config: Config, _f: ReportFilters) {
   return cached("ds-live-feed", ttl(config), async () => {
     const core = await chaseCore(config);
-    const asOf = core.ctx.dataAsOf;
+    // Source events from the latest WORKING day (a weekend anchor has almost no activity). The
+    // lake is a nightly build, so this is honestly "latest activity", not live-now.
+    const asOf = core.ctx.latestWorkingDay;
     const [apps, leads, refs, sales] = await Promise.all([
       q<tickerQ.ApplicationEvent>(config, tickerQ.applicationEvents(asOf, 15)),
       q<tickerQ.LeadEvent>(config, tickerQ.leadEvents(asOf, 12)),

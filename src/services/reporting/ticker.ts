@@ -3,7 +3,7 @@
 // PII rule: adviser names, lenders, introducer companies and £ values only — the ticker NEVER
 // joins the client table (no client PII on an office wall).
 
-import { combine, notDeleted, orgFilter } from "./filters.js";
+import { combine, excludeMigrations, notDeleted, orgFilter } from "./filters.js";
 import type { BuiltQuery, SqlParam } from "./query.js";
 
 export interface ApplicationEvent {
@@ -14,7 +14,7 @@ export interface ApplicationEvent {
 }
 
 export function applicationEvents(day: string, top = 25): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"));
+  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"));
   const params: SqlParam[] = [...base.params, { name: "D", value: day, kind: "date" }];
   return {
     text: `SELECT TOP ${Math.max(1, Math.min(100, top))}
@@ -36,7 +36,7 @@ export interface LeadEvent {
 }
 
 export function leadEvents(day: string, top = 25): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"));
+  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"));
   const params: SqlParam[] = [...base.params, { name: "D", value: day, kind: "date" }];
   return {
     text: `SELECT TOP ${Math.max(1, Math.min(100, top))}
@@ -81,6 +81,7 @@ export interface SaleEvent {
 }
 
 export function saleEvents(day: string, top = 25): BuiltQuery {
+  // protectioncase has no LeadDate — the migration guard (mortgagecase-only) doesn't apply here.
   const base = combine(orgFilter("f"), notDeleted("f"));
   const params: SqlParam[] = [...base.params, { name: "D", value: day, kind: "date" }];
   return {

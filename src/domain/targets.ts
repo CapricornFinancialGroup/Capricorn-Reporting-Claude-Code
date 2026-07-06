@@ -50,6 +50,13 @@ export function weeklyTarget(kpi: KpiKey): number {
   return DAILY_TARGETS[kpi] * 5;
 }
 
+/** Target for one weekday (Mon..Fri, index 0..4) = weekly target × that day's weight.
+ *  Friday carries 80% of a Mon–Thu day (Conor's weighting). */
+export function dayTarget(weekly: number, dayIndex: number): number {
+  const w = DAY_WEIGHTS[dayIndex] ?? DAY_WEIGHTS[0];
+  return Math.round(weekly * w);
+}
+
 /** Weekly target for a KPI for one office. */
 export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
   return (OFFICE_DAILY_TARGETS[office]?.[kpi] ?? 0) * 5;

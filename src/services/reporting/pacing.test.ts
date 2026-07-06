@@ -23,6 +23,14 @@ describe("weeklyPacing", () => {
     expect(ctx.windowStart).toBe("2026-07-06");
     expect(ctx.weekDays).toEqual(["2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10"]);
     expect(ctx.fraction).toBeCloseTo(15 / 24); // expected by end of Wednesday = 62.5%
+    expect(ctx.latestWorkingDay).toBe("2026-07-08"); // Wednesday itself
+    expect(ctx.latestWorkingDayIndex).toBe(2);
+  });
+
+  it("folds a weekend anchor's day counter back to Friday", () => {
+    const sun = weeklyPacing("2026-07-05"); // Sunday
+    expect(sun.latestWorkingDay).toBe("2026-07-03"); // Friday of the just-finished week
+    expect(sun.latestWorkingDayIndex).toBe(4);
   });
 
   it("Friday reaches 100% of the weekly target", () => {

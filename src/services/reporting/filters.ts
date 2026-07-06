@@ -5,6 +5,7 @@
 // office is config, not data; dates filter in SQL against each fact's own date column.
 
 import { ORGANISATION_KEYS } from "../../domain/firm.js";
+import { MIGRATION_EXCLUSIONS } from "../../domain/data-quality.js";
 import type { SqlParam } from "./query.js";
 
 export interface ReportFilters {
@@ -61,6 +62,20 @@ export function orgFilter(alias = ""): Fragment {
 export function notDeleted(alias = ""): Fragment {
   const col = alias ? `${alias}.DeletedYN` : "DeletedYN";
   return { clause: `COALESCE(${col}, 'N') <> 'Y'`, params: [] };
+}
+
+/** Exclude known bulk-migration batches from mortgagecase metrics (see domain/data-quality.ts).
+ *  Alias must be a mortgagecase row (has OrganisationKey + LeadDate). Empty when nothing to exclude. */
+export function excludeMigrations(alias = "f"): Fragment {
+  if (MIGRATION_EXCLUSIONS.length === 0) return { clause: "", params: [] };
+  const clauses: string[] = [];
+  const params: SqlParam[] = [];
+  MIGRATION_EXCLUSIONS.forEach((m, i) => {
+    clauses.push(`NOT (${alias}.OrganisationKey = @MigOrg${i} AND ${alias}.LeadDate = @MigDate${i})`);
+    params.push({ name: `MigOrg${i}`, value: m.orgKey, kind: "int" });
+    params.push({ name: `MigDate${i}`, value: m.leadDate, kind: "date" });
+  });
+  return { clause: clauses.join(" AND "), params };
 }
 
 /** Date-range predicate on a named column, e.g. dateRange("LeadDate", from, to). */

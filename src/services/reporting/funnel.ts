@@ -11,7 +11,7 @@
 // "Open" case = written but not completed and not marked not-proceeding.
 
 import { ALERT_THRESHOLDS } from "../../domain/targets.js";
-import { combine, notDeleted, orgFilter, whereClause, type Fragment } from "./filters.js";
+import { combine, excludeMigrations, notDeleted, orgFilter, whereClause, type Fragment } from "./filters.js";
 import type { BuiltQuery, SqlParam } from "./query.js";
 
 export interface MortgageStageCounts {
@@ -22,7 +22,7 @@ export interface MortgageStageCounts {
 
 /** Mortgage-side stage counts within [from, to] — one pass over mortgagecase. */
 export function mortgageStageCounts(from: string, to: string): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"));
+  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"));
   const params: SqlParam[] = [
     ...base.params,
     { name: "From", value: from, kind: "date" },
@@ -56,7 +56,7 @@ export interface AgedApplications {
 /** Applications written ≥ threshold days before asOf with no lender offer yet, still open.
  *  Look-back bounded to 90 days so ancient stale rows don't dominate the wall. */
 export function agedApplications(asOf: string): BuiltQuery {
-  const where = combine(orgFilter("f"), notDeleted("f"), openCase(), {
+  const where = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"), openCase(), {
     clause: `f.WrittenDate >= DATEADD(day, -90, @AsOf)
              AND f.WrittenDate <= DATEADD(day, -@AgedDays, @AsOf)
              AND f.OfferIssueDate IS NULL`,
@@ -90,7 +90,7 @@ export interface ActionQueues {
  *    (REFER NOW is a flow proxy computed in the dataset layer — see note below.)
  */
 export function actionQueues(asOf: string, monthStart: string): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"), openCase());
+  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"), openCase());
   const params: SqlParam[] = [
     ...base.params,
     { name: "AsOf", value: asOf, kind: "date" },
@@ -128,7 +128,7 @@ export interface PipelineSummary {
 
 /** Pipeline strip: open written cases (90d) value/size + estimated revenue on the latest day. */
 export function pipelineSummary(asOf: string): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"));
+  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"));
   const params: SqlParam[] = [...base.params, { name: "AsOf", value: asOf, kind: "date" }];
   return {
     text: `SELECT
@@ -158,7 +158,7 @@ export interface StageAges {
 
 /** Average days open cases have been sitting at each stage (90-day look-back). */
 export function stageAges(asOf: string): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"), openCase());
+  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"), openCase());
   const params: SqlParam[] = [...base.params, { name: "AsOf", value: asOf, kind: "date" }];
   return {
     text: `SELECT

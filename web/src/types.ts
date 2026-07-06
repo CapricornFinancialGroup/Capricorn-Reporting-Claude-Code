@@ -42,6 +42,14 @@ export interface WeekProgress {
   gapPp: number | null;
 }
 
+export interface DayView {
+  date: string;
+  actual: number;
+  target: number;
+  gap: number;
+  status: ChaseStatus;
+}
+
 export interface DailyRunChasePayload {
   dataAsOf: string;
   week: {
@@ -53,14 +61,15 @@ export interface DailyRunChasePayload {
     fraction: number;
     expectedPct: number;
     nowLabel: string;
+    latestWorkingDay: string;
   };
   kpis: Array<{
     key: KpiKey;
     label: string;
     weeklyTarget: number;
     wtd: number;
-    latestDay: number;
     pace: Pace;
+    day: DayView;
     weekProgress: WeekProgress;
     chart: ChaseChart;
   }>;

@@ -54,6 +54,11 @@ export interface WeeklyPacingContext extends PacingContext {
   weekDays: string[];
   /** Cumulative expected share of the weekly target by end of each working day (0..1). */
   cumulativeShares: number[];
+  /** Latest complete WORKING day (Mon–Fri) ≤ dataAsOf — the day the headline counter references
+   *  (weekends fold back to Friday so a Sunday's near-zero doesn't read as "behind"). */
+  latestWorkingDay: string;
+  /** 0..4 (Mon..Fri) index of latestWorkingDay — picks its DAY_WEIGHTS share. */
+  latestWorkingDayIndex: number;
 }
 
 /** Weighted weekly chase anchored on the lake's latest complete day. Weekend data-as-of days
@@ -66,6 +71,8 @@ export function weeklyPacing(dataAsOf: string): WeeklyPacingContext {
   const d = dow(dataAsOf);
   // Mon..Fri → cumulative share through that day; Sat/Sun → the week is complete.
   const fraction = d === 0 || d === 6 ? 1 : CUMULATIVE_WEEK_SHARES[d - 1];
+  // Latest working day ≤ dataAsOf: Fri if the anchor is a weekend, else the anchor itself.
+  const latestWorkingDayIndex = d === 0 || d === 6 ? 4 : d - 1; // Sun/Sat → Fri(4)
   return {
     dataAsOf,
     windowStart: monday,
@@ -73,6 +80,8 @@ export function weeklyPacing(dataAsOf: string): WeeklyPacingContext {
     weekDays,
     cumulativeShares: [...CUMULATIVE_WEEK_SHARES],
     fraction,
+    latestWorkingDay: weekDays[latestWorkingDayIndex],
+    latestWorkingDayIndex,
     nowLabel: shortLabel(dataAsOf),
   };
 }

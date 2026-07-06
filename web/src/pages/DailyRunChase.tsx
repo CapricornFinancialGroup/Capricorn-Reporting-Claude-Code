@@ -25,10 +25,9 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
               <KpiCard
                 key={k.key}
                 name={k.label}
-                pace={k.pace}
-                weekProgress={k.weekProgress}
-                latestDay={k.latestDay}
-                latestLabel={shortDate(data.dataAsOf)}
+                day={k.day}
+                weeklyTarget={k.weeklyTarget}
+                wtd={k.wtd}
               />
             ))}
           </div>
@@ -76,7 +75,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 </div>
                 <div className="grow">
                   <EChart
-                    height={360}
+                    height={288}
                     option={paceChart({
                       days: k.chart.days,
                       actual: k.chart.actual,

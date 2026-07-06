@@ -15,7 +15,7 @@
 //   sales         protectioncase by WrittenDate, COUNT(*)
 
 import type { KpiKey } from "../../domain/targets.js";
-import { combine, dateRange, notDeleted, orgFilter, whereClause, type Fragment } from "./filters.js";
+import { combine, dateRange, excludeMigrations, notDeleted, orgFilter, whereClause, type Fragment } from "./filters.js";
 import type { BuiltQuery } from "./query.js";
 
 interface KpiSpec {
@@ -69,6 +69,9 @@ function baseWhere(s: KpiSpec, from: string, to: string): Fragment {
   return combine(
     orgFilter("f"),
     s.hasDeletedFlag ? notDeleted("f") : { clause: "", params: [] },
+    // mortgagecase carries the LeadDate/OrganisationKey the migration guard needs; the crosssell
+    // and protection facts don't (and aren't affected by the bulk-lead event).
+    s.table === "dbo.mortgagecase" ? excludeMigrations("f") : { clause: "", params: [] },
     dateRange(`f.${s.dateColumn}`, from, to),
     { clause: s.extraClause, params: [] },
   );
