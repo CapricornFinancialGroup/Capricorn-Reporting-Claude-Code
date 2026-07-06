@@ -66,6 +66,11 @@ error text.
 CI: `.github/workflows/deploy.yml` is a ready GitHub Actions skeleton (OIDC login); activate per
 its header comments once the repo is on its permanent GitHub home.
 
+> **Known quirk:** `az webapp deploy` may report *"site failed to start within 10 mins"* even when
+> the deployment succeeded — its startup probe hits `/`, which Easy Auth answers with 401. Trust
+> `/healthz` + `/healthz/lake` (both anonymous), not the poller verdict (observed on the first
+> production deploy, 2026-07-06).
+
 ### 5. Verify
 
 1. `curl https://<app>/healthz` → 200 (anonymous).
