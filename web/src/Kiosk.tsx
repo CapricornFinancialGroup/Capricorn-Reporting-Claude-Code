@@ -48,8 +48,9 @@ export function Kiosk({ mode }: { mode: Mode }) {
   }, [meta, cycleMs, rotates]);
 
   if (error) {
-    const hint = KIOSK_TOKEN ? "" : " (append ?k=<token> to the URL)";
-    return <div className="kiosk-viewport"><ErrorNote message={`Kiosk data unavailable: ${error}${hint}`} /></div>;
+    // The token hint only applies to the unattended kiosk surface; /wall is Easy-Auth'd.
+    const hint = mode === "kiosk" && !KIOSK_TOKEN ? " (append ?k=<token> to the URL)" : "";
+    return <div className="kiosk-viewport"><ErrorNote message={`Data unavailable: ${error}${hint}`} /></div>;
   }
   if (!meta) return <div className="kiosk-viewport"><div className="loading">Loading…</div></div>;
 

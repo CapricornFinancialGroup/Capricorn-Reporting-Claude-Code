@@ -4,7 +4,11 @@
 // for the anonymous kiosk. One inlined file means /screens loads with zero extra requests.
 //
 //   GET /dashboard  → SPA shell (dashboard mode; Easy Auth enforced by the platform)
+//   GET /wall       → SPA shell (auto-rotating wall view for signed-in users; Easy Auth, NO token)
 //   GET /screens    → SPA shell (kiosk mode; Easy-Auth-excluded, data is token-gated)
+//
+// /wall and /dashboard both sit behind Easy Auth and read /api/reporting/*; /screens is the
+// token-gated surface for unattended TVs (Easy-Auth-excluded in the Bicep).
 //
 // Production serves dist/public/index.html; in local dev the SPA runs on the Vite dev server, so
 // these routes 503 when dist/public is absent — expected.
@@ -28,7 +32,8 @@ export function registerSpaRoutes(app: FastifyInstance): void {
     return reply.type("text/html; charset=utf-8").header("cache-control", "no-cache").send(readFileSync(INDEX));
   };
 
-  // The client reads window.location.pathname to pick dashboard vs kiosk mode.
+  // The client reads window.location.pathname to pick dashboard / wall / kiosk mode.
   app.get("/dashboard", async (_req, reply) => sendShell(reply));
+  app.get("/wall", async (_req, reply) => sendShell(reply));
   app.get("/screens", async (_req, reply) => sendShell(reply));
 }

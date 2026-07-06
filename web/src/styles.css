@@ -100,6 +100,8 @@ button { font: inherit; }
   border-radius: 8px 8px 0 0; padding: 7px 14px; font-size: 12px; font-weight: 600; cursor: pointer;
 }
 .dash-tab.on { color: var(--navy); border-bottom-color: var(--surface); font-weight: 700; }
+.dash-tab-wall { margin-left: auto; color: var(--blue); text-decoration: none; }
+.dash-tab-wall:hover { background: var(--blue-bg); }
 
 /* --------------------------------------------------------------- layout */
 

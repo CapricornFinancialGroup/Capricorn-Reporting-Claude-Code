@@ -44,6 +44,8 @@ export function App({ mode }: { mode: Mode }) {
             {p.label}
           </button>
         ))}
+        {/* Auto-rotating full-screen view for signed-in users (office wall / TV) — no token. */}
+        <a className="dash-tab dash-tab-wall" href="/wall" title="Auto-rotating full-screen wall view">↻ Wall view</a>
       </nav>
       <main className="dash-main">
         <Page meta={meta} filters={EMPTY_FILTERS} mode={mode} refreshMs={(meta.refreshSeconds ?? 60) * 1000} />

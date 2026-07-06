@@ -5,10 +5,24 @@
 
 import { useEffect, useRef, useState } from "react";
 
-export type Mode = "dashboard" | "kiosk";
+// Three surfaces from one bundle:
+//   dashboard  /dashboard  — Easy Auth, tabbed nav, /api/reporting/*
+//   wall       /wall       — Easy Auth, auto-rotating (no token), /api/reporting/*
+//   kiosk      /screens    — Easy-Auth-excluded, auto-rotating, token-gated /api/kiosk
+// "wall" is the rotating view for signed-in users (an office TV that can do interactive login);
+// "kiosk" is for unattended TVs that can't, gated by the shared token instead.
+export type Mode = "dashboard" | "wall" | "kiosk";
 
 export function detectMode(): Mode {
-  return window.location.pathname.startsWith("/screens") ? "kiosk" : "dashboard";
+  const path = window.location.pathname;
+  if (path.startsWith("/screens")) return "kiosk";
+  if (path.startsWith("/wall")) return "wall";
+  return "dashboard";
+}
+
+/** Rotating surfaces (full-bleed auto-cycle) vs the interactive tabbed dashboard. */
+export function isRotating(mode: Mode): boolean {
+  return mode === "kiosk" || mode === "wall";
 }
 
 const urlParams = new URLSearchParams(window.location.search);
