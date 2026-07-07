@@ -9,7 +9,7 @@
 // future intraday or drip feed and for the live Team-Targets source when Capricorn provides one.
 
 import type { Config } from "../../config.js";
-import { OFFICES, UNASSIGNED, officeOf } from "../../domain/offices.js";
+import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import {
   ALERT_THRESHOLDS,
   DAILY_TARGETS,
@@ -391,6 +391,14 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
       .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
       .map((o, i) => ({ ...o, rank: i + 1 }));
     const unranked = offices.filter((o) => o.pct == null).map((o) => ({ ...o, rank: null as number | null }));
+    const champion = ranked[0]?.office ?? null;
+
+    // Card/strip POSITION is Conor's fixed roster order (2026-07-07: "Office Order"), not
+    // performance -- a wall display shouldn't reshuffle its layout every refresh. `rank` (above)
+    // still carries the true performance ranking for the numbered badge and the LEADING card.
+    const displayOrder = [...ranked, ...unranked].sort(
+      (a, b) => officeOrderIndex(a.office) - officeOrderIndex(b.office),
+    );
 
     return {
       dataAsOf: ctx.dataAsOf,
@@ -401,8 +409,8 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
         expectedPct: Math.round(ctx.fraction * 100),
         pending: ctx.currentWeekPending,
       },
-      offices: [...ranked, ...unranked],
-      champion: ranked[0]?.office ?? null,
+      offices: displayOrder,
+      champion,
     };
   });
 }

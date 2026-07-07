@@ -156,6 +156,14 @@ export function officeOf(username: string | null | undefined): string {
   return ADVISER_OFFICE[username.trim().toLowerCase()] ?? UNASSIGNED;
 }
 
+/** Conor's fixed display order (2026-07-07: "Office Order"), for screens that should show a
+ *  stable roster position rather than reshuffling by performance every refresh (Office Run
+ *  Chase). Unknown/unassigned names sort last. */
+export function officeOrderIndex(name: string): number {
+  const i = OFFICES.findIndex((o) => o.name === name);
+  return i === -1 ? OFFICES.length : i;
+}
+
 /** The office display list: the real offices, plus Unassigned only when it has activity. */
 export function officeNames(includeUnassigned: boolean): string[] {
   const names = OFFICES.map((o) => o.name);

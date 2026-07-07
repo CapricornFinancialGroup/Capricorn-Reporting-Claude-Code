@@ -23,7 +23,7 @@ export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
       {data && (
         <div className="screen">
           <div className="card" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: "8px 14px" }}>
-            <span className="card-title" style={{ marginBottom: 0 }}>Overall Ranking — % to weekly target pace</span>
+            <span className="card-title" style={{ marginBottom: 0 }}>% to Weekly Target Pace <span className="card-sub">fixed office order · ranked #1-{data.offices.length} by pace</span></span>
             <span className="asof">Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · data as of {shortDate(data.dataAsOf)} · expected {data.week.expectedPct}%</span>
           </div>
 
