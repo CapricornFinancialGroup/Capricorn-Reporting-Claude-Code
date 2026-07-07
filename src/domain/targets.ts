@@ -28,8 +28,8 @@ export const KPI_KEYS: KpiKey[] = ["leads", "applications", "referrals", "sales"
 
 export type KpiTargets = Record<KpiKey, number>;
 
-/** Business-wide daily targets — sum of the office targets below, ÷5. */
-export const DAILY_TARGETS: KpiTargets = { leads: 126, applications: 24, referrals: 7, sales: 6 };
+/** Business-wide daily targets — sum of the office targets below. */
+export const DAILY_TARGETS: KpiTargets = { leads: 124, applications: 23, referrals: 6, sales: 5 };
 
 // ---------------------------------------------------------------------------
 // Weekly run chase (Conor's principles, 2026-07-06 email)
@@ -73,16 +73,16 @@ export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
 // ("Weekly Par" / "Monthly Par" / "Written Par" / "Paid Par") — summing those by office is a
 // candidate real source once the "Par" semantics are confirmed (see docs). Weekly figures behind
 // these dailies (weekly = daily × 5): Hammersmith 500/90/20/20, Mayfair 80/12/3/2, Newmarket
-// 12/3/2/1, Hong Kong 10/3/2/1, Singapore 12/4/2/1, Türkiye 10/4/2/1, Shanghai/Dubai 3/1/1/1
-// (nominal floor — negligible trailing volume, kept non-zero so they stay visible). Unassigned
-// carries none by design.
+// 12/3/2/1, Hong Kong 10/3/2/1, Singapore 12/4/2/1, Shanghai/Dubai 3/1/1/1 (nominal floor —
+// negligible trailing volume, kept non-zero so they stay visible). No Türkiye row (Conor confirmed
+// 2026-07-07 there's no Turkey office — its 2 advisers are UNASSIGNED pending a real mapping).
+// Unassigned carries none by design.
 export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
   Hammersmith: { leads: 100, applications: 18, referrals: 4, sales: 4 },
   Mayfair: { leads: 16, applications: 2.4, referrals: 0.6, sales: 0.4 },
   Newmarket: { leads: 2.4, applications: 0.6, referrals: 0.4, sales: 0.2 },
   "Hong Kong": { leads: 2, applications: 0.6, referrals: 0.4, sales: 0.2 },
   Singapore: { leads: 2.4, applications: 0.8, referrals: 0.4, sales: 0.2 },
-  "Türkiye": { leads: 2, applications: 0.8, referrals: 0.4, sales: 0.2 },
   Shanghai: { leads: 0.6, applications: 0.2, referrals: 0.2, sales: 0.2 },
   Dubai: { leads: 0.6, applications: 0.2, referrals: 0.2, sales: 0.2 },
   [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0 },

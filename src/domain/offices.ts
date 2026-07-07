@@ -17,17 +17,19 @@ export interface Office {
   color: string;
 }
 
-// The eight Capricorn offices from the Datarails export (Dubai has no case advisers yet but is a
-// valid office).
+// Conor's confirmed office list + order (2026-07-07 email): "There is no Turkey office." Türkiye
+// removed entirely (was 2 advisers, see ADVISER_OFFICE below — now UNASSIGNED pending Capricorn
+// telling us their real office). Dubai's status wasn't addressed by that email (it was carried
+// over from Kyle's original Datarails export as "a valid office" with no case advisers yet) —
+// left in for now, flagged separately rather than guessed at.
 export const OFFICES: Office[] = [
   { name: "Hammersmith", color: "#0E2040" },
   { name: "Mayfair", color: "#1D4ED8" },
   { name: "Newmarket", color: "#0E7490" },
   { name: "Hong Kong", color: "#7C3AED" },
-  { name: "Singapore", color: "#B45309" },
   { name: "Shanghai", color: "#BE185D" },
+  { name: "Singapore", color: "#B45309" },
   { name: "Dubai", color: "#0F766E" },
-  { name: "Türkiye", color: "#9333EA" },
 ];
 
 export const UNASSIGNED = "Unassigned";
@@ -143,8 +145,9 @@ export const ADVISER_OFFICE: Record<string, string> = {
   "sam.lee@capricornfinancialmortgages.co.uk": "Singapore",
   "samuel@capricornint.co.uk": "Singapore",
   "shirlene@koh.co.uk": "Singapore",
-  "berkan.aksit@capricornint.co.uk": "Türkiye",
-  "gizem@capricorncommercial.co.uk": "Türkiye",
+  // berkan.aksit@capricornint.co.uk and gizem@capricorncommercial.co.uk were mapped to "Türkiye"
+  // (Datarails export) — Conor confirmed 2026-07-07 there is no Turkey office. Left unmapped
+  // (→ UNASSIGNED, visible on the leaderboards) pending their real office from Capricorn.
 };
 
 /** Resolve an adviser's office; unmapped advisers group under UNASSIGNED. */
