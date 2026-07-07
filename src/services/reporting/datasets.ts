@@ -12,7 +12,6 @@ import type { Config } from "../../config.js";
 import { OFFICES, UNASSIGNED, officeOf } from "../../domain/offices.js";
 import {
   ALERT_THRESHOLDS,
-  CUMULATIVE_WEEK_SHARES,
   DAILY_TARGETS,
   dayTarget,
   KPI_KEYS,
@@ -30,7 +29,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { mondayOf, mtdPacing, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { mondayOf, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import * as tickerQ from "./ticker.js";
@@ -507,13 +506,24 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
     for (const r of prevApps) prevFor(r.username, r.fullName).apps += r.n;
     for (const r of prevRefs) prevFor(r.username, r.fullName).refs += r.n;
 
+    // Ranking compares an extrapolated week-to-date estimate against last period's COMPLETE total —
+    // only for the default (unfiltered) current week, and only while it's genuinely still in
+    // progress. Otherwise Monday's one day always reads as "down" against last week's Friday-
+    // complete total, which isn't a real regression (Conor 2026-07-07: "the current week always
+    // looks low ... until the final hour"). Displayed apps/refs stay raw — only the ranking math
+    // is pace-adjusted, same split as Momentum's "est." point vs its raw KPI cards.
+    const improvedFraction = !f.from && !f.to && to === asOf ? weekElapsedFraction(asOf) : 1;
+
     const improved = rows
       .map((r) => {
         const p = prevByName.get(r.name) ?? { apps: 0, refs: 0 };
-        const deltaPct = pctDelta(r.apps + r.refs, p.apps + p.refs);
-        return { name: r.name, office: r.office, thisApps: r.apps, thisRefs: r.refs, lastApps: p.apps, lastRefs: p.refs, deltaPct };
+        const thisPaced = improvedFraction > 0 ? (r.apps + r.refs) / improvedFraction : r.apps + r.refs;
+        const deltaPct = pctDelta(thisPaced, p.apps + p.refs);
+        return { name: r.name, office: r.office, thisApps: r.apps, thisRefs: r.refs, lastApps: p.apps, lastRefs: p.refs, deltaPct, thisPaced };
       })
-      .filter((r) => r.thisApps + r.thisRefs >= 3 && r.deltaPct != null && r.deltaPct > 0)
+      // Floor is on the PACED estimate too — a raw floor would keep this empty all Monday/Tuesday
+      // regardless of the extrapolation above, which is the exact complaint, not a fix for it.
+      .filter((r) => r.thisPaced >= 3 && r.deltaPct != null && r.deltaPct > 0)
       .sort((a, b) => (b.deltaPct ?? 0) - (a.deltaPct ?? 0))
       .slice(0, 6);
 
@@ -736,8 +746,7 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // exclude the partial week from deltas/quarter-avg (as before) AND, per Conor 2026-07-07, to
     // EXTRAPOLATE the volume series' last point to a full-week estimate so the trend line doesn't
     // visually "dip" every week until Friday. Sat/Sun asOf = the business week is already complete.
-    const isoDow = (new Date(`${asOf}T00:00:00Z`).getUTCDay() + 6) % 7; // 0=Mon … 6=Sun
-    const weekFraction = isoDow <= 4 ? CUMULATIVE_WEEK_SHARES[isoDow] : 1;
+    const weekFraction = weekElapsedFraction(asOf);
     const partialLast = weekFraction < 1;
     const li = partialLast ? weekStarts.length - 2 : weekStarts.length - 1;
     const lastIdx = weekStarts.length - 1;

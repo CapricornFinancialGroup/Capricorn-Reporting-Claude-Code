@@ -62,7 +62,7 @@ export function AdviserLeague({ filters, mode, refreshMs }: PageProps) {
             <div className="card">
               <div className="card-title">
                 <span className="league-panel-title blue">Most Improved</span>
-                <span className="card-sub">biggest positive trend vs prior period</span>
+                <span className="card-sub">biggest positive trend vs prior period · current week pace-adjusted</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {data.improved.length === 0 && <div className="loading">No qualifying advisers yet this period.</div>}

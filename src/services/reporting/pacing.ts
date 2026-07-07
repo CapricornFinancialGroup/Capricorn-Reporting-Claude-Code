@@ -43,6 +43,17 @@ export function mondayOf(iso: string): string {
   return new Date(new Date(`${iso}T00:00:00Z`).getTime() - back * DAY_MS).toISOString().slice(0, 10);
 }
 
+/** How far through its Mon–Fri week `iso` is, by the same weighted day curve as the run chase
+ *  (Sat/Sun = week complete, 1.0). The one seam for "is this week still in progress, and by how
+ *  much" — anywhere that compares a current, possibly-partial week against a complete one
+ *  (Momentum's trend, the League's most-improved) should extrapolate through this, not re-derive
+ *  its own day-of-week math (two copies of this drifting apart would just reopen the "the numbers
+ *  don't agree across screens" complaint Conor already raised once, 2026-07-07). */
+export function weekElapsedFraction(iso: string): number {
+  const isoDow = (dow(iso) + 6) % 7; // 0=Mon … 6=Sun
+  return isoDow <= 4 ? CUMULATIVE_WEEK_SHARES[isoDow] : 1;
+}
+
 /** The most recent working day (Mon–Fri) on or before `iso`. */
 export function latestWorkingDayOnOrBefore(iso: string): string {
   let d = iso;

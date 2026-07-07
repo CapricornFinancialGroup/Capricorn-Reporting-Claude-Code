@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS } from "../../domain/targets.js";
-import { mtdPacing, weeklyPacing } from "./pacing.js";
+import { mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
 describe("weekly weights (Conor's principles)", () => {
   it("Mon–Thu carry 20.83% each, Friday 16.67% (80% of a Mon–Thu day)", () => {
@@ -39,6 +39,21 @@ describe("weeklyPacing — anchors on the CURRENT week (today), data drives the 
 
   it("Friday with same-day data reaches 100%", () => {
     expect(weeklyPacing("2026-07-10", "2026-07-10").fraction).toBeCloseTo(1);
+  });
+});
+
+describe("weekElapsedFraction — shared by Momentum's extrapolation and the League's most-improved", () => {
+  it("Wednesday matches the cumulative curve", () => {
+    expect(weekElapsedFraction("2026-07-08")).toBeCloseTo(15 / 24); // Wed
+  });
+
+  it("Friday reaches 100%", () => {
+    expect(weekElapsedFraction("2026-07-10")).toBeCloseTo(1);
+  });
+
+  it("weekend dates count the week as complete", () => {
+    expect(weekElapsedFraction("2026-07-11")).toBe(1); // Sat
+    expect(weekElapsedFraction("2026-07-12")).toBe(1); // Sun
   });
 });
 
