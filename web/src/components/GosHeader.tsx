@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import capricornLogo from "../assets/logos/capricorn.svg";
 
 function useClock(): { time: string; date: string } {
   const [now, setNow] = useState(() => new Date());
@@ -24,8 +25,7 @@ export function GosHeader({ title, right }: { title: string; right?: ReactNode }
   return (
     <header className="gos-header">
       <div className="gos-brand">
-        <span className="gos-brand-icon">{"♑︎"}</span>
-        <span className="gos-brand-name">Capricorn Financial Group</span>
+        <img src={capricornLogo} alt="Capricorn Financial Group" className="gos-logo" />
       </div>
       <div className="gos-header-center">
         <div className="gos-title">{title}</div>

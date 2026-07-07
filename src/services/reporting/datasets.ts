@@ -12,6 +12,7 @@ import type { Config } from "../../config.js";
 import { OFFICES, UNASSIGNED, officeOf } from "../../domain/offices.js";
 import {
   ALERT_THRESHOLDS,
+  CUMULATIVE_WEEK_SHARES,
   DAILY_TARGETS,
   dayTarget,
   KPI_KEYS,
@@ -29,11 +30,11 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { mtdPacing, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { mondayOf, mtdPacing, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import * as tickerQ from "./ticker.js";
-import { monthOf, pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekOf } from "./trends.js";
+import { pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekOf } from "./trends.js";
 import { divide, round } from "./util.js";
 
 // ---------------------------------------------------------------------------
@@ -413,9 +414,12 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
 
 export async function adviserLeague(config: Config, f: ReportFilters) {
   const asOf = await dataAsOf(config);
-  // Window: an explicit range (dashboard toggle) wins; default = the chase month to date.
-  const to = f.to ?? asOf;
-  const from = f.from ?? monthOf(asOf).from;
+  const today = tzToday(new Date(), config.reporting.timeZone);
+  // Window: an explicit range (dashboard date filter) wins; default = the CURRENT week — the same
+  // week as the Daily/Office Run Chase, so the league's headline totals agree with them instead of
+  // quietly comparing a different period (Conor 2026-07-07: "the summary dials don't look correct").
+  const to = f.to ?? (asOf < today ? asOf : today);
+  const from = f.from ?? mondayOf(today);
   return cached(`ds-adviser-league:${from}:${to}`, ttl(config), async () => {
     const prev = previousPeriod({ from, to });
     const [appsRows, refRows, salesRows, revRows, prevApps, prevRefs] = await Promise.all([
@@ -585,11 +589,16 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
       { key: "referrals", label: "Referrals", count: referrals },
       { key: "sales", label: "Protection Sales", count: sales },
     ];
-    const conv = (a: number, b: number) => round((divide(b, a) ?? 0) * 100, 0) ?? 0;
+    // Each stage's share of TOTAL LEADS in the period — deliberately NOT a stage-to-stage case
+    // conversion (Conor 2026-07-07: offers lag applications, so a same-window apps→offers ratio
+    // looks artificially low; "gross apps" and "gross offers" should be shown as dissociated
+    // volumes, expressed as % of total value, not individual-case conversion tracking).
+    const leadsBase = s.leads;
+    const shareOfLeads = (n: number): number => (leadsBase > 0 ? round((n / leadsBase) * 100, 0) ?? 0 : 0);
     const conversions = stages.slice(0, -1).map((st, i) => ({
       from: st.key,
       to: stages[i + 1].key,
-      pct: conv(st.count, stages[i + 1].count),
+      pct: shareOfLeads(stages[i + 1].count),
     }));
 
     const queueRow = queues[0] ?? { callNow: 0, followUp: 0, chaseLender: 0, writtenLeads: 0 };
@@ -606,20 +615,12 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
     const ages = agesRows[0] ?? { leadAvgDays: null, applicationAvgDays: null, offerAvgDays: null };
 
     const protectionConv = divide(sales, referrals);
-    const appToOffer = divide(s.offers, s.applications);
     const alerts: Array<{ severity: "critical" | "warning"; title: string; detail: string }> = [];
     if (protectionConv != null && protectionConv < ALERT_THRESHOLDS.protectionConversionMin) {
       alerts.push({
         severity: "critical",
         title: `Protection Conversion Rate ${Math.round(protectionConv * 100)}%`,
         detail: `${sales} sales from ${referrals} referrals this month — target ${Math.round(ALERT_THRESHOLDS.protectionConversionMin * 100)}%.`,
-      });
-    }
-    if (appToOffer != null && appToOffer < ALERT_THRESHOLDS.appToOfferRateMin) {
-      alerts.push({
-        severity: "warning",
-        title: `Application → Offer Rate ${Math.round(appToOffer * 100)}%`,
-        detail: `${s.offers} offers from ${s.applications} applications this month — target ${Math.round(ALERT_THRESHOLDS.appToOfferRateMin * 100)}%.`,
       });
     }
     if (agedRow.agedCount > 0) {
@@ -730,10 +731,25 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     };
     const weeks = weekStarts.map((w) => `W${isoWeekNo(w)}`);
 
-    // The chase week (last bucket) is usually partial — deltas compare the last COMPLETE week
-    // against the one before; charts still show the partial week (its label carries a caveat).
-    const partialLast = weekOf(asOf).to > asOf;
+    // The chase week (last bucket) is usually partial. Weighted business-day fraction elapsed so
+    // far this week (same Mon–Fri weighting as the run chase — Fri counts less) — used both to
+    // exclude the partial week from deltas/quarter-avg (as before) AND, per Conor 2026-07-07, to
+    // EXTRAPOLATE the volume series' last point to a full-week estimate so the trend line doesn't
+    // visually "dip" every week until Friday. Sat/Sun asOf = the business week is already complete.
+    const isoDow = (new Date(`${asOf}T00:00:00Z`).getUTCDay() + 6) % 7; // 0=Mon … 6=Sun
+    const weekFraction = isoDow <= 4 ? CUMULATIVE_WEEK_SHARES[isoDow] : 1;
+    const partialLast = weekFraction < 1;
     const li = partialLast ? weekStarts.length - 2 : weekStarts.length - 1;
+    const lastIdx = weekStarts.length - 1;
+    if (partialLast && weekFraction > 0) {
+      // Volume/count series: scale the partial week up to a like-for-like full-week estimate.
+      // Ratio series (avg case size, referral rate) are untouched — extrapolating both the
+      // numerator and denominator by the same factor leaves a ratio unchanged, so there's nothing
+      // to fix there.
+      for (const series of [leadsW, appsW, refsW, revW]) {
+        series[lastIdx] = Math.round(series[lastIdx] / weekFraction);
+      }
+    }
     const quarterAvg = (xs: Array<number | null>): number | null => {
       const usable = xs.slice(0, li + 1).filter((x): x is number => x != null);
       return usable.length ? sum(usable) / usable.length : null;

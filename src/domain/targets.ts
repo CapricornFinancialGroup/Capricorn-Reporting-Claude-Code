@@ -1,9 +1,15 @@
 // Targets & thresholds — the numbers the run chase is paced against.
 //
-// PLACEHOLDER — every figure here is seeded from the strawman screens Capricorn signed off
-// (daily targets: 140 leads / 35 apps / 20 referrals / 10 protection sales) and needs confirming
-// by Capricorn before the numbers are treated as real. Versioned config by design: no database,
-// changes are a PR.
+// PLACEHOLDER, pending Arman's official Capricorn Targets Excel (Conor, 2026-07-07: "Arman can
+// update first thing Monday and we then track Actuals against weekly Targets"). That live-editable
+// source doesn't exist yet (no confirmed file, location or template), so — rather than leave the
+// original strawman's flat, evenly-split numbers (which put Hammersmith, an ~90-adviser office, on
+// the same 35-applications/day target as offices with a handful of advisers) — these are DATA-
+// DERIVED: each office's trailing 4-week average (2026-06-08 → 2026-07-05, CFM migration-day
+// excluded) with a +10% stretch; offices with negligible historical volume floored to a small
+// non-zero target so they stay visible on the leaderboards. Business-wide = sum of offices.
+// Still not real targets — swap for Arman's figures the moment they exist. Versioned config by
+// design: no database, changes are a PR.
 //
 // Monthly targets are derived: daily target × working days in the month (Mon–Fri).
 
@@ -22,8 +28,8 @@ export const KPI_KEYS: KpiKey[] = ["leads", "applications", "referrals", "sales"
 
 export type KpiTargets = Record<KpiKey, number>;
 
-/** Business-wide daily targets (strawman screen 1). */
-export const DAILY_TARGETS: KpiTargets = { leads: 140, applications: 35, referrals: 20, sales: 10 };
+/** Business-wide daily targets — sum of the office targets below, ÷5. */
+export const DAILY_TARGETS: KpiTargets = { leads: 126, applications: 24, referrals: 7, sales: 6 };
 
 // ---------------------------------------------------------------------------
 // Weekly run chase (Conor's principles, 2026-07-06 email)
@@ -62,33 +68,35 @@ export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
   return (OFFICE_DAILY_TARGETS[office]?.[kpi] ?? 0) * 5;
 }
 
-// Per-office daily targets. PLACEHOLDER — these are strawman guesses and are now clearly the wrong
-// SCALE (e.g. Hammersmith is HQ with ~88 advisers, not a 35-lead/day office). Capricorn's Datarails
-// "Adviser Mapping" export carries real per-adviser targets ("Weekly Par" / "Monthly Par" / "Written
-// Par" / "Paid Par") — summing those by office is the intended real source once the "Par" semantics
-// are confirmed (see docs). Until then these keep the pace maths runnable. Unassigned carries none.
+// Per-office daily targets. PLACEHOLDER — data-derived (see file header), NOT Capricorn's real
+// targets. Capricorn's Datarails "Adviser Mapping" export also carries real per-adviser targets
+// ("Weekly Par" / "Monthly Par" / "Written Par" / "Paid Par") — summing those by office is a
+// candidate real source once the "Par" semantics are confirmed (see docs). Weekly figures behind
+// these dailies (weekly = daily × 5): Hammersmith 500/90/20/20, Mayfair 80/12/3/2, Newmarket
+// 12/3/2/1, Hong Kong 10/3/2/1, Singapore 12/4/2/1, Türkiye 10/4/2/1, Shanghai/Dubai 3/1/1/1
+// (nominal floor — negligible trailing volume, kept non-zero so they stay visible). Unassigned
+// carries none by design.
 export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
-  Hammersmith: { leads: 35, applications: 9, referrals: 5, sales: 3 },
-  Mayfair: { leads: 28, applications: 7, referrals: 4, sales: 2 },
-  Singapore: { leads: 25, applications: 6, referrals: 4, sales: 2 },
-  Newmarket: { leads: 21, applications: 5, referrals: 3, sales: 1 },
-  "Hong Kong": { leads: 17, applications: 4, referrals: 2, sales: 1 },
-  Shanghai: { leads: 14, applications: 4, referrals: 2, sales: 1 },
-  Dubai: { leads: 14, applications: 4, referrals: 2, sales: 1 },
-  "Türkiye": { leads: 14, applications: 4, referrals: 2, sales: 1 },
+  Hammersmith: { leads: 100, applications: 18, referrals: 4, sales: 4 },
+  Mayfair: { leads: 16, applications: 2.4, referrals: 0.6, sales: 0.4 },
+  Newmarket: { leads: 2.4, applications: 0.6, referrals: 0.4, sales: 0.2 },
+  "Hong Kong": { leads: 2, applications: 0.6, referrals: 0.4, sales: 0.2 },
+  Singapore: { leads: 2.4, applications: 0.8, referrals: 0.4, sales: 0.2 },
+  "Türkiye": { leads: 2, applications: 0.8, referrals: 0.4, sales: 0.2 },
+  Shanghai: { leads: 0.6, applications: 0.2, referrals: 0.2, sales: 0.2 },
+  Dubai: { leads: 0.6, applications: 0.2, referrals: 0.2, sales: 0.2 },
   [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0 },
 };
 
-/** Daily revenue target, £ (strawman ticker: "on pace for £65k revenue"). Indicative. */
-export const REVENUE_DAILY_TARGET = 65_000;
+/** Daily revenue target, £. PLACEHOLDER like the KPI targets above — trailing 4-week average
+ *  written-day revenue (2026-06-08 → 2026-07-05, migration batch excluded) was ~£44.8k/day
+ *  (£896,146 / 20 working days), +10% stretch, rounded. Swap for Arman's figure once it exists. */
+export const REVENUE_DAILY_TARGET = 50_000;
 
 /** Funnel-health alert thresholds (strawman screen 4). */
 export const ALERT_THRESHOLDS = {
   /** Protection sales ÷ protection referrals below this = critical alert. */
   protectionConversionMin: 0.5,
-  /** Applications → lender-offer flow rate below this = warning. (The strawman's meeting→app rate
-   *  isn't computable: Capricorn's workflow meeting dates went dark after April 2026.) */
-  appToOfferRateMin: 0.5,
   /** Applications older than this (days) with no lender offer = aged. */
   agedApplicationDays: 7,
 };

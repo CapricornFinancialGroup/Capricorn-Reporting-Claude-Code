@@ -64,8 +64,7 @@ button { font: inherit; }
   gap: 12px;
 }
 .gos-brand { display: flex; align-items: center; gap: 10px; white-space: nowrap; width: 320px; }
-.gos-brand-icon { font-size: 20px; line-height: 1; color: #fff; }
-.gos-brand-name { font-size: 13px; font-weight: 600; letter-spacing: 0.04em; color: #fff; }
+.gos-logo { height: 34px; width: auto; display: block; }
 .gos-header-center { flex: 1; display: flex; align-items: center; justify-content: center; gap: 20px; }
 .gos-title {
   font-size: 15px; font-weight: 800; letter-spacing: 0.14em; text-transform: uppercase; color: #fff;
@@ -262,23 +261,24 @@ button { font: inherit; }
 
 /* ---------------------------------------------------------------- ticker */
 
+/* 25% bigger than the original strawman-derived sizing (Conor 2026-07-07). */
 .ticker-wrap {
-  height: 36px; min-height: 36px; background: var(--navy);
+  height: 45px; min-height: 45px; background: var(--navy);
   display: flex; align-items: center; overflow: hidden; flex-shrink: 0;
 }
 .ticker-label {
-  background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 9px; font-weight: 900;
-  letter-spacing: 0.18em; text-transform: uppercase; padding: 0 14px; height: 100%;
+  background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 11px; font-weight: 900;
+  letter-spacing: 0.16em; text-transform: uppercase; padding: 0 16px; height: 100%;
   display: flex; align-items: center; flex-shrink: 0; z-index: 2; white-space: nowrap;
 }
 .ticker-outer { overflow: hidden; flex: 1; }
 .ticker-track {
   display: flex; align-items: center; white-space: nowrap;
-  animation: ticker-scroll var(--ticker-secs, 22s) linear infinite; will-change: transform;
+  animation: ticker-scroll var(--ticker-secs, 12s) linear infinite; will-change: transform;
 }
 .ticker-item {
-  display: inline-flex; align-items: center; gap: 6px; padding: 0 28px;
-  font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.85);
+  display: inline-flex; align-items: center; gap: 7px; padding: 0 32px;
+  font-size: 15px; font-weight: 500; color: rgba(255, 255, 255, 0.85);
   border-right: 1px solid rgba(255, 255, 255, 0.12);
 }
 .t-green { color: #6EE7A0; font-weight: 700; }
@@ -380,9 +380,25 @@ button { font: inherit; }
 .delta-down { color: var(--red); }
 .delta-flat { color: var(--text-secondary); }
 
-.kiosk-progress { height: 3px; background: rgba(255, 255, 255, 0.15); }
-.kiosk-progress span { display: block; height: 100%; background: #fff; opacity: 0.7; width: 0; animation: kiosk-progress linear forwards; }
+/* Rotation timer — deliberately high-contrast against the light canvas (the old white-on-white
+ * bar was practically invisible here; it was styled for a dark theme this app doesn't use). */
+.kiosk-progress-row {
+  display: flex; align-items: center; gap: 10px; height: 20px; min-height: 20px;
+  padding: 0 18px; background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.kiosk-progress { flex: 1; height: 6px; background: var(--track-bg); border-radius: 3px; overflow: hidden; }
+.kiosk-progress span {
+  display: block; height: 100%; width: 0; border-radius: 3px; background: var(--navy);
+  animation: kiosk-progress linear forwards;
+}
+.kiosk-progress-row.imminent .kiosk-progress span { background: var(--amber); animation-play-state: running; }
+.kiosk-progress-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-secondary);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.kiosk-progress-row.imminent .kiosk-progress-label { color: var(--amber); animation: pulse-text 1s ease-in-out infinite; }
 @keyframes kiosk-progress { from { width: 0; } to { width: 100%; } }
+@keyframes pulse-text { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
 /* Placeholder-data watermark (targets/offices pending Capricorn confirmation). */
 .placeholder-note {

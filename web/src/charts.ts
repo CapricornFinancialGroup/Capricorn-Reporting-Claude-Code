@@ -145,14 +145,22 @@ export function pctPaceChart(opts: {
   };
 }
 
-/** Momentum weekly trend (strawman screen 5): gradient-filled main line + reference line. */
+/** Momentum weekly trend (strawman screen 5): gradient-filled main line + reference line.
+ *  `estimatedIndex` marks a point as an extrapolated week-to-date estimate (the still-in-progress
+ *  current week, scaled up from partial data) — smooths the line as Conor asked (2026-07-07: don't
+ *  let the current week visually "dip" until Friday), while a small "(est.)" marker keeps it honest. */
 export function momentumChart(opts: {
   weeks: string[];
   values: Array<number | null>;
   color?: string;
   referenceLine?: { value: number; label: string };
+  estimatedIndex?: number;
 }): EChartsOption {
   const color = opts.color ?? NAVY;
+  const estimatedPoint =
+    opts.estimatedIndex != null
+      ? { week: opts.weeks[opts.estimatedIndex], value: opts.values[opts.estimatedIndex] }
+      : null;
   return {
     grid: { left: 44, right: 14, top: 18, bottom: 24 },
     tooltip: { trigger: "axis" },
@@ -198,6 +206,16 @@ export function momentumChart(opts: {
               data: [{ yAxis: opts.referenceLine.value }],
             }
           : undefined,
+        markPoint:
+          estimatedPoint && estimatedPoint.value != null
+            ? {
+                symbol: "circle",
+                symbolSize: 7,
+                itemStyle: { color: "#fff", borderColor: color, borderWidth: 2 },
+                label: { formatter: "est.", position: "top", color: AXIS_TEXT, fontSize: 9, fontWeight: 700 },
+                data: [{ name: "est", coord: [estimatedPoint.week, estimatedPoint.value] }],
+              }
+            : undefined,
       },
     ],
   };

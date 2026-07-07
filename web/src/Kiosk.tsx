@@ -6,7 +6,7 @@
 //   /screens?k=…&pages=daily         → PIN one screen, static (no rotation/progress)
 //   /screens?k=…&pages=daily,funnel  → cycle just those
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { EMPTY_FILTERS, KIOSK_TOKEN, usePayload, type Mode } from "./api.js";
 import type { Meta } from "./types.js";
 import { ErrorNote } from "./components/ui.js";
@@ -34,12 +34,35 @@ function useCanvasScale(): number {
   return scale;
 }
 
+/** How long before a change counts as "imminent" — the countdown + bar turn amber and the next
+ *  page's name appears, so it's obvious the screen is about to switch (parity with CS Growth OS). */
+const IMMINENT_SECONDS = 5;
+
 export function Kiosk({ mode }: { mode: Mode }) {
   const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, 0);
   const [index, setIndex] = useState(0);
   const scale = useCanvasScale();
   const cycleMs = (meta?.cycleSeconds ?? 20) * 1000;
   const rotates = ROTATION.length > 1; // a single pinned screen never rotates
+
+  // Real per-second countdown to the next rotation (not just the CSS animation), so we can show
+  // "Next: <page> in Ns" and flip the bar to amber in the last few seconds.
+  const cycleStartedAt = useRef(Date.now());
+  const [secondsLeft, setSecondsLeft] = useState(Math.round(cycleMs / 1000));
+
+  useEffect(() => {
+    cycleStartedAt.current = Date.now();
+    setSecondsLeft(Math.round(cycleMs / 1000));
+  }, [index, cycleMs]);
+
+  useEffect(() => {
+    if (!rotates) return;
+    const id = window.setInterval(() => {
+      const left = Math.max(0, Math.ceil((cycleMs - (Date.now() - cycleStartedAt.current)) / 1000));
+      setSecondsLeft(left);
+    }, 250);
+    return () => window.clearInterval(id);
+  }, [cycleMs, rotates]);
 
   useEffect(() => {
     if (!meta || !rotates) return;
@@ -56,6 +79,8 @@ export function Kiosk({ mode }: { mode: Mode }) {
 
   const page = ROTATION[Math.min(index, ROTATION.length - 1)];
   const Page = page.Component;
+  const nextPage = ROTATION[(index + 1) % ROTATION.length];
+  const imminent = rotates && secondsLeft <= IMMINENT_SECONDS;
   return (
     <div className="kiosk-viewport">
       <div className="kiosk-canvas" style={{ transform: `scale(${scale})` }}>
@@ -67,7 +92,16 @@ export function Kiosk({ mode }: { mode: Mode }) {
             </div>
           ) : undefined}
         />
-        {rotates && <div className="kiosk-progress"><span key={index} style={{ animationDuration: `${cycleMs}ms` }} /></div>}
+        {rotates && (
+          <div className={`kiosk-progress-row ${imminent ? "imminent" : ""}`}>
+            <div className="kiosk-progress">
+              <span key={index} style={{ animationDuration: `${cycleMs}ms` }} />
+            </div>
+            <span className="kiosk-progress-label">
+              Next: {nextPage.label} in {secondsLeft}s
+            </span>
+          </div>
+        )}
         <main className="grow" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
           <Page
             meta={meta}

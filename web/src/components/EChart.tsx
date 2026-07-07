@@ -10,6 +10,7 @@ import {
   VisualMapComponent,
   MarkLineComponent,
   MarkAreaComponent,
+  MarkPointComponent,
   AxisPointerComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
@@ -17,7 +18,7 @@ import type { EChartsOption, ECElementEvent } from "echarts";
 
 echarts.use([
   BarChart, LineChart, PieChart, FunnelChart, HeatmapChart, GaugeChart,
-  GridComponent, TooltipComponent, LegendComponent, VisualMapComponent, MarkLineComponent, MarkAreaComponent, AxisPointerComponent,
+  GridComponent, TooltipComponent, LegendComponent, VisualMapComponent, MarkLineComponent, MarkAreaComponent, MarkPointComponent, AxisPointerComponent,
   CanvasRenderer,
 ]);
 

@@ -8,7 +8,7 @@ import { gbpCompact, num, shortDate, signed } from "../format.js";
 import type { FunnelHealthPayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
-/** Flow-rate % between adjacent stages is meaningless on tiny denominators — show "–" instead. */
+/** Share-of-leads % is meaningless on tiny denominators — show "–" instead. */
 const MIN_DENOMINATOR = 10;
 
 export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
@@ -19,7 +19,7 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
         <div className="screen">
           <div className="card">
             <div className="card-title">
-              <span>Sales Pipeline — where is revenue getting stuck? <span className="card-sub">stage volumes {shortDate(data.window.from)} – {shortDate(data.window.to)} · same-window flow rates, not cohort tracking</span></span>
+              <span>Sales Pipeline — where is revenue getting stuck? <span className="card-sub">gross stage volumes {shortDate(data.window.from)} – {shortDate(data.window.to)} · % = share of period leads, not case-by-case conversion</span></span>
               <span className="asof">Data as of {shortDate(data.dataAsOf)}</span>
             </div>
             <div className="funnel-flow">
@@ -28,7 +28,7 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
                   key={s.key}
                   stage={s}
                   conv={i < data.conversions.length ? data.conversions[i] : null}
-                  upstream={i < data.stages.length - 1 ? s.count : 0}
+                  leadsCount={data.stages[0]?.count ?? 0}
                   last={i === data.stages.length - 1}
                 />
               ))}
@@ -125,10 +125,10 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
   );
 }
 
-function FunnelCell({ stage, conv, upstream, last }: {
+function FunnelCell({ stage, conv, leadsCount, last }: {
   stage: { key: string; label: string; count: number };
   conv: { pct: number } | null;
-  upstream: number;
+  leadsCount: number;
   last: boolean;
 }) {
   return (
@@ -139,8 +139,8 @@ function FunnelCell({ stage, conv, upstream, last }: {
       </div>
       {!last && conv && (
         <div className="funnel-conv">
-          <span className="funnel-conv-pct">{upstream >= MIN_DENOMINATOR ? `${conv.pct}%` : "–"}</span>
-          <span className="funnel-conv-label">flow</span>
+          <span className="funnel-conv-pct">{leadsCount >= MIN_DENOMINATOR ? `${conv.pct}%` : "–"}</span>
+          <span className="funnel-conv-label">of leads</span>
         </div>
       )}
     </>

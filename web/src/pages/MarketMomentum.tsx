@@ -46,10 +46,10 @@ export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
           </div>
 
           <div className="row cols-3 grow">
-            <Trend title="Mortgage Applications" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} />
-            <Trend title="Protection Referrals" weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} />
-            <Trend title="Weekly Revenue (£k) *" weeks={data.weeks} values={data.series.revenueK} vsQ={vsQ(data, "revenue")} color={GREEN} />
-            <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} />
+            <Trend title="Mortgage Applications" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
+            <Trend title="Protection Referrals" weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
+            <Trend title="Weekly Revenue (£k) *" weeks={data.weeks} values={data.series.revenueK} vsQ={vsQ(data, "revenue")} color={GREEN} estimated={data.partialLastWeek} />
+            <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Avg Case Size (£k) *" weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
             <Trend
               title="Protection Referral Rate (%) *"
@@ -64,7 +64,11 @@ export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
           <div className="verdict-bar">
             <span>◆</span>
             <span>{data.verdict}</span>
-            {data.partialLastWeek && <span style={{ opacity: 0.65, fontSize: 11 }}>· current week is partial and excluded from deltas</span>}
+            {data.partialLastWeek && (
+              <span style={{ opacity: 0.65, fontSize: 11 }}>
+                · current week shown as a week-to-date estimate (marked "est.") and excluded from deltas
+              </span>
+            )}
             <span style={{ marginLeft: "auto", opacity: 0.65, fontSize: 11 }}>* indicative — revenue basis pending confirmation</span>
           </div>
         </div>
@@ -77,13 +81,15 @@ function vsQ(data: MarketMomentumPayload, key: string): number | null {
   return data.kpis.find((k) => k.key === key)?.vsQuarterPct ?? null;
 }
 
-function Trend({ title, weeks, values, vsQ, color, reference }: {
+function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
   title: string;
   weeks: string[];
   values: Array<number | null>;
   vsQ: number | null;
   color: string;
   reference?: { value: number; label: string };
+  /** The last point is a week-to-date extrapolation (current, still-in-progress week). */
+  estimated?: boolean;
 }) {
   const accel =
     vsQ == null ? null : (
@@ -95,7 +101,16 @@ function Trend({ title, weeks, values, vsQ, color, reference }: {
     <div className="card">
       <div className="card-title"><span>{title}</span>{accel}</div>
       <div className="grow">
-        <EChart height={355} option={momentumChart({ weeks, values, color, referenceLine: reference })} />
+        <EChart
+          height={355}
+          option={momentumChart({
+            weeks,
+            values,
+            color,
+            referenceLine: reference,
+            estimatedIndex: estimated ? weeks.length - 1 : undefined,
+          })}
+        />
       </div>
     </div>
   );
