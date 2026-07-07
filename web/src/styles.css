@@ -37,12 +37,25 @@ button { font: inherit; }
 
 /* ---------------------------------------------------------------- shells */
 
-/* Kiosk: fixed 1920×1080 canvas scaled to the TV (strawman technique). */
-.kiosk-viewport { width: 100vw; height: 100vh; overflow: hidden; background: var(--bg); }
+/* Kiosk: fixed 1920×1080 canvas scaled to the TV (strawman technique). Centered, not top-left
+ * anchored — a browser window (chrome/bookmarks eating into height, e.g. /wall in a normal tab
+ * rather than true fullscreen kiosk) rarely has an exact 16:9 viewport, so the smaller-axis-fit
+ * scale leaves leftover space on the other axis; centering spreads that evenly instead of dumping
+ * it all as a gap on one side (Conor/Luke, 2026-07-07). */
+.kiosk-viewport {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .kiosk-canvas {
   width: 1920px;
   height: 1080px;
-  transform-origin: 0 0;
+  flex-shrink: 0;
+  transform-origin: center center;
   display: flex;
   flex-direction: column;
   background: var(--bg);

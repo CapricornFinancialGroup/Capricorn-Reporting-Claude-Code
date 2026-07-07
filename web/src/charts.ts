@@ -1,6 +1,13 @@
 // ECharts option builders for the Growth OS chart vocabulary. Kept declarative so pages just
 // supply data + colours. Colour language matches the strawman screens: dashed grey target pace,
 // navy actual (amber when behind), dotted grey projection, NOW marker at the data-as-of day.
+//
+// `animation: false` on every builder is load-bearing, not cosmetic: EChart.tsx calls
+// setOption(option, true) on every render, including the ~60s data poll, so ECharts' default
+// entrance animation (lines sweeping in, axis labels rescaling as the auto `scale:true` range
+// keeps changing mid-draw) was replaying every refresh — the wall/kiosk "text flies across and
+// up and down" report (Conor/Luke, 2026-07-07). A wall display should show correct data
+// immediately, not redraw itself on a loop.
 
 import type { EChartsOption } from "echarts";
 import { shortDate } from "./format.js";
@@ -39,6 +46,7 @@ export function paceChart(opts: {
   let nowIdx = -1;
   for (let i = 0; i < opts.actual.length; i++) if (opts.actual[i] != null) nowIdx = i;
   return {
+    animation: false,
     grid: { left: 44, right: 14, top: 22, bottom: 26 },
     tooltip: { trigger: "axis" },
     xAxis: {
@@ -107,6 +115,7 @@ export function pctPaceChart(opts: {
   color: string;
 }): EChartsOption {
   return {
+    animation: false,
     grid: { left: 34, right: 8, top: 8, bottom: 20 },
     tooltip: { trigger: "axis", valueFormatter: (v) => `${v}%` },
     xAxis: {
@@ -162,6 +171,7 @@ export function momentumChart(opts: {
       ? { week: opts.weeks[opts.estimatedIndex], value: opts.values[opts.estimatedIndex] }
       : null;
   return {
+    animation: false,
     grid: { left: 44, right: 14, top: 18, bottom: 24 },
     tooltip: { trigger: "axis" },
     xAxis: {
@@ -224,6 +234,7 @@ export function momentumChart(opts: {
 /** Donut (strawman screen 4 protection opportunities). */
 export function donutChart(items: Array<{ name: string; value: number; color: string }>): EChartsOption {
   return {
+    animation: false,
     tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
     series: [
       {
