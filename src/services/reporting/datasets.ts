@@ -164,6 +164,20 @@ function projectionSeries(actual: Array<number | null>, projectedFinish: number)
 const dayTotal = (rows: DailyCount[], day: string): number =>
   sum(rows.filter((r) => isoDay(r.d) === day).map((r) => r.n));
 
+/** Weekly bucket starts (Sat-anchored, weekStartOf) ending at `asOf`'s week — shared by Market
+ *  Momentum and the Funnel Health gap chart so both use the identical windowing rule: an explicit
+ *  `from` (dashboard filter) spans whole weeks to asOf's week; else a rolling window. */
+function weekStartsFor(asOf: string, from: string | null | undefined, rollingWeeks: number): string[] {
+  const endWeek = weekStartOf(asOf);
+  const weekStarts: string[] = [];
+  if (from) {
+    for (let w = weekStartOf(from); w <= endWeek; w = shiftDays(w, 7)) weekStarts.push(w);
+  } else {
+    for (let i = rollingWeeks - 1; i >= 0; i--) weekStarts.push(shiftDays(endWeek, -7 * i));
+  }
+  return weekStarts;
+}
+
 // ---------------------------------------------------------------------------
 // Office aggregation (adviser → office in TS; mapping is config)
 // ---------------------------------------------------------------------------
@@ -593,14 +607,33 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
   // beyond the freshest loaded day.
   const asOf = to < lakeAsOf ? to : lakeAsOf;
   return cached(`ds-funnel-health:${from}:${to}`, ttl(config), async () => {
-    const [stagesRows, referralsDaily, salesDaily, aged, queues, agesRows] = await Promise.all([
+    // Applications-vs-referrals gap chart (item 9, reframed): weekly volumes over recent weeks,
+    // the same Sat-Fri bucketing Market Momentum uses (not its code, just the pattern) — the
+    // visual gap between the two lines IS the unreferred opportunity, replacing the old
+    // referred/not-yet-referred proportion donut entirely.
+    const gapWeekStarts = weekStartsFor(asOf, f.from, 13);
+    const gapFrom = gapWeekStarts[0];
+    const [stagesRows, referralsDaily, salesDaily, aged, queues, agesRows, gapAppsRows, gapRefsRows] = await Promise.all([
       q<funnelQ.MortgageStageCounts>(config, funnelQ.mortgageStageCounts(from, to)),
       q<DailyCount>(config, kpiDaily("referrals", from, to)),
       q<DailyCount>(config, kpiDaily("sales", from, to)),
       q<funnelQ.AgedApplications>(config, funnelQ.agedApplications(asOf)),
       q<funnelQ.ActionQueues>(config, funnelQ.actionQueues(asOf, from)),
       q<funnelQ.StageAges>(config, funnelQ.stageAges(asOf)),
+      q<DailyCount>(config, kpiDaily("applications", gapFrom, asOf)),
+      q<DailyCount>(config, kpiDaily("referrals", gapFrom, asOf)),
     ]);
+
+    const gapWeekIndex = (d: string): number => gapWeekStarts.indexOf(weekStartOf(d));
+    const bucketWeekly = (rows: DailyCount[]): number[] => {
+      const out = gapWeekStarts.map(() => 0);
+      for (const r of rows) {
+        const i = gapWeekIndex(isoDay(r.d));
+        if (i >= 0) out[i] += r.n;
+      }
+      return out;
+    };
+    const gapWeekLabels = gapWeekStarts.map((w) => `W${isoWeekNo(shiftDays(w, 2))}`);
 
     const s = stagesRows[0] ?? { leads: 0, applications: 0, offers: 0 };
     const referrals = sum(referralsDaily.map((r) => r.n));
@@ -625,13 +658,6 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
     }));
 
     const queueRow = queues[0] ?? { callNow: 0, followUp: 0, chaseLender: 0, writtenLeads: 0 };
-    // Flow proxy (no case-level referral join exists in the share): referrals made vs applications
-    // written in the same window. The page captions this as indicative.
-    const donut = {
-      written: queueRow.writtenLeads,
-      referred: Math.min(referrals, queueRow.writtenLeads),
-      notReferred: Math.max(0, queueRow.writtenLeads - referrals),
-    };
     const referNow = Math.max(0, queueRow.writtenLeads - referrals);
     const agedRow = aged[0] ?? { agedCount: 0, avgAgeDays: null, oldestDays: null };
     const ages = agesRows[0] ?? { leadAvgDays: null, applicationAvgDays: null, offerAvgDays: null };
@@ -666,11 +692,10 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
         { stage: "Protection Sales", count: sales, avgAgeDays: null },
       ],
       alerts,
-      donut: {
-        written: donut.written,
-        referred: donut.referred,
-        notReferred: donut.notReferred,
-        referredPct: round((divide(donut.referred, donut.written) ?? 0) * 100, 0),
+      applicationsReferralsGap: {
+        weeks: gapWeekLabels,
+        applications: bucketWeekly(gapAppsRows),
+        referrals: bucketWeekly(gapRefsRows),
       },
       queues: [
         { key: "call-now", label: "Call Now", count: queueRow.callNow, sub: "leads with nothing written yet" },
@@ -691,13 +716,7 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   // Trend end = an explicit `to` (dashboard filter), capped at the freshest day; default = latest.
   const asOf = f.to && f.to < lakeAsOf ? f.to : lakeAsOf;
   // Weeks: an explicit range → whole ISO weeks spanning [from, to]; else rolling 13 weeks.
-  const endWeek = weekStartOf(asOf);
-  const weekStarts: string[] = [];
-  if (f.from) {
-    for (let w = weekStartOf(f.from); w <= endWeek; w = shiftDays(w, 7)) weekStarts.push(w);
-  } else {
-    for (let i = 12; i >= 0; i--) weekStarts.push(shiftDays(endWeek, -7 * i));
-  }
+  const weekStarts = weekStartsFor(asOf, f.from, 13);
   const from = weekStarts[0];
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
     const [leads, apps, refs, revenue] = await Promise.all([

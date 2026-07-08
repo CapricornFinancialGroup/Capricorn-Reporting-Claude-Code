@@ -298,19 +298,6 @@ button { font: inherit; }
 .t-gold { color: #FCD34D; font-weight: 700; }
 @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
-/* ---------------------------------------------------------------- funnel */
-
-.funnel-flow { display: flex; align-items: stretch; gap: 6px; }
-.funnel-stage {
-  flex: 1; background: #F8FAFC; border: 1px solid var(--border); border-radius: 8px;
-  padding: 10px 8px; text-align: center; display: flex; flex-direction: column; gap: 3px; min-width: 0;
-}
-.funnel-stage-count { font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums; }
-.funnel-stage-name { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); }
-.funnel-conv { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 54px; gap: 1px; }
-.funnel-conv-pct { font-size: 13px; font-weight: 800; }
-.funnel-conv-label { font-size: 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.08em; }
-
 .alert {
   border-left: 3px solid var(--amber); background: var(--amber-bg); border-radius: 6px;
   padding: 8px 10px; display: flex; flex-direction: column; gap: 2px;

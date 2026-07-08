@@ -231,18 +231,106 @@ export function momentumChart(opts: {
   };
 }
 
-/** Donut (strawman screen 4 protection opportunities). */
-export function donutChart(items: Array<{ name: string; value: number; color: string }>): EChartsOption {
+const FUNNEL_COLORS = ["#0E2040", "#1D4ED8", "#2563EB", "#3B82F6", "#93C5FD"];
+
+/** Funnel Health's top bar (item 10): a real tapering funnel shape, not a row of equal-width
+ *  boxes. `sort: "none"` preserves the given stage order — this is a flow, not a ranking, so
+ *  ECharts' default sort-by-value would scramble it. */
+export function funnelStagesChart(items: Array<{ name: string; value: number; label: string }>): EChartsOption {
   return {
     animation: false,
-    tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" },
+    tooltip: { trigger: "item", formatter: "{b}: {c}" },
     series: [
       {
-        type: "pie",
-        radius: ["62%", "85%"],
-        itemStyle: { borderColor: "#fff", borderWidth: 2 },
-        label: { show: false },
-        data: items.map((it) => ({ name: it.name, value: it.value, itemStyle: { color: it.color } })),
+        type: "funnel",
+        sort: "none",
+        left: "4%",
+        right: "4%",
+        top: 12,
+        bottom: 12,
+        gap: 6,
+        // Stage volumes here drop off sharply and non-monotonically (Referrals/Protection Sales
+        // are a parallel track, not later mortgage-pipeline steps) — a strictly value-proportional
+        // width would make the smaller stages too thin for their label. minSize guarantees every
+        // stage stays readable at the cost of exact proportionality.
+        minSize: "22%",
+        maxSize: "100%",
+        label: { show: true, position: "inside", color: "#fff", fontSize: 12, fontWeight: 700, lineHeight: 16 },
+        labelLine: { show: false },
+        itemStyle: { borderColor: "#fff", borderWidth: 1 },
+        data: items.map((it, i) => ({
+          name: it.name,
+          value: it.value,
+          label: { formatter: it.label },
+          itemStyle: { color: FUNNEL_COLORS[i % FUNNEL_COLORS.length] },
+        })),
+      },
+    ],
+  };
+}
+
+const CARD_BG = "#FFFFFF"; // matches --surface — see the masking trick below
+
+/** Applications-vs-Referrals gap (Funnel Health, item 9 reframed): the visual gap between the two
+ *  lines IS the unreferred opportunity — same red/green language the page already uses elsewhere
+ *  (green = referred, red = not yet referred). Standard ECharts "fill only between two lines"
+ *  technique: Applications fills down to 0 in the gap colour; Referrals re-fills its OWN area in
+ *  the card's background colour on top, masking out everything below it and leaving only the band
+ *  between the two lines visible. Not a stack — both areas independently fill to the 0 baseline. */
+export function applicationsReferralsGapChart(opts: {
+  weeks: string[];
+  applications: number[];
+  referrals: number[];
+}): EChartsOption {
+  return {
+    animation: false,
+    grid: { left: 44, right: 14, top: 30, bottom: 26 },
+    tooltip: { trigger: "axis" },
+    legend: {
+      data: ["Applications", "Referrals"],
+      top: 0,
+      right: 4,
+      itemWidth: 12,
+      itemHeight: 8,
+      textStyle: { color: AXIS_TEXT, fontSize: 10 },
+    },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: opts.weeks,
+      axisLabel: { color: AXIS_TEXT, fontSize: 9, interval: Math.max(0, Math.floor(opts.weeks.length / 8)) },
+      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      axisLabel: { color: AXIS_TEXT, fontSize: 9 },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
+    },
+    series: [
+      {
+        name: "Applications",
+        type: "line",
+        data: opts.applications,
+        showSymbol: false,
+        smooth: 0.25,
+        connectNulls: false,
+        lineStyle: { width: 2.5, color: NAVY },
+        itemStyle: { color: NAVY },
+        areaStyle: { color: "rgba(220,38,38,0.14)" },
+        z: 1,
+      },
+      {
+        name: "Referrals",
+        type: "line",
+        data: opts.referrals,
+        showSymbol: false,
+        smooth: 0.25,
+        connectNulls: false,
+        lineStyle: { width: 2.5, color: GREEN },
+        itemStyle: { color: GREEN },
+        areaStyle: { color: CARD_BG },
+        z: 2,
       },
     ],
   };

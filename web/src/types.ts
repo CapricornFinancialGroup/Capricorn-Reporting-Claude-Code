@@ -161,7 +161,7 @@ export interface FunnelHealthPayload {
   conversions: Array<{ from: string; to: string; pct: number }>;
   stageMetrics: Array<{ stage: string; count: number; avgAgeDays: number | null }>;
   alerts: Array<{ severity: "critical" | "warning"; title: string; detail: string }>;
-  donut: { written: number; referred: number; notReferred: number; referredPct: number | null };
+  applicationsReferralsGap: { weeks: string[]; applications: number[]; referrals: number[] };
   queues: Array<{ key: string; label: string; count: number; sub: string }>;
 }
 

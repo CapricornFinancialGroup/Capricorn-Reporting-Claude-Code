@@ -1,8 +1,8 @@
-// Screen 4 — Funnel Health: stage flow with conversion badges, stage metrics, active alerts,
-// protection-opportunities donut, pulsing action queues.
+// Screen 4 — Funnel Health: tapering funnel chart, stage metrics, active alerts,
+// applications-vs-referrals gap chart, pulsing action queues.
 
 import { usePayload } from "../api.js";
-import { donutChart, GREEN, RED } from "../charts.js";
+import { applicationsReferralsGapChart, funnelStagesChart } from "../charts.js";
 import { EChart } from "../components/EChart.js";
 import { num, shortDate } from "../format.js";
 import type { FunnelHealthPayload } from "../types.js";
@@ -22,17 +22,17 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
               <span>Sales Pipeline — where is revenue getting stuck? <span className="card-sub">gross stage volumes {shortDate(data.window.from)} – {shortDate(data.window.to)} · % = share of period leads, not case-by-case conversion</span></span>
               <span className="asof">Data as of {shortDate(data.dataAsOf)}</span>
             </div>
-            <div className="funnel-flow">
-              {data.stages.map((s, i) => (
-                <FunnelCell
-                  key={s.key}
-                  stage={s}
-                  conv={i < data.conversions.length ? data.conversions[i] : null}
-                  leadsCount={data.stages[0]?.count ?? 0}
-                  last={i === data.stages.length - 1}
-                />
-              ))}
-            </div>
+            <EChart
+              height={280}
+              option={funnelStagesChart(
+                data.stages.map((s, i) => {
+                  const leadsCount = data.stages[0]?.count ?? 0;
+                  const pct = i === 0 ? 100 : (data.conversions[i - 1]?.pct ?? 0);
+                  const pctText = leadsCount >= MIN_DENOMINATOR ? `${pct}%` : "–";
+                  return { name: s.label, value: s.count, label: `${s.label}\n${num(s.count)} · ${pctText}` };
+                }),
+              )}
+            />
           </div>
 
           <div className="row cols-3 grow">
@@ -66,25 +66,11 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
 
             <div className="card">
               <div className="card-title">
-                <span>Protection Opportunities</span>
-                <span className="card-sub">referrals vs applications written (period) · indicative</span>
+                <span>Applications vs Referrals</span>
+                <span className="card-sub">the gap is the unreferred opportunity · indicative</span>
               </div>
-              <div className="grow" style={{ position: "relative", minHeight: 160, display: "flex", flexDirection: "column", justifyContent: "center" }}>
-                <EChart
-                  height={430}
-                  option={donutChart([
-                    { name: "Referred", value: data.donut.referred, color: GREEN },
-                    { name: "Not yet referred", value: data.donut.notReferred, color: RED },
-                  ])}
-                />
-                <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-                  <div style={{ fontSize: 26, fontWeight: 900 }}>{num(data.donut.notReferred)}</div>
-                  <div className="card-sub" style={{ textTransform: "uppercase", letterSpacing: "0.1em" }}>Open</div>
-                </div>
-              </div>
-              <div style={{ display: "flex", justifyContent: "space-around", fontSize: 11, fontWeight: 700 }}>
-                <span className="val-green">Referred ({data.donut.referredPct ?? 0}%)</span>
-                <span className="val-red">Not yet referred ({100 - (data.donut.referredPct ?? 0)}%)</span>
+              <div className="grow">
+                <EChart height={430} option={applicationsReferralsGapChart(data.applicationsReferralsGap)} />
               </div>
             </div>
 
@@ -106,27 +92,5 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
         </div>
       )}
     </Load>
-  );
-}
-
-function FunnelCell({ stage, conv, leadsCount, last }: {
-  stage: { key: string; label: string; count: number };
-  conv: { pct: number } | null;
-  leadsCount: number;
-  last: boolean;
-}) {
-  return (
-    <>
-      <div className="funnel-stage">
-        <div className="funnel-stage-count">{num(stage.count)}</div>
-        <div className="funnel-stage-name">{stage.label}</div>
-      </div>
-      {!last && conv && (
-        <div className="funnel-conv">
-          <span className="funnel-conv-pct">{leadsCount >= MIN_DENOMINATOR ? `${conv.pct}%` : "–"}</span>
-          <span className="funnel-conv-label">of leads</span>
-        </div>
-      )}
-    </>
   );
 }
