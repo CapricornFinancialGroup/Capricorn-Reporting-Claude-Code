@@ -769,11 +769,43 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       // Volume/count series: scale the partial week up to a like-for-like full-week estimate.
       // Ratio series (avg case size, referral rate) are untouched — extrapolating both the
       // numerator and denominator by the same factor leaves a ratio unchanged, so there's nothing
-      // to fix there.
-      for (const series of [leadsW, appsW, refsW, revW]) {
+      // to fix there. Weekly Revenue is deliberately EXCLUDED here — see the day-by-day forecast
+      // below (item 12, reframed 2026-07-07): a flat scale-up is a worse model for revenue
+      // specifically once a per-weekday forecast is available, and Conor's ask was revenue-only.
+      for (const series of [leadsW, appsW, refsW]) {
         series[lastIdx] = Math.round(series[lastIdx] / weekFraction);
       }
     }
+
+    // Weekly Revenue forecast (item 12, reframed): actuals stop at the last COMPLETE week — no
+    // extrapolated point pretending to be real. The current, partial week instead gets
+    // actual-so-far + a forecast for each REMAINING weekday, each estimated from that specific
+    // weekday's own trailing average (last 6 occurrences in the fetched window) rather than a flat
+    // proportional scale-up — it shrinks toward the true total as real days land through the week.
+    // Only touches Weekly Revenue; the other 3 series keep the simpler flat scale-up above.
+    let revenueForecastTotal: number | null = null;
+    if (partialLast && weekFraction > 0) {
+      const currentWeekEnd = shiftDays(weekStarts[lastIdx], 6); // Friday
+      let remainingForecast = 0;
+      for (let d = shiftDays(asOf, 1); d <= currentWeekEnd; d = shiftDays(d, 1)) {
+        const targetDow = new Date(`${d}T00:00:00Z`).getUTCDay();
+        const trailing = revenue
+          .filter((r) => new Date(`${isoDay(r.d)}T00:00:00Z`).getUTCDay() === targetDow)
+          .slice(-6)
+          .map((r) => r.revenue ?? 0);
+        remainingForecast += trailing.length ? sum(trailing) / trailing.length : 0;
+      }
+      revenueForecastTotal = Math.round(revW[lastIdx] + remainingForecast);
+    }
+    // Actual line stops before the partial week; a separate two-point segment (last complete
+    // week's actual → the blended forecast) renders as a dashed "chipping away" projection.
+    const revenueActualK = revW.map((v, i) => (partialLast && i === lastIdx ? null : round(v / 1000, 1)));
+    const revenueForecastK = weekStarts.map((_, i) => {
+      if (!partialLast) return null;
+      if (i === lastIdx - 1) return round(revW[lastIdx - 1] / 1000, 1);
+      if (i === lastIdx) return revenueForecastTotal != null ? round(revenueForecastTotal / 1000, 1) : null;
+      return null;
+    });
     const quarterAvg = (xs: Array<number | null>): number | null => {
       const usable = xs.slice(0, li + 1).filter((x): x is number => x != null);
       return usable.length ? sum(usable) / usable.length : null;
@@ -820,7 +852,8 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       series: {
         applications: appsW,
         referrals: refsW,
-        revenueK: revW.map((v) => round(v / 1000, 1)),
+        revenueActualK,
+        revenueForecastK,
         leads: leadsW,
         avgCaseSizeK: avgCaseW.map((v) => (v == null ? null : round(v / 1000, 0))),
         referralRatePct: refRateW.map((v) => (v == null ? null : round(v, 1))),

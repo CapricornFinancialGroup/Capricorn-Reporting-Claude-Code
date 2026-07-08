@@ -2,7 +2,7 @@
 // week and the quarter average, plus the verdict bar.
 
 import { usePayload } from "../api.js";
-import { AMBER, BLUE, GREEN, momentumChart, NAVY } from "../charts.js";
+import { AMBER, BLUE, momentumChart, momentumForecastChart, NAVY } from "../charts.js";
 import { EChart } from "../components/EChart.js";
 import { gbpCompact, num } from "../format.js";
 import type { MarketMomentumPayload, MomentumKpi } from "../types.js";
@@ -48,7 +48,13 @@ export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
           <div className="row cols-3 grow">
             <Trend title="Mortgage Applications" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Protection Referrals" weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
-            <Trend title="Weekly Revenue (£k) *" weeks={data.weeks} values={data.series.revenueK} vsQ={vsQ(data, "revenue")} color={GREEN} estimated={data.partialLastWeek} />
+            <RevenueTrend
+              title="Weekly Revenue (£k) *"
+              weeks={data.weeks}
+              actual={data.series.revenueActualK}
+              forecast={data.series.revenueForecastK}
+              vsQ={vsQ(data, "revenue")}
+            />
             <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Avg Case Size (£k) *" weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
             <Trend
@@ -111,6 +117,31 @@ function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
             estimatedIndex: estimated ? weeks.length - 1 : undefined,
           })}
         />
+      </div>
+    </div>
+  );
+}
+
+/** Weekly Revenue only (item 12, reframed) — actuals stop at the last complete week, and the
+ *  current week shows a day-by-day forecast segment instead of a flat scaled-up estimate. */
+function RevenueTrend({ title, weeks, actual, forecast, vsQ }: {
+  title: string;
+  weeks: string[];
+  actual: Array<number | null>;
+  forecast: Array<number | null>;
+  vsQ: number | null;
+}) {
+  const accel =
+    vsQ == null ? null : (
+      <span className={`pill ${vsQ > 2 ? "ahead" : vsQ < -2 ? "behind" : "on_pace"}`}>
+        {vsQ >= 0 ? "+" : ""}{vsQ}% vs qtr avg
+      </span>
+    );
+  return (
+    <div className="card">
+      <div className="card-title"><span>{title}</span>{accel}</div>
+      <div className="grow">
+        <EChart height={355} option={momentumForecastChart({ weeks, actual, forecast })} />
       </div>
     </div>
   );

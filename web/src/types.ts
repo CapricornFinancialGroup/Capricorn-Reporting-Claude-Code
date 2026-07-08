@@ -183,7 +183,11 @@ export interface MarketMomentumPayload {
   series: {
     applications: number[];
     referrals: number[];
-    revenueK: Array<number | null>;
+    /** Actual weekly revenue — stops (null) at the current, still-in-progress week. */
+    revenueActualK: Array<number | null>;
+    /** Null except a two-point segment: [last complete week's actual, current week's day-by-day
+     *  forecast] — renders as a dashed "chipping away" projection from the actual line's end. */
+    revenueForecastK: Array<number | null>;
     leads: number[];
     avgCaseSizeK: Array<number | null>;
     referralRatePct: Array<number | null>;

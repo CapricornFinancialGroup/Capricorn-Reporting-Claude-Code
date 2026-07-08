@@ -231,6 +231,97 @@ export function momentumChart(opts: {
   };
 }
 
+/** Weekly Revenue's forecast redesign (item 12, reframed 2026-07-07): actuals stop at the last
+ *  COMPLETE week — no extrapolated point pretending to be real, unlike the other 3 Momentum
+ *  series. The current, in-progress week instead shows a dashed forecast segment (a two-point
+ *  line from the last actual point to the day-by-day blended forecast), shrinking toward the true
+ *  total as real days land. Same `paceChart`/`projectionSeries` pattern already used on the run
+ *  chase — actual + a separate null-padded projection series, not one array doing both jobs. */
+export function momentumForecastChart(opts: {
+  weeks: string[];
+  actual: Array<number | null>;
+  forecast: Array<number | null>;
+  color?: string;
+  referenceLine?: { value: number; label: string };
+}): EChartsOption {
+  const color = opts.color ?? GREEN;
+  let forecastIdx = -1;
+  for (let i = 0; i < opts.forecast.length; i++) if (opts.forecast[i] != null) forecastIdx = i;
+  const forecastValue = forecastIdx >= 0 ? opts.forecast[forecastIdx] : null;
+  return {
+    animation: false,
+    grid: { left: 44, right: 14, top: 18, bottom: 24 },
+    tooltip: { trigger: "axis" },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: opts.weeks,
+      axisLabel: { color: AXIS_TEXT, fontSize: 9 },
+      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
+    },
+    yAxis: {
+      type: "value",
+      axisLabel: { color: AXIS_TEXT, fontSize: 9 },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
+      scale: true,
+    },
+    series: [
+      {
+        name: "Actual",
+        type: "line",
+        data: opts.actual,
+        smooth: 0.3,
+        showSymbol: opts.weeks.length <= 16,
+        symbolSize: 4,
+        connectNulls: false,
+        lineStyle: { width: 2.5, color },
+        itemStyle: { color },
+        areaStyle: {
+          color: {
+            type: "linear",
+            x: 0, y: 0, x2: 0, y2: 1,
+            colorStops: [
+              { offset: 0, color: `${color}22` },
+              { offset: 1, color: `${color}00` },
+            ],
+          },
+        },
+        markLine: opts.referenceLine
+          ? {
+              symbol: "none",
+              silent: true,
+              lineStyle: { color: PROJECTION_GREY, type: "dashed", width: 1 },
+              label: { formatter: opts.referenceLine.label, color: AXIS_TEXT, fontSize: 8, position: "insideEndTop" },
+              data: [{ yAxis: opts.referenceLine.value }],
+            }
+          : undefined,
+        z: 2,
+      },
+      {
+        name: "Forecast",
+        type: "line",
+        data: opts.forecast,
+        showSymbol: true,
+        symbolSize: 5,
+        connectNulls: false,
+        lineStyle: { width: 2, type: "dashed", color },
+        itemStyle: { color: "#fff", borderColor: color, borderWidth: 2 },
+        markPoint:
+          forecastValue != null
+            ? {
+                symbol: "circle",
+                symbolSize: 7,
+                itemStyle: { color: "#fff", borderColor: color, borderWidth: 2 },
+                label: { formatter: "est.", position: "top", color: AXIS_TEXT, fontSize: 9, fontWeight: 700 },
+                data: [{ name: "est", coord: [opts.weeks[forecastIdx], forecastValue] }],
+              }
+            : undefined,
+        z: 3,
+      },
+    ],
+  };
+}
+
 const FUNNEL_COLORS = ["#0E2040", "#1D4ED8", "#2563EB", "#3B82F6", "#93C5FD"];
 
 /** Funnel Health's top bar (item 10): a real tapering funnel shape, not a row of equal-width
