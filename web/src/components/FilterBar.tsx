@@ -13,7 +13,7 @@ function preset(id: string): { from: string; to: string } {
   const m = now.getMonth();
   const startOfWeek = () => {
     const d = new Date(now);
-    const dow = (d.getDay() + 6) % 7; // Mon=0
+    const dow = (d.getDay() + 1) % 7; // 0 = Saturday — Capricorn's own reporting-week anchor
     d.setDate(d.getDate() - dow);
     return d;
   };

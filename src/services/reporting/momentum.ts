@@ -1,5 +1,5 @@
-// Market Momentum (screen 5) — daily revenue/value rows the dataset layer buckets into ISO weeks
-// in TS (weekOf from trends.ts), so the SQL stays trivially portable.
+// Market Momentum (screen 5) — daily revenue/value rows the dataset layer buckets into Sat–Fri
+// reporting weeks in TS (weekStartOf from trends.ts), so the SQL stays trivially portable.
 
 import { combine, excludeMigrations, dateRange, notDeleted, orgFilter, whereClause } from "./filters.js";
 import type { BuiltQuery } from "./query.js";

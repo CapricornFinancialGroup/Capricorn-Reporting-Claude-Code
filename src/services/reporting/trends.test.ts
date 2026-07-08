@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { daysBetween, monthOf, pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekOf } from "./trends.js";
+import { daysBetween, monthOf, pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekStartOf } from "./trends.js";
 
 describe("pctDelta", () => {
   it("computes the fractional change, null on zero base", () => {
@@ -24,12 +24,23 @@ describe("daysBetween", () => {
   });
 });
 
-describe("weekOf", () => {
-  it("returns the Monday–Sunday week containing the date", () => {
-    const w = weekOf("2026-06-17"); // a Wednesday
-    expect(new Date(`${w.from}T00:00:00Z`).getUTCDay()).toBe(1); // Monday
-    expect(w.to).toBe(shiftDays(w.from, 6));
-    expect(w.from <= "2026-06-17" && "2026-06-17" <= w.to).toBe(true);
+describe("weekStartOf — Capricorn's Sat–Fri reporting week", () => {
+  it("returns the Saturday starting the week containing the date", () => {
+    const start = weekStartOf("2026-06-17"); // a Wednesday
+    expect(new Date(`${start}T00:00:00Z`).getUTCDay()).toBe(6); // Saturday
+    expect(start).toBe("2026-06-13");
+  });
+
+  it("a Friday belongs to the week that started the preceding Saturday", () => {
+    expect(weekStartOf("2026-06-19")).toBe("2026-06-13"); // Fri → same week's Sat
+  });
+
+  it("a Saturday anchors its own week (self-start)", () => {
+    expect(weekStartOf("2026-06-13")).toBe("2026-06-13");
+  });
+
+  it("a Sunday belongs to the week that started the day before", () => {
+    expect(weekStartOf("2026-06-14")).toBe("2026-06-13");
   });
 });
 

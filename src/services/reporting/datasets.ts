@@ -4,9 +4,10 @@
 //
 // Chase model (Conor's weekly principles, 2026-07-06): the run chase is WEEK-TO-DATE vs weekly
 // targets with weighted days (Mon–Thu 20.83% each, Fri 16.67%), measured through the latest
-// complete day in the nightly lake ("data as of"). The week rolls each Monday automatically.
-// Funnel volumes remain month-to-date. The pacing seam (pacing.ts) is the single plug-point for a
-// future intraday or drip feed and for the live Team-Targets source when Capricorn provides one.
+// complete day in the nightly lake ("data as of"). The week is Capricorn's own Sat–Fri reporting
+// week (`docs/data-dictionary.md`), rolling each Saturday. Funnel volumes remain month-to-date.
+// The pacing seam (pacing.ts) is the single plug-point for a future intraday or drip feed and for
+// the live Team-Targets source when Capricorn provides one.
 
 import type { Config } from "../../config.js";
 import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
@@ -29,11 +30,11 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { mondayOf, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import * as tickerQ from "./ticker.js";
-import { pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekOf } from "./trends.js";
+import { isoWeekNo, pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekStartOf } from "./trends.js";
 import { divide, round } from "./util.js";
 
 // ---------------------------------------------------------------------------
@@ -116,24 +117,22 @@ function weekRows<T extends { d: string }>(rows: T[], ctx: WeeklyPacingContext):
   });
 }
 
-/** Cumulative counts aligned to the week's working days. Weekend activity (rows dated after
- *  Friday) folds into the Friday point once the week is complete; the line is null after the
- *  data-as-of day (it stops at the present). */
-function cumulativeSeries(daily: DailyCount[], days: string[], asOf: string): Array<number | null> {
+/** Cumulative counts aligned to the week's working days. The chase window now LEADS with the
+ *  weekend (Sat–Fri), so any weekend rows sort chronologically before Monday and fold into it
+ *  automatically as the cursor advances through `allDates` — no trailing-fold special case
+ *  needed. The line is null after the data-as-of day (it stops at the present). */
+export function cumulativeSeries(daily: DailyCount[], days: string[], asOf: string): Array<number | null> {
   const byDay = new Map<string, number>();
   for (const r of daily) {
     const d = isoDay(r.d);
     byDay.set(d, (byDay.get(d) ?? 0) + r.n);
   }
   const allDates = [...byDay.keys()].sort();
-  const last = days[days.length - 1];
   let cum = 0;
   let di = 0;
   return days.map((day) => {
     if (day > asOf) return null;
-    // The Friday point absorbs any weekend rows when asOf has passed Friday.
-    const threshold = day === last && asOf > last ? asOf : day;
-    while (di < allDates.length && allDates[di] <= threshold) {
+    while (di < allDates.length && allDates[di] <= day) {
       cum += byDay.get(allDates[di]) ?? 0;
       di++;
     }
@@ -426,7 +425,7 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
   // week as the Daily/Office Run Chase, so the league's headline totals agree with them instead of
   // quietly comparing a different period (Conor 2026-07-07: "the summary dials don't look correct").
   const to = f.to ?? (asOf < today ? asOf : today);
-  const from = f.from ?? mondayOf(today);
+  const from = f.from ?? weekStartOf(today);
   return cached(`ds-adviser-league:${from}:${to}`, ttl(config), async () => {
     const prev = previousPeriod({ from, to });
     const [appsRows, refRows, salesRows, revRows, prevApps, prevRefs] = await Promise.all([
@@ -454,7 +453,7 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
 
     // Weekly application counts per adviser → sparkline + direction.
     const weekKeys: string[] = [];
-    for (let d = weekOf(from).from; d <= to; d = shiftDays(d, 7)) weekKeys.push(weekOf(d).from);
+    for (let d = weekStartOf(from); d <= to; d = shiftDays(d, 7)) weekKeys.push(weekStartOf(d));
 
     const byName = new Map<string, Row>();
     const rowFor = (username: string | null, fullName: string | null): Row => {
@@ -479,7 +478,7 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
     for (const r of appsRows) {
       const row = rowFor(r.username, r.fullName);
       row.apps += r.n;
-      const wk = weekKeys.indexOf(weekOf(isoDay(r.d)).from);
+      const wk = weekKeys.indexOf(weekStartOf(isoDay(r.d)));
       if (wk >= 0) row.trend[wk] += r.n;
     }
     for (const r of refRows) rowFor(r.username, r.fullName).refs += r.n;
@@ -698,12 +697,12 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   // Trend end = an explicit `to` (dashboard filter), capped at the freshest day; default = latest.
   const asOf = f.to && f.to < lakeAsOf ? f.to : lakeAsOf;
   // Weeks: an explicit range → whole ISO weeks spanning [from, to]; else rolling 13 weeks.
-  const endWeek = weekOf(asOf);
+  const endWeek = weekStartOf(asOf);
   const weekStarts: string[] = [];
   if (f.from) {
-    for (let w = weekOf(f.from).from; w <= endWeek.from; w = shiftDays(w, 7)) weekStarts.push(w);
+    for (let w = weekStartOf(f.from); w <= endWeek; w = shiftDays(w, 7)) weekStarts.push(w);
   } else {
-    for (let i = 12; i >= 0; i--) weekStarts.push(shiftDays(endWeek.from, -7 * i));
+    for (let i = 12; i >= 0; i--) weekStarts.push(shiftDays(endWeek, -7 * i));
   }
   const from = weekStarts[0];
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
@@ -714,7 +713,7 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(from, asOf)),
     ]);
 
-    const weekIndex = (d: string): number => weekStarts.indexOf(weekOf(d).from);
+    const weekIndex = (d: string): number => weekStarts.indexOf(weekStartOf(d));
     const bucket = (rows: DailyCount[]): number[] => {
       const out = weekStarts.map(() => 0);
       for (const r of rows) {
@@ -740,14 +739,9 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const avgCaseW = casesW.map((n, i) => (n > 0 ? valW[i] / n : null));
     const refRateW = appsW.map((n, i) => (n > 0 ? (refsW[i] / n) * 100 : null));
 
-    const isoWeekNo = (monday: string): number => {
-      const dt = new Date(`${monday}T00:00:00Z`);
-      const thursday = new Date(dt);
-      thursday.setUTCDate(dt.getUTCDate() + 3);
-      const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
-      return Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
-    };
-    const weeks = weekStarts.map((w) => `W${isoWeekNo(w)}`);
+    // weekStarts are Saturdays (Capricorn's reporting-week anchor) — feed isoWeekNo the Monday
+    // within that bucket so the label reflects the real ISO-8601 week number.
+    const weeks = weekStarts.map((w) => `W${isoWeekNo(shiftDays(w, 2))}`);
 
     // The chase week (last bucket) is usually partial. Weighted business-day fraction elapsed so
     // far this week (same Mon–Fri weighting as the run chase — Fri counts less) — used both to

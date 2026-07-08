@@ -36,12 +36,12 @@ export interface DateWindow {
   to: string;
 }
 
-/** The Monday–Sunday week containing `iso` (ISO weekday, Monday start). */
-export function weekOf(iso: string): DateWindow {
-  const d = new Date(`${iso}T00:00:00Z`);
-  const dow = (d.getUTCDay() + 6) % 7; // 0 = Monday
-  const from = shiftDays(iso, -dow);
-  return { from, to: shiftDays(from, 6) };
+/** The Saturday–Friday week containing `iso` — Capricorn's own reporting-week convention
+ *  (`docs/data-dictionary.md`), used everywhere "this week" is computed. Returns just the start
+ *  date: every call site only ever needed the window's start, not its end. */
+export function weekStartOf(iso: string): string {
+  const back = (new Date(`${iso}T00:00:00Z`).getUTCDay() + 1) % 7; // 0 = Saturday
+  return shiftDays(iso, -back);
 }
 
 /** The calendar month containing `iso`. */
@@ -59,4 +59,16 @@ export function previousPeriod(w: DateWindow): DateWindow {
   const toMs = new Date(`${w.to}T00:00:00Z`).getTime();
   const lenDays = Math.round((toMs - fromMs) / 86_400_000) + 1;
   return { from: shiftDays(w.from, -lenDays), to: shiftDays(w.from, -1) };
+}
+
+/** ISO-8601 week number for the week containing `monday` — the real, textbook algorithm (finds
+ *  that week's Thursday, which always falls in the ISO year the week belongs to). Market
+ *  Momentum's week labels; callers using the Sat–Fri reporting week must pass the Monday WITHIN
+ *  that bucket (`shiftDays(weekStart, 2)`), not the bucket's own Saturday start. */
+export function isoWeekNo(monday: string): number {
+  const dt = new Date(`${monday}T00:00:00Z`);
+  const thursday = new Date(dt);
+  thursday.setUTCDate(dt.getUTCDate() + 3);
+  const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+  return Math.ceil(((thursday.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
 }

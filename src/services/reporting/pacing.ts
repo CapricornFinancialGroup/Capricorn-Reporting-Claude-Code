@@ -1,9 +1,10 @@
 // The pacing seam — the ONE place that decides "which week are we chasing, and how far through?".
 //
-//   • weeklyPacing (the run chase, per Conor's 2026-07-06 principles): the CURRENT calendar week
-//     (Mon–Fri containing today, business tz), chased against the weekly target with WEIGHTED days
-//     (Fri = 80% of a Mon–Thu day). The lake is a nightly build, so early in the week the current
-//     week may hold little/no data yet — that's expected; it fills as the nightly loads catch up.
+//   • weeklyPacing (the run chase, per Conor's 2026-07-06 principles): Capricorn's own Sat–Fri
+//     reporting week (`docs/data-dictionary.md`) containing today (business tz), chased against
+//     the weekly target with WEIGHTED working days (Fri = 80% of a Mon–Thu day). The lake is a
+//     nightly build, so early in the week the current week may hold little/no data yet — that's
+//     expected; it fills as the nightly loads catch up.
 //     `fraction` (expected-by-now) is measured through the latest current-week day that HAS data,
 //     so it stays comparable to the actual. The headline day counter uses `latestWorkingDay` — the
 //     most recent working day with data anywhere (falls back to last week early-Monday) so the
@@ -14,7 +15,7 @@
 // datasets consume PacingContext and never know the cadence.
 
 import { CUMULATIVE_WEEK_SHARES } from "../../domain/targets.js";
-import { monthOf, shiftDays } from "./trends.js";
+import { monthOf, shiftDays, weekStartOf } from "./trends.js";
 import { workingDaysElapsed, workingDaysInMonth } from "../../domain/targets.js";
 
 export interface PacingContext {
@@ -30,28 +31,19 @@ export interface PacingContext {
   nowLabel: string;
 }
 
-const DAY_MS = 86_400_000;
-
 function dow(iso: string): number {
   return new Date(`${iso}T00:00:00Z`).getUTCDay(); // 0=Sun … 6=Sat
 }
 
-/** Monday of the ISO week containing `iso`. */
-export function mondayOf(iso: string): string {
-  const d = dow(iso);
-  const back = d === 0 ? 6 : d - 1;
-  return new Date(new Date(`${iso}T00:00:00Z`).getTime() - back * DAY_MS).toISOString().slice(0, 10);
-}
-
-/** How far through its Mon–Fri week `iso` is, by the same weighted day curve as the run chase
- *  (Sat/Sun = week complete, 1.0). The one seam for "is this week still in progress, and by how
- *  much" — anywhere that compares a current, possibly-partial week against a complete one
- *  (Momentum's trend, the League's most-improved) should extrapolate through this, not re-derive
- *  its own day-of-week math (two copies of this drifting apart would just reopen the "the numbers
- *  don't agree across screens" complaint Conor already raised once, 2026-07-07). */
+/** How far through its Sat–Fri week `iso` is, by the same weighted day curve as the run chase
+ *  (leading Sat/Sun = week not yet started, 0). The one seam for "is this week still in progress,
+ *  and by how much" — anywhere that compares a current, possibly-partial week against a complete
+ *  one (Momentum's trend, the League's most-improved) should extrapolate through this, not
+ *  re-derive its own day-of-week math (two copies of this drifting apart would just reopen the
+ *  "the numbers don't agree across screens" complaint Conor already raised once, 2026-07-07). */
 export function weekElapsedFraction(iso: string): number {
-  const isoDow = (dow(iso) + 6) % 7; // 0=Mon … 6=Sun
-  return isoDow <= 4 ? CUMULATIVE_WEEK_SHARES[isoDow] : 1;
+  const isoDow = (dow(iso) + 1) % 7; // 0=Sat,1=Sun,2=Mon … 6=Fri
+  return isoDow < 2 ? 0 : CUMULATIVE_WEEK_SHARES[isoDow - 2];
 }
 
 /** The most recent working day (Mon–Fri) on or before `iso`. */
@@ -84,22 +76,22 @@ export interface WeeklyPacingContext extends PacingContext {
   loadStart: string;
 }
 
-/** Weighted CURRENT-week chase. `today` = current business date (drives which week); `dataAsOf` =
- *  latest complete lake day (drives how much data we actually have). */
+/** Weighted CURRENT-week chase, Capricorn's Sat–Fri reporting week (`docs/data-dictionary.md`).
+ *  `today` = current business date (drives which week); `dataAsOf` = latest complete lake day
+ *  (drives how much data we actually have). */
 export function weeklyPacing(today: string, dataAsOf: string): WeeklyPacingContext {
-  const monday = mondayOf(today);
-  const weekDays = Array.from({ length: 5 }, (_, i) =>
-    new Date(new Date(`${monday}T00:00:00Z`).getTime() + i * DAY_MS).toISOString().slice(0, 10),
-  );
+  const windowStart = weekStartOf(today); // Saturday
+  const weekDays = Array.from({ length: 5 }, (_, i) => shiftDays(windowStart, i + 2)); // Mon..Fri
+  const firstWorkingDay = weekDays[0]; // Monday-equivalent
   const friday = weekDays[4];
 
   // Expected-by-now: measured through the latest CURRENT-WEEK day that has data (≤ dataAsOf),
-  // capped at Friday. Before any current-week data exists (dataAsOf < Monday) → 0.
+  // capped at Friday. Before any current-week weekday data exists (dataAsOf < Monday) → 0 — the
+  // leading Sat/Sun of the window haven't started the working week yet.
   let fraction = 0;
-  if (dataAsOf >= monday) {
+  if (dataAsOf >= firstWorkingDay) {
     const inWeek = dataAsOf < friday ? dataAsOf : friday;
-    const wd = dow(inWeek);
-    fraction = wd === 0 || wd === 6 ? 1 : CUMULATIVE_WEEK_SHARES[wd - 1];
+    fraction = weekElapsedFraction(inWeek);
   }
 
   // Headline day = most recent working day with data (falls back to last week early in this week).
@@ -108,15 +100,17 @@ export function weeklyPacing(today: string, dataAsOf: string): WeeklyPacingConte
 
   return {
     dataAsOf,
-    windowStart: monday,
-    windowEnd: shiftDays(monday, 6), // include the weekend so weekend activity counts toward the week
+    windowStart,
+    windowEnd: shiftDays(windowStart, 6), // Friday — the window already leads with the weekend
     weekDays,
     cumulativeShares: [...CUMULATIVE_WEEK_SHARES],
     fraction,
     latestWorkingDay,
     latestWorkingDayIndex,
-    currentWeekPending: dataAsOf < monday,
-    loadStart: latestWorkingDay < monday ? latestWorkingDay : monday,
+    currentWeekPending: dataAsOf < firstWorkingDay,
+    // Load-bearing: reaching back to windowStart (Saturday) is what makes weekend rows actually
+    // get fetched once the week is under way, not just the fallback day early on.
+    loadStart: latestWorkingDay < windowStart ? latestWorkingDay : windowStart,
     nowLabel: shortLabel(dataAsOf),
   };
 }
