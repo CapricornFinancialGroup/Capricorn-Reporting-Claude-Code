@@ -38,8 +38,15 @@ const PRESETS = [
   { id: "ytd", label: "YTD" },
 ];
 
-export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (f: Filters) => void }) {
+export function FilterBar({ filters, onChange, compare, onCompareChange }: {
+  filters: Filters;
+  onChange: (f: Filters) => void;
+  /** Second, independent {from,to} window for the "Compare to" toggle — null = off. */
+  compare: Filters | null;
+  onCompareChange: (f: Filters | null) => void;
+}) {
   const set = (patch: Partial<Filters>) => onChange({ ...filters, ...patch });
+  const setCompare = (patch: Partial<Filters>) => compare && onCompareChange({ ...compare, ...patch });
   const active = Boolean(filters.from || filters.to);
   return (
     <div className="filter-bar">
@@ -62,6 +69,22 @@ export function FilterBar({ filters, onChange }: { filters: Filters; onChange: (
       </span>
       {active && (
         <button className="filter-chip clear" onClick={() => set({ from: null, to: null })}>Clear</button>
+      )}
+      <button
+        className={`filter-chip ${compare ? "on" : ""}`}
+        style={{ marginLeft: 8 }}
+        onClick={() => onCompareChange(compare ? null : { from: null, to: null, offices: [] })}
+      >
+        Compare to{compare ? " ✕" : ""}
+      </button>
+      {compare && (
+        <span className="filter-dates">
+          <input type="date" value={compare.from ?? ""} max={compare.to ?? undefined}
+            onChange={(e) => setCompare({ from: e.target.value || null })} aria-label="Compare from date" />
+          <span className="filter-dash">→</span>
+          <input type="date" value={compare.to ?? ""} min={compare.from ?? undefined}
+            onChange={(e) => setCompare({ to: e.target.value || null })} aria-label="Compare to date" />
+        </span>
       )}
     </div>
   );

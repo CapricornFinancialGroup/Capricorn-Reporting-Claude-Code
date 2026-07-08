@@ -6,6 +6,9 @@ import { ErrorNote } from "../components/ui.js";
 export interface PageProps {
   meta: Meta;
   filters: Filters;
+  /** Second, independent window for the "Compare to" toggle — null/absent = off. Only set on the
+   *  three filterable analytical pages once both dates are picked. */
+  compareFilters?: Filters | null;
   mode: Mode;
   refreshMs: number;
 }

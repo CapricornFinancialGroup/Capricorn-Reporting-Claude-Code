@@ -3,6 +3,7 @@
 
 import { usePayload } from "../api.js";
 import { applicationsReferralsGapChart, funnelStagesChart } from "../charts.js";
+import { CompareStrip } from "../components/CompareStrip.js";
 import { EChart } from "../components/EChart.js";
 import { num, shortDate } from "../format.js";
 import type { FunnelHealthPayload } from "../types.js";
@@ -11,8 +12,9 @@ import { Load, type PageProps } from "./common.js";
 /** Share-of-leads % is meaningless on tiny denominators — show "–" instead. */
 const MIN_DENOMINATOR = 10;
 
-export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
+export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<FunnelHealthPayload>("funnel-health", filters, mode, refreshMs);
+  const { data: compareData } = usePayload<FunnelHealthPayload>("funnel-health", compareFilters ?? null, mode, refreshMs);
   return (
     <Load error={error} data={data}>
       {data && (
@@ -34,6 +36,19 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
               )}
             />
           </div>
+
+          {compareFilters && compareData && (
+            <CompareStrip
+              primaryLabel={`${shortDate(data.window.from)} – ${shortDate(data.window.to)}`}
+              compareLabel={`${shortDate(compareData.window.from)} – ${shortDate(compareData.window.to)}`}
+              rows={data.stages.map((s, i) => ({
+                label: s.label,
+                primary: s.count,
+                compare: compareData.stages[i]?.count ?? null,
+                fmt: "int",
+              }))}
+            />
+          )}
 
           <div className="row cols-3 grow">
             <div className="card">

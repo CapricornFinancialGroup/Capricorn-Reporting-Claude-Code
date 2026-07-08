@@ -363,6 +363,19 @@ button { font: inherit; }
   font-size: 13px; font-weight: 600; letter-spacing: 0.02em; display: flex; align-items: center; gap: 10px;
 }
 
+/* -------------------------------------------------------------- compare */
+
+.compare-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.compare-cell {
+  background: #F8FAFC; border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; display: flex; flex-direction: column; gap: 3px;
+}
+.compare-label { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-secondary); }
+.compare-values { display: flex; align-items: baseline; gap: 6px; font-variant-numeric: tabular-nums; }
+.compare-primary { font-size: 17px; font-weight: 900; }
+.compare-secondary { font-size: 13px; font-weight: 700; color: var(--text-secondary); }
+.compare-vs { font-size: 9px; color: var(--text-secondary); text-transform: uppercase; }
+
 /* ---------------------------------------------------------------- misc */
 
 .loading { padding: 40px; text-align: center; color: var(--text-secondary); }

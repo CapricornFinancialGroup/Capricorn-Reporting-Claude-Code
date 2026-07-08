@@ -22,6 +22,7 @@ export function App({ mode }: { mode: Mode }) {
   const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, 0);
   const [pageId, setPageId] = useState(pageFromHash);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [compareFilters, setCompareFilters] = useState<Filters | null>(null);
 
   useEffect(() => {
     const onHash = () => setPageId(pageFromHash());
@@ -37,6 +38,9 @@ export function App({ mode }: { mode: Mode }) {
   const filterable = FILTERABLE.has(page.id);
   // Run-chase screens always get EMPTY_FILTERS so they stay anchored on the current week.
   const pageFilters = filterable ? filters : EMPTY_FILTERS;
+  // Only fetch the compare window once both dates are actually picked — a half-filled toggle
+  // shouldn't fire a request with an open-ended range.
+  const pageCompareFilters = filterable && compareFilters?.from && compareFilters?.to ? compareFilters : null;
   return (
     <div className="dash-shell">
       <GosHeader title={page.label} />
@@ -56,9 +60,17 @@ export function App({ mode }: { mode: Mode }) {
         {/* Auto-rotating full-screen view for signed-in users (office wall / TV) — no token. */}
         <a className="dash-tab dash-tab-wall" href="/wall" title="Auto-rotating full-screen wall view">↻ Wall view</a>
       </nav>
-      {filterable && <FilterBar filters={filters} onChange={setFilters} />}
+      {filterable && (
+        <FilterBar filters={filters} onChange={setFilters} compare={compareFilters} onCompareChange={setCompareFilters} />
+      )}
       <main className="dash-main">
-        <Page meta={meta} filters={pageFilters} mode={mode} refreshMs={(meta.refreshSeconds ?? 60) * 1000} />
+        <Page
+          meta={meta}
+          filters={pageFilters}
+          compareFilters={pageCompareFilters}
+          mode={mode}
+          refreshMs={(meta.refreshSeconds ?? 60) * 1000}
+        />
       </main>
     </div>
   );

@@ -3,8 +3,9 @@
 
 import { usePayload } from "../api.js";
 import { AMBER, BLUE, momentumChart, momentumForecastChart, NAVY } from "../charts.js";
+import { CompareStrip } from "../components/CompareStrip.js";
 import { EChart } from "../components/EChart.js";
-import { gbpCompact, num } from "../format.js";
+import { gbpCompact, num, shortDate } from "../format.js";
 import type { MarketMomentumPayload, MomentumKpi } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
@@ -25,8 +26,9 @@ function fmtDelta(k: MomentumKpi): { text: string; cls: string } {
   };
 }
 
-export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
+export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<MarketMomentumPayload>("market-momentum", filters, mode, refreshMs);
+  const { data: compareData } = usePayload<MarketMomentumPayload>("market-momentum", compareFilters ?? null, mode, refreshMs);
   return (
     <Load error={error} data={data}>
       {data && (
@@ -44,6 +46,19 @@ export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
               );
             })}
           </div>
+
+          {compareFilters && compareData && (
+            <CompareStrip
+              primaryLabel={filters.from && filters.to ? `${shortDate(filters.from)} – ${shortDate(filters.to)}` : "rolling 13 weeks"}
+              compareLabel={`${shortDate(compareFilters.from ?? "")} – ${shortDate(compareFilters.to ?? "")}`}
+              rows={data.kpis.map((k) => ({
+                label: k.label,
+                primary: k.latest,
+                compare: compareData.kpis.find((ck) => ck.key === k.key)?.latest ?? null,
+                fmt: k.fmt === "int" ? "int" : "gbp",
+              }))}
+            />
+          )}
 
           <div className="row cols-3 grow">
             <Trend title="Mortgage Applications" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />

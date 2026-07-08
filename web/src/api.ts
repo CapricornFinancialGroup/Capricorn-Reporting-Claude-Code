@@ -66,15 +66,23 @@ export async function fetchDataset<T>(name: string, filters: Filters, mode: Mode
   return json.data;
 }
 
-/** Fetch a dataset on filter change and poll every `refreshMs` (0 = no polling). */
-export function usePayload<T>(name: string, filters: Filters, mode: Mode, refreshMs: number) {
+/** Fetch a dataset on filter change and poll every `refreshMs` (0 = no polling). `filters: null`
+ *  skips fetching entirely (e.g. the "Compare to" window before both dates are picked) — respects
+ *  the Rules of Hooks (this can't be a conditional hook call at the caller). */
+export function usePayload<T>(name: string, filters: Filters | null, mode: Mode, refreshMs: number) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(filters != null);
   const key = JSON.stringify(filters);
   const first = useRef(true);
 
   useEffect(() => {
+    if (!filters) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
     let active = true;
     if (first.current) first.current = false;
     else setLoading(true);

@@ -1,6 +1,7 @@
 // Screen 3 — Adviser League: period KPI strip, Top Performers, Most Improved, Focus This Month.
 
 import { usePayload } from "../api.js";
+import { CompareStrip } from "../components/CompareStrip.js";
 import { Sparkline } from "../components/ui.js";
 import { gbpCompact, num, pct, shortDate } from "../format.js";
 import type { AdviserLeaguePayload } from "../types.js";
@@ -9,8 +10,9 @@ import { Load, type PageProps } from "./common.js";
 const trendArrow = { up: "↑", flat: "→", down: "↓" } as const;
 const trendColor = { up: "#16A34A", flat: "#64748B", down: "#DC2626" } as const;
 
-export function AdviserLeague({ filters, mode, refreshMs }: PageProps) {
+export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<AdviserLeaguePayload>("adviser-league", filters, mode, refreshMs);
+  const { data: compareData } = usePayload<AdviserLeaguePayload>("adviser-league", compareFilters ?? null, mode, refreshMs);
   const badge = (i: number) => (i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "");
   return (
     <Load error={error} data={data}>
@@ -30,6 +32,20 @@ export function AdviserLeague({ filters, mode, refreshMs }: PageProps) {
               </div>
             ))}
           </div>
+
+          {compareFilters && compareData && (
+            <CompareStrip
+              primaryLabel={`${shortDate(data.window.from)} – ${shortDate(data.window.to)}`}
+              compareLabel={`${shortDate(compareData.window.from)} – ${shortDate(compareData.window.to)}`}
+              rows={[
+                { label: "Applications", primary: data.totals.applications, compare: compareData.totals.applications, fmt: "int" },
+                { label: "Referrals", primary: data.totals.referrals, compare: compareData.totals.referrals, fmt: "int" },
+                { label: "Protection Sales", primary: data.totals.sales, compare: compareData.totals.sales, fmt: "int" },
+                { label: "Est. Revenue", primary: data.totals.revenue, compare: compareData.totals.revenue, fmt: "gbp" },
+                { label: "Avg Conversion", primary: data.totals.avgConversion, compare: compareData.totals.avgConversion, fmt: "pct" },
+              ]}
+            />
+          )}
 
           <div className="row cols-3 grow">
             <div className="card">
