@@ -93,14 +93,6 @@ export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
  *  (£896,146 / 20 working days), +10% stretch, rounded. Swap for Arman's figure once it exists. */
 export const REVENUE_DAILY_TARGET = 50_000;
 
-/** Funnel-health alert thresholds (strawman screen 4). */
-export const ALERT_THRESHOLDS = {
-  /** Protection sales ÷ protection referrals below this = critical alert. */
-  protectionConversionMin: 0.5,
-  /** Applications older than this (days) with no lender offer = aged. */
-  agedApplicationDays: 7,
-};
-
 /** Adviser-league config (strawman screen 3). */
 export const LEAGUE = {
   /** Advisers at or below this many applications in the window land in "Focus This Month". */

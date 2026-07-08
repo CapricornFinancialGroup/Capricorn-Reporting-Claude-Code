@@ -2,7 +2,7 @@
 // and date binding conventions, and that params bind what the text references.
 
 import { describe, expect, it } from "vitest";
-import { agedApplications, actionQueues, mortgageStageCounts } from "./funnel.js";
+import { mortgageStageCounts } from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, KPI_SPECS } from "./kpis.js";
 import { revenueDaily } from "./momentum.js";
 import { applicationEvents, leadEvents, referralEvents, saleEvents } from "./ticker.js";
@@ -60,18 +60,6 @@ describe("funnel builders", () => {
     }
   });
 
-  it("aged applications look back 90 days and exclude offered cases", () => {
-    const q = agedApplications("2026-07-05");
-    expectConventions(q);
-    expect(q.text).toContain("OfferIssueDate IS NULL");
-    expect(q.text).toContain("DATEADD(day, -90, @AsOf)");
-  });
-
-  it("action queues cover the strawman buttons (REFER NOW derives in the dataset layer)", () => {
-    const q = actionQueues("2026-07-05", "2026-07-01");
-    expectConventions(q);
-    for (const alias of ["callNow", "followUp", "chaseLender", "writtenLeads"]) expect(q.text).toContain(alias);
-  });
 });
 
 describe("momentum + league builders", () => {

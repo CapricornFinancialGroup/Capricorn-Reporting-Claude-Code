@@ -306,26 +306,6 @@ button { font: inherit; }
 .alert-title { font-size: 12px; font-weight: 800; }
 .alert.critical .alert-title { color: var(--red); }
 .alert:not(.critical) .alert-title { color: var(--amber); }
-.alert-detail { font-size: 11px; color: var(--text-secondary); }
-
-.queue-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.queue-btn {
-  border: 1px solid var(--border); border-radius: 8px; padding: 10px; background: #F8FAFC;
-  display: flex; flex-direction: column; gap: 2px; align-items: flex-start;
-}
-.queue-btn .queue-label {
-  font-size: 10px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase;
-}
-.queue-btn .queue-count { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; }
-.queue-btn .queue-sub { font-size: 9px; color: var(--text-secondary); }
-.queue-btn.hot { animation: queue-pulse 2.6s ease-in-out infinite; }
-.queue-btn:nth-child(2).hot { animation-delay: 0.65s; }
-.queue-btn:nth-child(3).hot { animation-delay: 1.3s; }
-.queue-btn:nth-child(4).hot { animation-delay: 1.95s; }
-@keyframes queue-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); }
-  50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14); }
-}
 
 /* ---------------------------------------------------------------- league */
 

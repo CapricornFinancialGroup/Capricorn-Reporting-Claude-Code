@@ -13,12 +13,20 @@ import { ErrorNote } from "./components/ui.js";
 import { GosHeader } from "./components/GosHeader.js";
 import { KIOSK_PAGE_IDS, PAGES, type PageDef } from "./pages/index.js";
 
-/** The pages this kiosk shows, from `?pages=` (falls back to the full set), in order. */
+/** The pages this kiosk shows, from `?pages=` (falls back to the full set), in order. Admin-only
+ *  pages (Targets, Glossary) are excluded even from an explicit `?pages=` override — the kiosk has
+ *  no signed-in identity to check isTargetsAdmin against (it's Easy-Auth-excluded, token-gated
+ *  only), so there's no way to authorize one honestly. Without this, `?pages=targets` would put
+ *  the upload form on an unattended office wall TV, which is exactly the gotcha this flag exists
+ *  to prevent. */
 function selectedRotation(): PageDef[] {
   const raw = new URLSearchParams(window.location.search).get("pages");
   const ids = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : KIOSK_PAGE_IDS;
-  const rot = ids.map((id) => PAGES.find((p) => p.id === id)).filter((p): p is PageDef => Boolean(p));
-  return rot.length ? rot : PAGES;
+  const rot = ids
+    .map((id) => PAGES.find((p) => p.id === id))
+    .filter((p): p is PageDef => p != null && !p.adminOnly);
+  const fallback = PAGES.filter((p) => !p.adminOnly);
+  return rot.length ? rot : fallback;
 }
 
 const ROTATION = selectedRotation();

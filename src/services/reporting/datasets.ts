@@ -12,7 +12,6 @@
 import type { Config } from "../../config.js";
 import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import {
-  ALERT_THRESHOLDS,
   dayTarget,
   KPI_KEYS,
   KPI_LABELS,
@@ -606,8 +605,7 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
   // Window: an explicit date range (dashboard filter) wins; else the current month to date.
   const from = f.from ?? mtdPacing(lakeAsOf).windowStart;
   const to = f.to ?? lakeAsOf;
-  // Operational "as of" for the point-in-time widgets (aged/queues): the window end, but never
-  // beyond the freshest loaded day.
+  // Never beyond the freshest loaded day.
   const asOf = to < lakeAsOf ? to : lakeAsOf;
   return cached(`ds-funnel-health:${from}:${to}`, ttl(config), async () => {
     // Applications-vs-referrals gap chart (item 9, reframed): weekly volumes over recent weeks,
@@ -616,13 +614,10 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
     // referred/not-yet-referred proportion donut entirely.
     const gapWeekStarts = weekStartsFor(asOf, f.from, 13);
     const gapFrom = gapWeekStarts[0];
-    const [stagesRows, referralsDaily, salesDaily, aged, queues, agesRows, gapAppsRows, gapRefsRows] = await Promise.all([
+    const [stagesRows, referralsDaily, salesDaily, gapAppsRows, gapRefsRows] = await Promise.all([
       q<funnelQ.MortgageStageCounts>(config, funnelQ.mortgageStageCounts(from, to)),
       q<DailyCount>(config, kpiDaily("referrals", from, to)),
       q<DailyCount>(config, kpiDaily("sales", from, to)),
-      q<funnelQ.AgedApplications>(config, funnelQ.agedApplications(asOf)),
-      q<funnelQ.ActionQueues>(config, funnelQ.actionQueues(asOf, from)),
-      q<funnelQ.StageAges>(config, funnelQ.stageAges(asOf)),
       q<DailyCount>(config, kpiDaily("applications", gapFrom, asOf)),
       q<DailyCount>(config, kpiDaily("referrals", gapFrom, asOf)),
     ]);
@@ -660,52 +655,16 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
       pct: shareOfLeads(stages[i + 1].count),
     }));
 
-    const queueRow = queues[0] ?? { callNow: 0, followUp: 0, chaseLender: 0, writtenLeads: 0 };
-    const referNow = Math.max(0, queueRow.writtenLeads - referrals);
-    const agedRow = aged[0] ?? { agedCount: 0, avgAgeDays: null, oldestDays: null };
-    const ages = agesRows[0] ?? { leadAvgDays: null, applicationAvgDays: null, offerAvgDays: null };
-
-    const protectionConv = divide(sales, referrals);
-    const alerts: Array<{ severity: "critical" | "warning"; title: string; detail: string }> = [];
-    if (protectionConv != null && protectionConv < ALERT_THRESHOLDS.protectionConversionMin) {
-      alerts.push({
-        severity: "critical",
-        title: `Protection Conversion Rate ${Math.round(protectionConv * 100)}%`,
-        detail: `${sales} sales from ${referrals} referrals this month — target ${Math.round(ALERT_THRESHOLDS.protectionConversionMin * 100)}%.`,
-      });
-    }
-    if (agedRow.agedCount > 0) {
-      alerts.push({
-        severity: "warning",
-        title: `Applications Aged ${ALERT_THRESHOLDS.agedApplicationDays}+ Days in Queue`,
-        detail: `${agedRow.agedCount} awaiting a lender offer — avg ${agedRow.avgAgeDays ?? "–"} days, oldest ${agedRow.oldestDays ?? "–"}.`,
-      });
-    }
-
     return {
       dataAsOf: asOf,
       window: { from, to: asOf },
       stages,
       conversions,
-      stageMetrics: [
-        { stage: "Leads", count: s.leads, avgAgeDays: round(ages.leadAvgDays, 0) },
-        { stage: "Mortgage Apps", count: s.applications, avgAgeDays: round(ages.applicationAvgDays, 0) },
-        { stage: "Offers", count: s.offers, avgAgeDays: round(ages.offerAvgDays, 0) },
-        { stage: "Referrals", count: referrals, avgAgeDays: null },
-        { stage: "Protection Sales", count: sales, avgAgeDays: null },
-      ],
-      alerts,
       applicationsReferralsGap: {
         weeks: gapWeekLabels,
         applications: bucketWeekly(gapAppsRows),
         referrals: bucketWeekly(gapRefsRows),
       },
-      queues: [
-        { key: "call-now", label: "Call Now", count: queueRow.callNow, sub: "leads with nothing written yet" },
-        { key: "follow-up", label: "Follow Up", count: queueRow.followUp, sub: "offers 7+ days, not completed" },
-        { key: "chase-lender", label: "Chase Lender", count: queueRow.chaseLender, sub: `apps ${ALERT_THRESHOLDS.agedApplicationDays}+ days, no offer` },
-        { key: "refer-now", label: "Refer Now", count: referNow, sub: "apps not referred to protection" },
-      ],
     };
   });
 }
