@@ -33,6 +33,16 @@ export interface Config {
     /** Server-side dataset cache TTL (seconds). */
     cacheTtlSeconds: number;
   };
+
+  /** Weekly targets upload (item 1, 2026-07-07). */
+  targets: {
+    /** Lower-cased emails allowed to upload targets. Empty = upload disabled (fails closed). */
+    adminEmails: string[];
+    /** Blob storage account name holding the `weekly-targets` container. Empty = upload/hydrate
+     *  disabled — the app falls back to the domain/targets.ts placeholders, same as before this
+     *  feature existed. */
+    storageAccount: string;
+  };
 }
 
 function optional(value: string | undefined, fallback: string): string {
@@ -62,6 +72,14 @@ export function loadConfig(): Config {
       timeZone: optional(process.env.REPORTING_TIMEZONE, "Europe/London"),
       pacingMode: process.env.PACING_MODE === "drip" ? "drip" : "mtd",
       cacheTtlSeconds: parseInt(optional(process.env.REPORTING_CACHE_TTL_SECONDS, "45"), 10),
+    },
+
+    targets: {
+      adminEmails: (process.env.TARGETS_ADMIN_EMAILS ?? "")
+        .split(",")
+        .map((e) => e.trim().toLowerCase())
+        .filter(Boolean),
+      storageAccount: process.env.TARGETS_STORAGE_ACCOUNT?.trim() || "",
     },
   };
 }

@@ -98,10 +98,50 @@ its header comments once the repo is on its permanent GitHub home.
 - **Rotate the kiosk token**: update KV secret `capgrowth-kiosk-token`, restart the app, update TV
   URLs.
 - **Change targets / office mapping**: edit `src/domain/targets.ts` / `offices.ts`, redeploy (a PR
-  is the audit trail).
+  is the audit trail) — or, since 2026-07-08, an authorized admin can upload a new weekly targets
+  workbook directly from the dashboard's "Targets" tab (see below) without a code change at all.
 - **Data freshness**: the lakehouse rebuilds ~03:15 UTC daily (after the ~23:00 UTC Gold load);
   every screen stamps `Data as of <date>`. If the stamp is stale ≥2 days, the upstream
   `LoadGoldCapricornShare` notebook (Smartr Fabric, PBI 90576) is the place to look.
 - **Env var reference**: see `.env.example` — all app settings are set by the Bicep; `PACING_MODE`
   is reserved (`mtd` today; `drip` would replay the latest day across a synthetic working day if
   Capricorn ever wants the intraday illusion).
+
+## Weekly targets upload (item 1, 2026-07-07)
+
+Arman (or a backup) uploads an `.xlsx` workbook from the dashboard's "Targets" tab
+(`/dashboard#targets`); the app validates, persists an audit copy to Blob Storage, and activates it
+immediately (no scheduled activation).
+
+**Reversal, flagged not hidden**: `docs/UPGRADES-2026-07-07.md` §0 (same day, written first)
+evaluated this and recommended reading the file from SharePoint via Graph specifically *to avoid* an
+in-app upload page. Conor's later "input directly" + "csv with multiple tabs" ask chose the
+previously-passed-over option — this is that build.
+
+**Infra** (provisioned 2026-07-08 — see the CAUTION comment at the top of `main.bicep` before ever
+running a full `deployment group create` against it again):
+
+| | |
+|---|---|
+| Storage account | `smtcapgrowthtargetsprod` (Standard_LRS, TLS1.2, no public blob access) |
+| Container | `weekly-targets` (raw upload + parsed JSON audit + `current.json` pointer) |
+| Access | App's system-assigned MI granted **Storage Blob Data Contributor** on the account |
+
+The storage account, container, and role assignment were created directly via `az storage account
+create` / `az storage container create` / `az role assignment create` rather than a full bicep
+redeploy — `main.bicep`'s `appSettings` array is a full REPLACE, and redeploying it without the
+live `entraClientSecret`/`reportingKioskToken` values in hand would have overwritten the working
+Easy Auth secret and kiosk token. `main.bicep` has been updated to describe these resources for
+future IaC consistency, but wasn't itself the thing that provisioned them this time.
+
+**Enabling uploads**: `TARGETS_ADMIN_EMAILS` is empty by default (upload fails closed — 403 for
+everyone). Set it once Arman's and a backup's real addresses are confirmed:
+
+```bash
+az webapp config appsettings set -g smt-rg-capgrowth-prod -n smt-capgrowth-app-prod \
+  --settings TARGETS_ADMIN_EMAILS="arman@capricornfinancial.co.uk,backup@capricornfinancial.co.uk"
+```
+
+**Template**: `GET /api/targets/template` generates a blank `.xlsx` on demand from the current
+office roster (`domain/offices.ts`) — not a static checked-in file, so an office-roster change
+never leaves a stale template floating around to re-sync by hand.

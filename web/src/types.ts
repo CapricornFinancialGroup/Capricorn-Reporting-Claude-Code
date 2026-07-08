@@ -4,6 +4,13 @@ export type KpiKey = "leads" | "applications" | "referrals" | "sales";
 export type PaceStatus = "ahead" | "on_pace" | "behind";
 export type ChaseStatus = "ahead" | "on_pace" | "behind" | "critical";
 
+export interface TargetsProvenance {
+  source: "placeholder" | "upload";
+  effectiveWeek: string | null;
+  uploadedBy: string | null;
+  uploadedAt: string | null;
+}
+
 export interface Meta {
   offices: Array<{ name: string; color: string }>;
   targets: {
@@ -12,6 +19,7 @@ export interface Meta {
     officeDaily: Record<string, Record<KpiKey, number>>;
     revenueDaily: number;
   };
+  targetsProvenance: TargetsProvenance;
   dataAsOf: string;
   refreshSeconds: number;
   cycleSeconds: number;

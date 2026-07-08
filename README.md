@@ -101,7 +101,9 @@ Rotation dwell = `REPORTING_CYCLE_SECONDS` (20s), data poll = `REPORTING_REFRESH
 ## Open items for Capricorn
 
 1. **Real targets** — daily targets per KPI, per office (`src/domain/targets.ts` holds the
-   strawman placeholders, clearly labelled on-screen).
+   strawman placeholders, clearly labelled on-screen). An upload mechanism exists (dashboard
+   "Targets" tab, `docs/deployment.md` § Weekly targets upload) — disabled until Arman's and a
+   backup's admin email addresses are confirmed and set.
 2. **Adviser → office mapping** — a username → office list (`src/domain/offices.ts`); until then
    the office screens show "Unassigned".
 3. **Revenue definition** — which commission columns count as revenue (screens label revenue

@@ -7,6 +7,7 @@ import { OfficeRunChase } from "./OfficeRunChase.js";
 import { AdviserLeague } from "./AdviserLeague.js";
 import { FunnelHealth } from "./FunnelHealth.js";
 import { MarketMomentum } from "./MarketMomentum.js";
+import { Targets } from "./Targets.js";
 
 export interface PageDef {
   id: string;
@@ -20,7 +21,9 @@ export const PAGES: PageDef[] = [
   { id: "advisers", label: "Adviser League", Component: AdviserLeague },
   { id: "funnel", label: "Funnel Health", Component: FunnelHealth },
   { id: "momentum", label: "Market Momentum", Component: MarketMomentum },
+  { id: "targets", label: "Targets", Component: Targets },
 ];
 
-/** All five screens rotate on the wall by default; per-TV override via ?pages=. */
-export const KIOSK_PAGE_IDS = PAGES.map((p) => p.id);
+// The wall/kiosk rotation is for the office TVs — an upload form has no business there. Every
+// PAGE rotates EXCEPT "targets" (must not be missed when adding future admin-only pages either).
+export const KIOSK_PAGE_IDS = PAGES.filter((p) => p.id !== "targets").map((p) => p.id);

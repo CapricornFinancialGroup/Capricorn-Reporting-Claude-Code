@@ -13,14 +13,11 @@ import type { Config } from "../../config.js";
 import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import {
   ALERT_THRESHOLDS,
-  DAILY_TARGETS,
   dayTarget,
   KPI_KEYS,
   KPI_LABELS,
   LEAGUE,
-  OFFICE_DAILY_TARGETS,
   REFERRAL_RATE_TARGET,
-  REVENUE_DAILY_TARGET,
   type KpiKey,
   type KpiTargets,
 } from "../../domain/targets.js";
@@ -33,6 +30,7 @@ import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "
 import { mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
+import { getDailyTargets, getOfficeDailyTargets, getRevenueDailyTarget, getTargetsProvenance } from "../targets/store.js";
 import * as tickerQ from "./ticker.js";
 import { isoWeekNo, pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekStartOf } from "./trends.js";
 import { divide, round } from "./util.js";
@@ -238,15 +236,17 @@ function officeStatus(pct: number | null): ChaseStatus {
 
 export async function meta(config: Config) {
   const asOf = await dataAsOf(config);
-  const weekly = Object.fromEntries(KPI_KEYS.map((k) => [k, DAILY_TARGETS[k] * 5])) as KpiTargets;
+  const daily = getDailyTargets();
+  const weekly = Object.fromEntries(KPI_KEYS.map((k) => [k, daily[k] * 5])) as KpiTargets;
   return {
     offices: [...OFFICES],
     targets: {
-      daily: DAILY_TARGETS,
+      daily,
       weekly,
-      officeDaily: OFFICE_DAILY_TARGETS,
-      revenueDaily: REVENUE_DAILY_TARGET,
+      officeDaily: getOfficeDailyTargets(),
+      revenueDaily: getRevenueDailyTarget(),
     },
+    targetsProvenance: getTargetsProvenance(),
     dataAsOf: asOf,
     refreshSeconds: config.reporting.refreshSeconds,
     cycleSeconds: config.reporting.cycleSeconds,
@@ -271,8 +271,9 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     const writtenRows = await q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(ctx.windowStart, ctx.dataAsOf));
     const totalWritten = Math.round(sum(writtenRows.map((r) => r.totalValue ?? 0)));
 
+    const dailyTargets = getDailyTargets();
     const kpis = KPI_KEYS.map((k) => {
-      const weekly = DAILY_TARGETS[k] * 5;
+      const weekly = dailyTargets[k] * 5;
       const thisWeek = weekRows(core.daily[k], ctx);
       const wtd = sum(thisWeek.map((r) => r.n));
       const pace: Pace = computePace(weekly, wtd, ctx.fraction);
@@ -313,9 +314,10 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       };
     });
 
+    const officeDailyTargets = getOfficeDailyTargets();
     const leaderboard = officeAggregates(core)
       .map((o) => {
-        const targets = OFFICE_DAILY_TARGETS[o.office] ?? emptyKpiRecord();
+        const targets = officeDailyTargets[o.office] ?? emptyKpiRecord();
         const pct = pctToPace(o.mtd, targets, ctx);
         return {
           office: o.office,
@@ -364,9 +366,10 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
     // The pace line is the WEIGHTED cumulative expected share (Fri = 80% of a Mon–Thu day).
     const paceLine = ctx.cumulativeShares.map((s) => Math.round(s * 100));
 
+    const officeDailyTargets = getOfficeDailyTargets();
     const offices = officeAggregates(core)
       .map((o) => {
-        const targets = OFFICE_DAILY_TARGETS[o.office] ?? emptyKpiRecord();
+        const targets = officeDailyTargets[o.office] ?? emptyKpiRecord();
         const hasTargets = KPI_KEYS.some((k) => targets[k] > 0);
         const kpis = KPI_KEYS.map((k) => {
           const weekly = targets[k] * 5;
@@ -939,8 +942,9 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
 
     // Milestones from the chase state — the "story of the week" lines between events.
     const milestones: Item[] = [];
+    const dailyTargets = getDailyTargets();
     for (const k of KPI_KEYS) {
-      const weekly = DAILY_TARGETS[k] * 5;
+      const weekly = dailyTargets[k] * 5;
       const wtd = sum(weekRows(core.daily[k], core.ctx).map((r) => r.n));
       const pace = computePace(weekly, wtd, core.ctx.fraction);
       if (pace.status !== "on_pace") {
@@ -961,8 +965,9 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
         });
       }
     }
+    const officeDailyTargets = getOfficeDailyTargets();
     const officePaces = officeAggregates(core)
-      .map((o) => ({ office: o.office, pct: pctToPace(o.mtd, OFFICE_DAILY_TARGETS[o.office] ?? emptyKpiRecord(), core.ctx) }))
+      .map((o) => ({ office: o.office, pct: pctToPace(o.mtd, officeDailyTargets[o.office] ?? emptyKpiRecord(), core.ctx) }))
       .filter((o) => o.pct != null)
       .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0));
     if (officePaces[0]) {

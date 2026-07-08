@@ -86,3 +86,11 @@ export function isOpsUser(email: string | null | undefined, opsUsers: string[]):
   if (opsUsers.length === 0) return true;
   return Boolean(email) && opsUsers.includes(email!.toLowerCase());
 }
+
+/** Whether a user may upload/mutate the weekly targets. Empty allowlist = DISABLED (fails
+ *  CLOSED) — deliberately the opposite default from isOpsUser above: that shape is fine for gating
+ *  a read view, but wrong for a route that mutates live targets with no confirmed admin list yet. */
+export function isTargetsAdmin(email: string | null | undefined, adminEmails: string[]): boolean {
+  if (adminEmails.length === 0) return false;
+  return Boolean(email) && adminEmails.includes(email!.toLowerCase());
+}
