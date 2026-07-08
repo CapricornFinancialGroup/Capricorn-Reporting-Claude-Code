@@ -8,11 +8,17 @@ import { AdviserLeague } from "./AdviserLeague.js";
 import { FunnelHealth } from "./FunnelHealth.js";
 import { MarketMomentum } from "./MarketMomentum.js";
 import { Targets } from "./Targets.js";
+import { Glossary } from "./Glossary.js";
 
 export interface PageDef {
   id: string;
   label: string;
   Component: ComponentType<PageProps>;
+  /** Hidden from BOTH the kiosk/wall rotation and the dashboard nav unless the signed-in viewer
+   *  is a Targets admin (meta.isTargetsAdmin) — one flag drives both exclusions, so a future
+   *  admin-only page can't accidentally end up on the office wall TVs by adding it here and
+   *  forgetting a second list. */
+  adminOnly?: boolean;
 }
 
 export const PAGES: PageDef[] = [
@@ -21,9 +27,10 @@ export const PAGES: PageDef[] = [
   { id: "advisers", label: "Adviser League", Component: AdviserLeague },
   { id: "funnel", label: "Funnel Health", Component: FunnelHealth },
   { id: "momentum", label: "Market Momentum", Component: MarketMomentum },
-  { id: "targets", label: "Targets", Component: Targets },
+  { id: "targets", label: "Targets", Component: Targets, adminOnly: true },
+  { id: "glossary", label: "Glossary", Component: Glossary, adminOnly: true },
 ];
 
-// The wall/kiosk rotation is for the office TVs — an upload form has no business there. Every
-// PAGE rotates EXCEPT "targets" (must not be missed when adding future admin-only pages either).
-export const KIOSK_PAGE_IDS = PAGES.filter((p) => p.id !== "targets").map((p) => p.id);
+// The wall/kiosk rotation is for the office TVs — an upload form or an internal glossary has no
+// business there.
+export const KIOSK_PAGE_IDS = PAGES.filter((p) => !p.adminOnly).map((p) => p.id);

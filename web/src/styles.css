@@ -412,3 +412,19 @@ button { font: inherit; }
 .placeholder-note {
   font-size: 9px; color: var(--text-secondary); opacity: 0.75; letter-spacing: 0.03em;
 }
+
+/* ------------------------------------------------------------- glossary */
+.glossary-list { display: flex; flex-direction: column; }
+.glossary-term { padding: 10px 0; border-bottom: 1px solid var(--border); }
+.glossary-term:last-child { border-bottom: none; }
+.glossary-term-name { font-size: 13px; font-weight: 700; color: var(--text-primary); display: flex; align-items: center; gap: 8px; }
+.glossary-note {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--gold); background: var(--gold-bg); padding: 2px 7px; border-radius: 20px;
+}
+.glossary-term-def { font-size: 12.5px; color: var(--text-secondary); margin-top: 3px; max-width: 78ch; }
+.glossary-calc {
+  margin-top: 6px; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 10.5px;
+  color: var(--text-secondary); background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 10px; display: inline-block; max-width: 100%;
+}

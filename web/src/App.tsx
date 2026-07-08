@@ -33,7 +33,11 @@ export function App({ mode }: { mode: Mode }) {
   if (error) return <ErrorNote message={error} />;
   if (!meta) return <div className="loading">Loading…</div>;
 
-  const page = PAGES.find((p) => p.id === pageId) ?? PAGES[0];
+  // Admin-only pages (Targets, Glossary) are invisible to everyone else — same isTargetsAdmin gate
+  // the upload route enforces server-side. A non-admin landing on one directly via URL hash (an
+  // old bookmark, a shared link) falls back to the first visible page rather than rendering it.
+  const visiblePages = PAGES.filter((p) => !p.adminOnly || meta.isTargetsAdmin);
+  const page = visiblePages.find((p) => p.id === pageId) ?? visiblePages[0];
   const Page = page.Component;
   const filterable = FILTERABLE.has(page.id);
   // Run-chase screens always get EMPTY_FILTERS so they stay anchored on the current week.
@@ -45,7 +49,7 @@ export function App({ mode }: { mode: Mode }) {
     <div className="dash-shell">
       <GosHeader title={page.label} />
       <nav className="dash-nav">
-        {PAGES.map((p) => (
+        {visiblePages.map((p) => (
           <button
             key={p.id}
             className={`dash-tab ${p.id === page.id ? "on" : ""}`}

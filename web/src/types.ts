@@ -20,6 +20,10 @@ export interface Meta {
     revenueDaily: number;
   };
   targetsProvenance: TargetsProvenance;
+  /** True only for the signed-in viewer's own request (never on the kiosk) — gates the
+   *  Targets/Glossary nav tabs on the frontend. The upload route enforces the same check
+   *  server-side regardless of what the nav shows. */
+  isTargetsAdmin: boolean;
   dataAsOf: string;
   refreshSeconds: number;
   cycleSeconds: number;
