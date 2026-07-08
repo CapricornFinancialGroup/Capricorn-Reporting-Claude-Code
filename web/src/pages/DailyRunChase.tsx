@@ -8,7 +8,7 @@ import { EChart } from "../components/EChart.js";
 import { KpiCard } from "../components/KpiCard.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { Ticker } from "../components/Ticker.js";
-import { num, shortDate, signed } from "../format.js";
+import { gbpCompact, num, shortDate, signed } from "../format.js";
 import type { DailyRunChasePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
@@ -20,6 +20,8 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
+          <Ticker mode={mode} refreshMs={refreshMs} />
+
           <div className="row cols-4">
             {data.kpis.map((k) => (
               <KpiCard
@@ -30,6 +32,17 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 wtd={k.wtd}
               />
             ))}
+          </div>
+
+          {/* Total mortgage value written this chase week — not commission revenue (see Adviser
+              League's "Est. Revenue" for that). Conor 2026-07-07, item 5. */}
+          <div className="card" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "6px 14px" }}>
+            <span className="card-title" style={{ marginBottom: 0, whiteSpace: "nowrap" }}>
+              Total Written <span className="card-sub">this week · total mortgage value</span>
+            </span>
+            <span style={{ fontSize: 20, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
+              {gbpCompact(data.totalWritten)}
+            </span>
           </div>
 
           {/* Weekly progress indicator — where the team should be by end of each day. */}
@@ -128,8 +141,6 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
               Targets are placeholder values pending Capricorn confirmation; advisers without an office mapping show as Unassigned.
             </div>
           </div>
-
-          <Ticker mode={mode} refreshMs={refreshMs} />
         </div>
       )}
     </Load>

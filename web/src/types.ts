@@ -52,6 +52,8 @@ export interface DayView {
 
 export interface DailyRunChasePayload {
   dataAsOf: string;
+  /** Total mortgage value written this chase week (SUM(MortgageValue)) — not commission revenue. */
+  totalWritten: number;
   week: {
     start: string;
     end: string;
@@ -161,15 +163,6 @@ export interface FunnelHealthPayload {
   alerts: Array<{ severity: "critical" | "warning"; title: string; detail: string }>;
   donut: { written: number; referred: number; notReferred: number; referredPct: number | null };
   queues: Array<{ key: string; label: string; count: number; sub: string }>;
-  pipeline: {
-    inFlightCount: number;
-    inFlightValue: number;
-    avgCaseSize: number;
-    protectionOpen: number;
-    revenueLatestDay: number;
-    revenueTarget: number;
-    gap: number;
-  };
 }
 
 export interface MomentumKpi {

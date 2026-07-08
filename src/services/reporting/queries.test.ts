@@ -2,7 +2,7 @@
 // and date binding conventions, and that params bind what the text references.
 
 import { describe, expect, it } from "vitest";
-import { agedApplications, actionQueues, pipelineSummary, mortgageStageCounts } from "./funnel.js";
+import { agedApplications, actionQueues, mortgageStageCounts } from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, KPI_SPECS } from "./kpis.js";
 import { revenueDaily } from "./momentum.js";
 import { applicationEvents, leadEvents, referralEvents, saleEvents } from "./ticker.js";
@@ -71,13 +71,6 @@ describe("funnel builders", () => {
     const q = actionQueues("2026-07-05", "2026-07-01");
     expectConventions(q);
     for (const alias of ["callNow", "followUp", "chaseLender", "writtenLeads"]) expect(q.text).toContain(alias);
-  });
-
-  it("pipeline summary computes value, size and latest-day revenue", () => {
-    const q = pipelineSummary("2026-07-05");
-    expectConventions(q);
-    expect(q.text).toContain("MortgageValue");
-    expect(q.text).toContain("NetCommission");
   });
 });
 

@@ -119,37 +119,6 @@ export function actionQueues(asOf: string, monthStart: string): BuiltQuery {
 // referral→source-case link, the donut and REFER NOW queue are flow proxies computed in the dataset
 // layer: referrals made vs applications written in the same window.
 
-export interface PipelineSummary {
-  inFlightCount: number;
-  inFlightValue: number | null;
-  avgCaseSize: number | null;
-  revenueLatestDay: number | null;
-}
-
-/** Pipeline strip: open written cases (90d) value/size + estimated revenue on the latest day. */
-export function pipelineSummary(asOf: string): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"));
-  const params: SqlParam[] = [...base.params, { name: "AsOf", value: asOf, kind: "date" }];
-  return {
-    text: `SELECT
-             SUM(CASE WHEN f.WrittenDate >= DATEADD(day, -90, @AsOf) AND f.WrittenDate <= @AsOf
-                       AND f.CompletionDate IS NULL AND COALESCE(f.NotProceedingYN, 'N') <> 'Y'
-                      THEN 1 ELSE 0 END) AS inFlightCount,
-             SUM(CASE WHEN f.WrittenDate >= DATEADD(day, -90, @AsOf) AND f.WrittenDate <= @AsOf
-                       AND f.CompletionDate IS NULL AND COALESCE(f.NotProceedingYN, 'N') <> 'Y'
-                      THEN f.MortgageValue END) AS inFlightValue,
-             AVG(CASE WHEN f.WrittenDate >= DATEADD(day, -90, @AsOf) AND f.WrittenDate <= @AsOf
-                       AND f.CompletionDate IS NULL AND COALESCE(f.NotProceedingYN, 'N') <> 'Y'
-                      THEN f.MortgageValue END) AS avgCaseSize,
-             SUM(CASE WHEN f.WrittenDate = @AsOf
-                      THEN COALESCE(f.NetCommission, f.ProductCommission, 0) + COALESCE(f.ClientFeeAmount, 0)
-                      END) AS revenueLatestDay
-             FROM dbo.mortgagecase f
-            WHERE ${base.clause};`,
-    params,
-  };
-}
-
 export interface StageAges {
   leadAvgDays: number | null;
   applicationAvgDays: number | null;

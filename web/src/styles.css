@@ -340,11 +340,6 @@ button { font: inherit; }
   50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.14); }
 }
 
-.strip { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.strip-chip { background: #F8FAFC; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; }
-.strip-chip-label { font-size: 8.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); }
-.strip-chip-value { font-size: 17px; font-weight: 900; font-variant-numeric: tabular-nums; }
-
 /* ---------------------------------------------------------------- league */
 
 .league-panel-title { font-size: 11px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }

@@ -251,6 +251,12 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     const { ctx } = core;
     const days = ctx.weekDays;
 
+    // Total Written (Conor 2026-07-07, item 5): total mortgage value written this chase week — the
+    // same WrittenDate column the Applications KPI already uses, so date semantics line up. Not
+    // commission revenue (that's Adviser League's "Est. Revenue") — total mortgage/loan value.
+    const writtenRows = await q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(ctx.windowStart, ctx.dataAsOf));
+    const totalWritten = Math.round(sum(writtenRows.map((r) => r.totalValue ?? 0)));
+
     const kpis = KPI_KEYS.map((k) => {
       const weekly = DAILY_TARGETS[k] * 5;
       const thisWeek = weekRows(core.daily[k], ctx);
@@ -312,6 +318,7 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
 
     return {
       dataAsOf: ctx.dataAsOf,
+      totalWritten,
       week: {
         start: ctx.windowStart,
         end: ctx.weekDays[4],
@@ -582,17 +589,16 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
   // Window: an explicit date range (dashboard filter) wins; else the current month to date.
   const from = f.from ?? mtdPacing(lakeAsOf).windowStart;
   const to = f.to ?? lakeAsOf;
-  // Operational "as of" for the point-in-time widgets (aged/queues/pipeline): the window end,
-  // but never beyond the freshest loaded day.
+  // Operational "as of" for the point-in-time widgets (aged/queues): the window end, but never
+  // beyond the freshest loaded day.
   const asOf = to < lakeAsOf ? to : lakeAsOf;
   return cached(`ds-funnel-health:${from}:${to}`, ttl(config), async () => {
-    const [stagesRows, referralsDaily, salesDaily, aged, queues, pipelineRows, agesRows] = await Promise.all([
+    const [stagesRows, referralsDaily, salesDaily, aged, queues, agesRows] = await Promise.all([
       q<funnelQ.MortgageStageCounts>(config, funnelQ.mortgageStageCounts(from, to)),
       q<DailyCount>(config, kpiDaily("referrals", from, to)),
       q<DailyCount>(config, kpiDaily("sales", from, to)),
       q<funnelQ.AgedApplications>(config, funnelQ.agedApplications(asOf)),
       q<funnelQ.ActionQueues>(config, funnelQ.actionQueues(asOf, from)),
-      q<funnelQ.PipelineSummary>(config, funnelQ.pipelineSummary(asOf)),
       q<funnelQ.StageAges>(config, funnelQ.stageAges(asOf)),
     ]);
 
@@ -628,7 +634,6 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
     };
     const referNow = Math.max(0, queueRow.writtenLeads - referrals);
     const agedRow = aged[0] ?? { agedCount: 0, avgAgeDays: null, oldestDays: null };
-    const pipeline = pipelineRows[0] ?? { inFlightCount: 0, inFlightValue: null, avgCaseSize: null, revenueLatestDay: null };
     const ages = agesRows[0] ?? { leadAvgDays: null, applicationAvgDays: null, offerAvgDays: null };
 
     const protectionConv = divide(sales, referrals);
@@ -648,8 +653,6 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
       });
     }
 
-    const revenueTarget = REVENUE_DAILY_TARGET;
-    const revenueLatest = Math.round(pipeline.revenueLatestDay ?? 0);
     return {
       dataAsOf: asOf,
       window: { from, to: asOf },
@@ -675,15 +678,6 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
         { key: "chase-lender", label: "Chase Lender", count: queueRow.chaseLender, sub: `apps ${ALERT_THRESHOLDS.agedApplicationDays}+ days, no offer` },
         { key: "refer-now", label: "Refer Now", count: referNow, sub: "apps not referred to protection" },
       ],
-      pipeline: {
-        inFlightCount: pipeline.inFlightCount,
-        inFlightValue: Math.round(pipeline.inFlightValue ?? 0),
-        avgCaseSize: Math.round(pipeline.avgCaseSize ?? 0),
-        protectionOpen: donut.notReferred,
-        revenueLatestDay: revenueLatest,
-        revenueTarget,
-        gap: revenueLatest - revenueTarget,
-      },
     };
   });
 }

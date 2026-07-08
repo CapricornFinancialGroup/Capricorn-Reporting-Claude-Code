@@ -1,10 +1,10 @@
 // Screen 4 — Funnel Health: stage flow with conversion badges, stage metrics, active alerts,
-// protection-opportunities donut, pulsing action queues, pipeline summary strip.
+// protection-opportunities donut, pulsing action queues.
 
 import { usePayload } from "../api.js";
 import { donutChart, GREEN, RED } from "../charts.js";
 import { EChart } from "../components/EChart.js";
-import { gbpCompact, num, shortDate, signed } from "../format.js";
+import { num, shortDate } from "../format.js";
 import type { FunnelHealthPayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
@@ -103,22 +103,6 @@ export function FunnelHealth({ filters, mode, refreshMs }: PageProps) {
               </div>
             </div>
           </div>
-
-          <div className="card">
-            <div className="card-title"><span>Pipeline Summary</span></div>
-            <div className="strip">
-              <Chip label="Applications in Flight" value={`${num(data.pipeline.inFlightCount)} · ${gbpCompact(data.pipeline.inFlightValue)}`} />
-              <Chip label="Avg Case Size" value={gbpCompact(data.pipeline.avgCaseSize)} />
-              <Chip label="Protection Pipeline Open" value={num(data.pipeline.protectionOpen)} />
-              <Chip label={`Est. Revenue (${shortDate(data.dataAsOf)}) *`} value={gbpCompact(data.pipeline.revenueLatestDay)} />
-              <Chip label="Daily Revenue Target *" value={gbpCompact(data.pipeline.revenueTarget)} />
-              <Chip
-                label="Gap to Target"
-                value={signed(data.pipeline.gap)}
-                cls={data.pipeline.gap >= 0 ? "val-green" : "val-red"}
-              />
-            </div>
-          </div>
         </div>
       )}
     </Load>
@@ -144,14 +128,5 @@ function FunnelCell({ stage, conv, leadsCount, last }: {
         </div>
       )}
     </>
-  );
-}
-
-function Chip({ label, value, cls = "" }: { label: string; value: string; cls?: string }) {
-  return (
-    <div className="strip-chip">
-      <div className="strip-chip-label">{label}</div>
-      <div className={`strip-chip-value ${cls}`}>{value}</div>
-    </div>
   );
 }
