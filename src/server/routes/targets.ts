@@ -3,6 +3,8 @@
 //   GET  /api/targets/template          blank .xlsx, generated from the current office roster
 //   POST /api/targets/upload            manual two-sheet template, isTargetsAdmin-gated
 //   POST /api/targets/import-datarails  Capricorn's real Datarails export, Applications+Sales only
+//   POST /api/targets/import-written    Arman's two Weekly Written Targets files → Revenue target
+//                                        (Mortgage + Insurance written £, business-wide)
 //
 // Behind Easy Auth like /api/reporting/* (not Easy-Auth-excluded like the kiosk) — this mutates
 // live targets, so it's dashboard-only, never reachable from an unattended kiosk TV.
@@ -20,6 +22,7 @@ import { shiftDays } from "../../services/reporting/trends.js";
 import { uploadTargetsBlob } from "../../services/targets/blob.js";
 import { parseDatarailsWorkbook, type AdviserRosterEntry } from "../../services/targets/parseDatarails.js";
 import { parseTargetsWorkbook, runSoftChecks, type ParsedTargets } from "../../services/targets/parse.js";
+import { parseWrittenTargetsWorkbooks } from "../../services/targets/parseWrittenTargets.js";
 import { buildBlankTemplate } from "../../services/targets/template.js";
 import {
   activateTargets,
@@ -126,7 +129,7 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const base = getCurrentAsParsedTargets(today);
     const merged: ParsedTargets = {
       effectiveWeek: shiftDays(weekSaturday, 2), // Saturday → the Monday that starts its working week
-      revenueWeekly: base.revenueWeekly,
+      writtenWeekly: base.writtenWeekly,
       offices: Object.fromEntries(
         Object.entries(base.offices).map(([office, values]) => [
           office,
@@ -170,5 +173,75 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     logger.info("Datarails targets import activated", { effectiveWeek: merged.effectiveWeek, uploadedBy, unmatched: outcome.unmatchedAdvisers.length });
 
     return reply.send({ ok: true, softWarnings, unmatchedAdvisers: outcome.unmatchedAdvisers, provenance: getTargetsProvenance() });
+  });
+
+  app.post("/api/targets/import-written", async (request, reply) => {
+    const viewer = resolveCsm(request.headers, config.devUserEmail);
+    if (!viewer) {
+      return reply.code(401).send({ error: "Not authenticated." });
+    }
+    if (!isTargetsAdmin(viewer.email, config.targets.adminEmails)) {
+      return reply.code(403).send({ error: "Not authorized to import targets." });
+    }
+    if (!config.targets.storageAccount) {
+      return reply.code(503).send({ error: "Targets storage isn't configured on this environment." });
+    }
+
+    let mortgageBuffer: Buffer | undefined;
+    let insuranceBuffer: Buffer | undefined;
+    let weekSaturday: string | undefined;
+    for await (const part of request.parts()) {
+      if (part.type === "file") {
+        const buf = await part.toBuffer();
+        if (part.fieldname === "mortgage") mortgageBuffer = buf;
+        else if (part.fieldname === "insurance") insuranceBuffer = buf;
+      } else if (part.fieldname === "week") {
+        weekSaturday = String(part.value).trim();
+      }
+    }
+    if (!mortgageBuffer || !insuranceBuffer) {
+      return reply.code(400).send({ error: 'Both a Mortgage and an Insurance written-targets file are required (fields "mortgage" and "insurance").' });
+    }
+    if (!weekSaturday || !/^\d{4}-\d{2}-\d{2}$/.test(weekSaturday)) {
+      return reply.code(400).send({ error: "A valid week (YYYY-MM-DD, the workbook's Saturday column) is required." });
+    }
+
+    const mortgageWb = new ExcelJS.Workbook();
+    const insuranceWb = new ExcelJS.Workbook();
+    try {
+      await mortgageWb.xlsx.load(mortgageBuffer as unknown as ExcelJS.Buffer);
+      await insuranceWb.xlsx.load(insuranceBuffer as unknown as ExcelJS.Buffer);
+    } catch {
+      return reply.code(422).send({ error: "Validation failed.", hardErrors: ["Could not read one of the files — are they valid .xlsx?"], softWarnings: [] });
+    }
+
+    const outcome = parseWrittenTargetsWorkbooks(mortgageWb, insuranceWb, weekSaturday);
+    if (!outcome.ok || !outcome.writtenWeekly) {
+      return reply.code(422).send({ error: "Validation failed.", hardErrors: outcome.hardErrors, softWarnings: outcome.softWarnings });
+    }
+
+    const today = tzToday(new Date(), config.reporting.timeZone);
+    const base = getCurrentAsParsedTargets(today);
+    const merged: ParsedTargets = {
+      effectiveWeek: shiftDays(weekSaturday, 2), // Saturday → the Monday that starts its working week
+      offices: base.offices,
+      writtenWeekly: outcome.writtenWeekly,
+    };
+
+    const softWarnings = [...outcome.softWarnings, ...runSoftChecks(merged, getLastParsed(), today)];
+    const uploadedBy = viewer.email;
+    const uploadedAt = new Date().toISOString();
+    const note = `Written targets from import (week of ${weekSaturday}): Mortgage £${Math.round(outcome.writtenWeekly.mortgage).toLocaleString()} + Insurance £${Math.round(outcome.writtenWeekly.insurance).toLocaleString()}/wk. Leads/Applications/Protection unchanged.`;
+    try {
+      // Store the mortgage workbook as the audit artefact (the pair share a week + provenance row).
+      await uploadTargetsBlob(config.targets.storageAccount, mortgageBuffer, merged, uploadedBy, uploadedAt);
+    } catch (err) {
+      logger.error("Targets blob write failed", { err: String(err) });
+      return reply.code(502).send({ error: "Import validated but could not be saved — please try again." });
+    }
+    activateTargets(merged, uploadedBy, uploadedAt, note);
+    logger.info("Written targets import activated", { effectiveWeek: merged.effectiveWeek, uploadedBy });
+
+    return reply.send({ ok: true, softWarnings, provenance: getTargetsProvenance() });
   });
 }

@@ -18,7 +18,8 @@ export interface Meta {
     daily: Record<KpiKey, number>;
     weekly: Record<KpiKey, number>;
     officeDaily: Record<string, Record<KpiKey, number>>;
-    revenueDaily: number;
+    /** WEEKLY written targets, £ — Mortgage + Insurance (the dashboard's "Revenue"). */
+    writtenWeekly: { mortgage: number; insurance: number };
   };
   targetsProvenance: TargetsProvenance;
   /** True only for the signed-in viewer's own request (never on the kiosk) — gates the
@@ -193,15 +194,25 @@ export interface MarketMomentumPayload {
   series: {
     applications: number[];
     referrals: number[];
-    /** Actual weekly revenue — stops (null) at the current, still-in-progress week. */
-    revenueActualK: Array<number | null>;
+    /** Actual weekly WRITTEN business £k (Mortgage + Insurance) — stops (null) at the current,
+     *  still-in-progress week. */
+    writtenActualK: Array<number | null>;
     /** Null except a two-point segment: [last complete week's actual, current week's day-by-day
      *  forecast] — renders as a dashed "chipping away" projection from the actual line's end. */
-    revenueForecastK: Array<number | null>;
+    writtenForecastK: Array<number | null>;
     leads: number[];
     avgCaseSizeK: Array<number | null>;
     referralRatePct: Array<number | null>;
   };
+  /** Written business vs target for the latest COMPLETE week (£), split by product + combined. */
+  written: {
+    weekLabel: string;
+    mortgage: { actual: number; target: number };
+    insurance: { actual: number; target: number };
+    combined: { actual: number; target: number };
+  };
+  /** Combined weekly written target, £k — reference line on the Weekly Written trend. */
+  writtenTargetCombinedK: number;
   kpis: MomentumKpi[];
   referralRateTargetPct: number;
   verdict: string;

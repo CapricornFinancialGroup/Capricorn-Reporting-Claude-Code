@@ -33,6 +33,12 @@ export function Targets({ meta }: PageProps) {
   const [drImporting, setDrImporting] = useState(false);
   const [drResult, setDrResult] = useState<UploadResult | null>(null);
 
+  const [wrMortFile, setWrMortFile] = useState<File | null>(null);
+  const [wrInsFile, setWrInsFile] = useState<File | null>(null);
+  const [wrWeek, setWrWeek] = useState(nextSaturdayIso);
+  const [wrImporting, setWrImporting] = useState(false);
+  const [wrResult, setWrResult] = useState<UploadResult | null>(null);
+
   const provenance = meta.targetsProvenance;
 
   const importDatarails = async () => {
@@ -55,6 +61,30 @@ export function Targets({ meta }: PageProps) {
       setDrResult({ ok: false, error: String(err instanceof Error ? err.message : err) });
     } finally {
       setDrImporting(false);
+    }
+  };
+
+  const importWritten = async () => {
+    if (!wrMortFile || !wrInsFile) return;
+    setWrImporting(true);
+    setWrResult(null);
+    try {
+      const body = new FormData();
+      body.append("week", wrWeek);
+      body.append("mortgage", wrMortFile);
+      body.append("insurance", wrInsFile);
+      const res = await fetch("/api/targets/import-written", { method: "POST", body });
+      const json = (await res.json()) as UploadResult;
+      if (res.ok && json.ok) {
+        setWrResult({ ok: true, softWarnings: json.softWarnings });
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setWrResult({ ok: false, error: json.error, hardErrors: json.hardErrors, softWarnings: json.softWarnings });
+      }
+    } catch (err) {
+      setWrResult({ ok: false, error: String(err instanceof Error ? err.message : err) });
+    } finally {
+      setWrImporting(false);
     }
   };
 
@@ -122,7 +152,9 @@ export function Targets({ meta }: PageProps) {
           </tbody>
         </table>
         <div className="placeholder-note" style={{ marginTop: 6 }}>
-          Weekly Revenue target: {gbpCompact(meta.targets.revenueDaily * 5)}. All figures above are weekly.
+          Weekly Written target (Revenue): Mortgage {gbpCompact(meta.targets.writtenWeekly.mortgage)} + Insurance{" "}
+          {gbpCompact(meta.targets.writtenWeekly.insurance)} = {gbpCompact(meta.targets.writtenWeekly.mortgage + meta.targets.writtenWeekly.insurance)}.
+          All figures above are weekly.
         </div>
       </div>
 
@@ -227,6 +259,62 @@ export function Targets({ meta }: PageProps) {
                 <thead><tr><th>Warning</th></tr></thead>
                 <tbody>
                   {drResult.softWarnings.map((w) => <tr key={w}><td>{w}</td></tr>)}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-title"><span>Import Written Targets (Revenue)</span></div>
+        <div className="placeholder-note">
+          Reads Capricorn's "Weekly Mortgage Written" and "Weekly Insurance Written" target files and
+          sets the business-wide Revenue target (Mortgage + Insurance) for one week. Actuals come from
+          the Total Written report.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 480, marginTop: 10 }}>
+          <label>
+            Week (the workbook's Saturday column):{" "}
+            <input type="date" value={wrWeek} onChange={(e) => setWrWeek(e.target.value)} />
+          </label>
+          <label>
+            Mortgage written targets (.xlsx):{" "}
+            <input type="file" accept=".xlsx" onChange={(e) => setWrMortFile(e.target.files?.[0] ?? null)} />
+          </label>
+          <label>
+            Insurance written targets (.xlsx):{" "}
+            <input type="file" accept=".xlsx" onChange={(e) => setWrInsFile(e.target.files?.[0] ?? null)} />
+          </label>
+          <button
+            className="filter-chip"
+            disabled={!wrMortFile || !wrInsFile || wrImporting}
+            onClick={() => void importWritten()}
+            style={{ alignSelf: "flex-start" }}
+          >
+            {wrImporting ? "Importing…" : "Import"}
+          </button>
+        </div>
+
+        {wrResult?.ok && (
+          <div className="placeholder-note" style={{ marginTop: 10, color: "var(--green)" }}>
+            Import successful — refreshing…
+            {wrResult.softWarnings && wrResult.softWarnings.length > 0 && (
+              <ul>{wrResult.softWarnings.map((w) => <li key={w}>{w}</li>)}</ul>
+            )}
+          </div>
+        )}
+
+        {wrResult && !wrResult.ok && (
+          <div style={{ marginTop: 10 }}>
+            <div className="alert critical">
+              <div className="alert-title">{wrResult.error ?? "Import failed"}</div>
+            </div>
+            {wrResult.hardErrors && wrResult.hardErrors.length > 0 && (
+              <table className="lb-table" style={{ marginTop: 10 }}>
+                <thead><tr><th>Issue</th></tr></thead>
+                <tbody>
+                  {wrResult.hardErrors.map((e) => <tr key={e}><td>{e}</td></tr>)}
                 </tbody>
               </table>
             )}

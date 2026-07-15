@@ -26,3 +26,33 @@ export function revenueDaily(from: string, to: string): BuiltQuery {
     params: where.params,
   };
 }
+
+export interface WrittenByProductDaily {
+  d: string;
+  mortgageWritten: number | null;
+  insuranceWritten: number | null;
+}
+
+/** Daily WRITTEN business £ by product, from `vw_total_written_by_product` — the pre-built view that
+ *  backs Capricorn's own Total Written report (docs/data-dictionary.md). Sourcing the dashboard's
+ *  "Revenue" actual from here means it reconciles to that report by construction (Kyle 2026-07-14).
+ *  "Insurance" = ProtectionWritten (protection); GI (BuildingsContentsWritten) is excluded — there's
+ *  no GI target. The view is pre-aggregated (no DeletedYN / no LeadDate), so only org + WrittenDate
+ *  scoping applies.
+ *
+ *  ⚠ Ships UNVALIDATED against the live lake (Luke authorised 2026-07-14): the view's column names /
+ *  population — ProtectionWritten especially — have not been checked against real data. Sanity-check
+ *  the numbers on the board immediately after deploy. */
+export function writtenByProductDaily(from: string, to: string): BuiltQuery {
+  const where = combine(orgFilter("f"), dateRange("f.WrittenDate", from, to));
+  return {
+    text: `SELECT CAST(f.WrittenDate AS date) AS d,
+                  SUM(f.MortgageWritten) AS mortgageWritten,
+                  SUM(f.ProtectionWritten) AS insuranceWritten
+             FROM dbo.vw_total_written_by_product f
+            ${whereClause(where)}
+            GROUP BY CAST(f.WrittenDate AS date)
+            ORDER BY d;`,
+    params: where.params,
+  };
+}

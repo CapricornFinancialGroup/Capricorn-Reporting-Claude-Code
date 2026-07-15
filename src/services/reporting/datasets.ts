@@ -29,7 +29,7 @@ import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "
 import { mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
-import { getDailyTargets, getOfficeDailyTargets, getRevenueDailyTarget, getTargetsProvenance } from "../targets/store.js";
+import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
 import * as tickerQ from "./ticker.js";
 import { isoWeekNo, pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekStartOf } from "./trends.js";
 import { divide, round } from "./util.js";
@@ -243,7 +243,8 @@ export async function meta(config: Config) {
       daily,
       weekly,
       officeDaily: getOfficeDailyTargets(),
-      revenueDaily: getRevenueDailyTarget(),
+      // WEEKLY written targets, £ — Mortgage + Insurance (the dashboard's "Revenue"). Kyle 2026-07-14.
+      writtenWeekly: getWrittenWeeklyTargets(),
     },
     targetsProvenance: getTargetsProvenance(),
     dataAsOf: asOf,
@@ -681,11 +682,12 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   const weekStarts = weekStartsFor(asOf, f.from, 13);
   const from = weekStarts[0];
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
-    const [leads, apps, refs, revenue] = await Promise.all([
+    const [leads, apps, refs, revenue, written] = await Promise.all([
       q<DailyCount>(config, kpiDaily("leads", from, asOf)),
       q<DailyCount>(config, kpiDaily("applications", from, asOf)),
       q<DailyCount>(config, kpiDaily("referrals", from, asOf)),
       q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(from, asOf)),
+      q<momentumQ.WrittenByProductDaily>(config, momentumQ.writtenByProductDaily(from, asOf)),
     ]);
 
     const weekIndex = (d: string): number => weekStarts.indexOf(weekStartOf(d));
@@ -701,16 +703,25 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const leadsW = bucket(leads);
     const appsW = bucket(apps);
     const refsW = bucket(refs);
-    const revW = weekStarts.map(() => 0);
     const valW = weekStarts.map(() => 0);
     const casesW = weekStarts.map(() => 0);
     for (const r of revenue) {
       const i = weekIndex(isoDay(r.d));
       if (i < 0) continue;
-      revW[i] += r.revenue ?? 0;
       valW[i] += r.totalValue ?? 0;
       casesW[i] += r.cases;
     }
+    // Written business £ by product (the dashboard's "Revenue", Kyle 2026-07-14) — Mortgage +
+    // Insurance from the Total Written view, combined for the headline.
+    const mortW = weekStarts.map(() => 0);
+    const insW = weekStarts.map(() => 0);
+    for (const r of written) {
+      const i = weekIndex(isoDay(r.d));
+      if (i < 0) continue;
+      mortW[i] += r.mortgageWritten ?? 0;
+      insW[i] += r.insuranceWritten ?? 0;
+    }
+    const combW = mortW.map((m, i) => m + insW[i]);
     const avgCaseW = casesW.map((n, i) => (n > 0 ? valW[i] / n : null));
     const refRateW = appsW.map((n, i) => (n > 0 ? (refsW[i] / n) * 100 : null));
 
@@ -745,27 +756,28 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // weekday's own trailing average (last 6 occurrences in the fetched window) rather than a flat
     // proportional scale-up — it shrinks toward the true total as real days land through the week.
     // Only touches Weekly Revenue; the other 3 series keep the simpler flat scale-up above.
-    let revenueForecastTotal: number | null = null;
+    const writtenCombinedDaily = written.map((r) => ({ d: isoDay(r.d), v: (r.mortgageWritten ?? 0) + (r.insuranceWritten ?? 0) }));
+    let writtenForecastTotal: number | null = null;
     if (partialLast && weekFraction > 0) {
       const currentWeekEnd = shiftDays(weekStarts[lastIdx], 6); // Friday
       let remainingForecast = 0;
       for (let d = shiftDays(asOf, 1); d <= currentWeekEnd; d = shiftDays(d, 1)) {
         const targetDow = new Date(`${d}T00:00:00Z`).getUTCDay();
-        const trailing = revenue
-          .filter((r) => new Date(`${isoDay(r.d)}T00:00:00Z`).getUTCDay() === targetDow)
+        const trailing = writtenCombinedDaily
+          .filter((r) => new Date(`${r.d}T00:00:00Z`).getUTCDay() === targetDow)
           .slice(-6)
-          .map((r) => r.revenue ?? 0);
+          .map((r) => r.v);
         remainingForecast += trailing.length ? sum(trailing) / trailing.length : 0;
       }
-      revenueForecastTotal = Math.round(revW[lastIdx] + remainingForecast);
+      writtenForecastTotal = Math.round(combW[lastIdx] + remainingForecast);
     }
     // Actual line stops before the partial week; a separate two-point segment (last complete
     // week's actual → the blended forecast) renders as a dashed "chipping away" projection.
-    const revenueActualK = revW.map((v, i) => (partialLast && i === lastIdx ? null : round(v / 1000, 1)));
-    const revenueForecastK = weekStarts.map((_, i) => {
+    const writtenActualK = combW.map((v, i) => (partialLast && i === lastIdx ? null : round(v / 1000, 1)));
+    const writtenForecastK = weekStarts.map((_, i) => {
       if (!partialLast) return null;
-      if (i === lastIdx - 1) return round(revW[lastIdx - 1] / 1000, 1);
-      if (i === lastIdx) return revenueForecastTotal != null ? round(revenueForecastTotal / 1000, 1) : null;
+      if (i === lastIdx - 1) return round(combW[lastIdx - 1] / 1000, 1);
+      if (i === lastIdx) return writtenForecastTotal != null ? round(writtenForecastTotal / 1000, 1) : null;
       return null;
     });
     const quarterAvg = (xs: Array<number | null>): number | null => {
@@ -791,7 +803,7 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const kpis = [
       kpi("applications", "Mortgage Applications", appsW, "int"),
       kpi("referrals", "Protection Referrals", refsW, "int"),
-      kpi("revenue", "Weekly Revenue", revW, "gbpk"),
+      kpi("written", "Weekly Written", combW, "gbpk"),
       kpi("leads", "Lead Volume", leadsW, "int"),
       kpi("case-size", "Avg Case Size", avgCaseW, "gbpk"),
     ];
@@ -807,6 +819,17 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
           ? "Momentum softening — most measures behind the quarter average."
           : "Holding steady — measures tracking the quarter average.";
 
+    // Written vs target (Kyle 2026-07-14): Mortgage and Insurance each shown target-vs-actual for the
+    // latest COMPLETE week (li), combined for the headline. Targets are weekly £ from the store.
+    const writtenTargets = getWrittenWeeklyTargets();
+    const writtenTargetCombined = writtenTargets.mortgage + writtenTargets.insurance;
+    const writtenBlock = {
+      weekLabel: weeks[li],
+      mortgage: { actual: Math.round(mortW[li] ?? 0), target: Math.round(writtenTargets.mortgage) },
+      insurance: { actual: Math.round(insW[li] ?? 0), target: Math.round(writtenTargets.insurance) },
+      combined: { actual: Math.round(combW[li] ?? 0), target: Math.round(writtenTargetCombined) },
+    };
+
     return {
       dataAsOf: asOf,
       weeks,
@@ -814,12 +837,15 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       series: {
         applications: appsW,
         referrals: refsW,
-        revenueActualK,
-        revenueForecastK,
+        writtenActualK,
+        writtenForecastK,
         leads: leadsW,
         avgCaseSizeK: avgCaseW.map((v) => (v == null ? null : round(v / 1000, 0))),
         referralRatePct: refRateW.map((v) => (v == null ? null : round(v, 1))),
       },
+      written: writtenBlock,
+      /** Combined weekly written target, £k — the reference line on the Weekly Written trend. */
+      writtenTargetCombinedK: round(writtenTargetCombined / 1000, 1),
       kpis,
       referralRateTargetPct: REFERRAL_RATE_TARGET * 100,
       verdict,

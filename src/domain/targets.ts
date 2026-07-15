@@ -96,10 +96,18 @@ export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
   [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0 },
 };
 
-/** Daily revenue target, £. PLACEHOLDER like the KPI targets above — trailing 4-week average
- *  written-day revenue (2026-06-08 → 2026-07-05, migration batch excluded) was ~£44.8k/day
- *  (£896,146 / 20 working days), +10% stretch, rounded. Swap for Arman's figure once it exists. */
-export const REVENUE_DAILY_TARGET = 50_000;
+/** Weekly WRITTEN targets, £. Kyle 2026-07-14 confirmed "Revenue" = written business, split
+ *  Mortgage + Insurance, each target-vs-actual, combined for the headline. Values are the
+ *  business-wide weekly totals from Capricorn's Weekly Written Targets files (Arman, week
+ *  2026-07-04): Mortgage £359,550/wk, Insurance £75,200/wk. Uploadable via /api/targets/import-written
+ *  (parseWrittenTargets.ts) — these are the fallback until an upload lands, same pattern as the KPI
+ *  targets above. Actuals come from the lake's vw_total_written_by_product (the view behind
+ *  Capricorn's own Total Written report), so the board reconciles to that report by construction. */
+export interface WrittenTargets {
+  mortgage: number;
+  insurance: number;
+}
+export const WRITTEN_WEEKLY_TARGET: WrittenTargets = { mortgage: 359_550, insurance: 75_200 };
 
 /** Adviser-league config (strawman screen 3). */
 export const LEAGUE = {

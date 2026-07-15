@@ -7,7 +7,7 @@ const WEEK = "2026-07-06"; // a Monday
 
 function buildWorkbook(opts: {
   officeRows?: Array<{ office: string; week: string; leads: number | string; applications: number | string; referrals: number | string; sales: number | string }>;
-  revenueRow?: { week: string; revenue: number | string };
+  revenueRow?: { week: string; mortgage: number | string; insurance: number | string };
   skipOfficeSheet?: boolean;
   skipRevenueSheet?: boolean;
   officeHeaders?: string[];
@@ -16,7 +16,7 @@ function buildWorkbook(opts: {
   const officeRows =
     opts.officeRows ??
     OFFICES.map((o) => ({ office: o.name, week: WEEK, leads: 10, applications: 2, referrals: 1, sales: 1 }));
-  const revenueRow = opts.revenueRow ?? { week: WEEK, revenue: 50000 };
+  const revenueRow = opts.revenueRow ?? { week: WEEK, mortgage: 350000, insurance: 75000 };
 
   if (!opts.skipOfficeSheet) {
     const sheet = wb.addWorksheet("Office Targets");
@@ -25,8 +25,8 @@ function buildWorkbook(opts: {
   }
   if (!opts.skipRevenueSheet) {
     const sheet = wb.addWorksheet("Revenue Target");
-    sheet.addRow(["Effective Week (Mon)", "Weekly Revenue"]);
-    sheet.addRow([revenueRow.week, revenueRow.revenue]);
+    sheet.addRow(["Effective Week (Mon)", "Weekly Mortgage Written", "Weekly Insurance Written"]);
+    sheet.addRow([revenueRow.week, revenueRow.mortgage, revenueRow.insurance]);
   }
   return wb;
 }
@@ -38,7 +38,7 @@ describe("parseTargetsWorkbook — happy path", () => {
     expect(outcome.ok).toBe(true);
     expect(outcome.hardErrors).toEqual([]);
     expect(outcome.data?.effectiveWeek).toBe(WEEK);
-    expect(outcome.data?.revenueWeekly).toBe(50000);
+    expect(outcome.data?.writtenWeekly).toEqual({ mortgage: 350000, insurance: 75000 });
     expect(Object.keys(outcome.data?.offices ?? {})).toHaveLength(OFFICES.length);
     expect(outcome.data?.offices["Hammersmith"]).toEqual({ leads: 10, applications: 2, referrals: 1, sales: 1 });
   });
@@ -91,7 +91,7 @@ describe("parseTargetsWorkbook — hard errors (block the whole upload)", () => 
 
   it("effective week not a Monday", () => {
     const rows = OFFICES.map((o) => ({ office: o.name, week: "2026-07-07", leads: 10, applications: 2, referrals: 1, sales: 1 })); // Tuesday
-    const wb = buildWorkbook({ officeRows: rows, revenueRow: { week: "2026-07-07", revenue: 50000 } });
+    const wb = buildWorkbook({ officeRows: rows, revenueRow: { week: "2026-07-07", mortgage: 350000, insurance: 75000 } });
     const outcome = parseTargetsWorkbook(wb, null, WEEK);
     expect(outcome.ok).toBe(false);
     expect(outcome.hardErrors.some((e) => e.includes("not a Monday"))).toBe(true);
@@ -106,7 +106,7 @@ describe("parseTargetsWorkbook — hard errors (block the whole upload)", () => 
   });
 
   it("inconsistent effective week between sheets", () => {
-    const wb = buildWorkbook({ revenueRow: { week: "2026-06-29", revenue: 50000 } });
+    const wb = buildWorkbook({ revenueRow: { week: "2026-06-29", mortgage: 350000, insurance: 75000 } });
     const outcome = parseTargetsWorkbook(wb, null, WEEK);
     expect(outcome.ok).toBe(false);
     expect(outcome.hardErrors.some((e) => e.includes("Revenue Target") && e.includes("doesn't match"))).toBe(true);
@@ -159,7 +159,7 @@ describe("parseTargetsWorkbook — soft warnings (upload still succeeds)", () =>
     const previous: ParsedTargets = {
       effectiveWeek: "2026-06-29",
       offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 10, applications: 2, referrals: 1, sales: 1 }])),
-      revenueWeekly: 50000,
+      writtenWeekly: { mortgage: 350000, insurance: 75000 },
     };
     const rows = OFFICES.map((o) => ({ office: o.name, week: WEEK, leads: o.name === "Mayfair" ? 100 : 10, applications: 2, referrals: 1, sales: 1 }));
     const wb = buildWorkbook({ officeRows: rows });
@@ -172,7 +172,7 @@ describe("parseTargetsWorkbook — soft warnings (upload still succeeds)", () =>
     const previous: ParsedTargets = {
       effectiveWeek: "2026-06-29",
       offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 10, applications: 2, referrals: 1, sales: 1 }])),
-      revenueWeekly: 50000,
+      writtenWeekly: { mortgage: 350000, insurance: 75000 },
     };
     const rows = OFFICES.map((o) => ({ office: o.name, week: WEEK, leads: 10, applications: 2, referrals: 1, sales: o.name === "Newmarket" ? 0 : 1 }));
     const wb = buildWorkbook({ officeRows: rows });
@@ -185,7 +185,7 @@ describe("parseTargetsWorkbook — soft warnings (upload still succeeds)", () =>
     const previous: ParsedTargets = {
       effectiveWeek: "2026-06-29",
       offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 10, applications: 2, referrals: 1, sales: 1 }])),
-      revenueWeekly: 50000,
+      writtenWeekly: { mortgage: 350000, insurance: 75000 },
     };
     const rows = OFFICES.map((o) => ({ office: o.name, week: WEEK, leads: 12, applications: 2, referrals: 1, sales: 1 })); // +20%, unremarkable
     const wb = buildWorkbook({ officeRows: rows });

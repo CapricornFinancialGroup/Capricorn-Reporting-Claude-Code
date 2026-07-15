@@ -25,9 +25,10 @@ export async function buildBlankTemplate(): Promise<Buffer> {
   const revenueSheet = wb.addWorksheet("Revenue Target");
   revenueSheet.columns = [
     { header: "Effective Week (Mon)", key: "week", width: 20 },
-    { header: "Weekly Revenue", key: "revenue", width: 16 },
+    { header: "Weekly Mortgage Written", key: "mortgage", width: 22 },
+    { header: "Weekly Insurance Written", key: "insurance", width: 22 },
   ];
-  revenueSheet.addRow({ week: "", revenue: "" });
+  revenueSheet.addRow({ week: "", mortgage: "", insurance: "" });
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);

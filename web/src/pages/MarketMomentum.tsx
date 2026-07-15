@@ -64,11 +64,13 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
             <Trend title="Mortgage Applications" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Protection Referrals" weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
             <RevenueTrend
-              title="Weekly Revenue (£k) *"
+              title="Weekly Written (£k)"
               weeks={data.weeks}
-              actual={data.series.revenueActualK}
-              forecast={data.series.revenueForecastK}
-              vsQ={vsQ(data, "revenue")}
+              actual={data.series.writtenActualK}
+              forecast={data.series.writtenForecastK}
+              vsQ={vsQ(data, "written")}
+              reference={{ value: data.writtenTargetCombinedK, label: `£${data.writtenTargetCombinedK}k target` }}
+              written={data.written}
             />
             <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Avg Case Size (£k) *" weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
@@ -90,7 +92,7 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
                 · current week shown as a week-to-date estimate (marked "est.") and excluded from deltas
               </span>
             )}
-            <span style={{ marginLeft: "auto", opacity: 0.65, fontSize: 11 }}>* indicative — revenue basis pending confirmation</span>
+            <span style={{ marginLeft: "auto", opacity: 0.65, fontSize: 11 }}>* Avg Case Size is mortgage value ÷ cases (indicative)</span>
           </div>
         </div>
       )}
@@ -137,14 +139,17 @@ function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
   );
 }
 
-/** Weekly Revenue only (item 12, reframed) — actuals stop at the last complete week, and the
- *  current week shows a day-by-day forecast segment instead of a flat scaled-up estimate. */
-function RevenueTrend({ title, weeks, actual, forecast, vsQ }: {
+/** Weekly Written (item 12, reframed; Kyle 2026-07-14 "Revenue" = written business) — actuals stop
+ *  at the last complete week, the current week shows a day-by-day forecast segment, a reference line
+ *  marks the combined weekly target, and a footer breaks out Mortgage / Insurance vs their targets. */
+function RevenueTrend({ title, weeks, actual, forecast, vsQ, reference, written }: {
   title: string;
   weeks: string[];
   actual: Array<number | null>;
   forecast: Array<number | null>;
   vsQ: number | null;
+  reference?: { value: number; label: string };
+  written: MarketMomentumPayload["written"];
 }) {
   const accel =
     vsQ == null ? null : (
@@ -156,8 +161,24 @@ function RevenueTrend({ title, weeks, actual, forecast, vsQ }: {
     <div className="card">
       <div className="card-title"><span>{title}</span>{accel}</div>
       <div className="grow">
-        <EChart height={355} option={momentumForecastChart({ weeks, actual, forecast })} />
+        <EChart height={300} option={momentumForecastChart({ weeks, actual, forecast, referenceLine: reference })} />
+      </div>
+      <div style={{ display: "flex", gap: 16, fontSize: 12, marginTop: 6, opacity: 0.9 }}>
+        <WrittenVsTarget label="Mortgage" row={written.mortgage} />
+        <WrittenVsTarget label="Insurance" row={written.insurance} />
       </div>
     </div>
+  );
+}
+
+/** One product's written-vs-target for the latest complete week (£), with a pace pill. */
+function WrittenVsTarget({ label, row }: { label: string; row: { actual: number; target: number } }) {
+  const pct = row.target > 0 ? Math.round((row.actual / row.target) * 100) : null;
+  const cls = pct == null ? "on_pace" : pct >= 100 ? "ahead" : pct >= 80 ? "on_pace" : "behind";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
+      <strong>{label}:</strong> {gbpCompact(row.actual)} / {gbpCompact(row.target)}
+      {pct != null && <span className={`pill ${cls}`}>{pct}%</span>}
+    </span>
   );
 }

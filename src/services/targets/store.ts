@@ -6,7 +6,7 @@
 // shape as the domain/targets.ts constants they replace, since every existing call site already
 // does `dailyTarget * 5` to get back to weekly — that idiom doesn't change, only its source does.
 
-import { DAILY_TARGETS, KPI_KEYS, OFFICE_DAILY_TARGETS, REVENUE_DAILY_TARGET, type KpiTargets } from "../../domain/targets.js";
+import { DAILY_TARGETS, KPI_KEYS, OFFICE_DAILY_TARGETS, WRITTEN_WEEKLY_TARGET, type KpiTargets, type WrittenTargets } from "../../domain/targets.js";
 import type { ParsedTargets } from "./parse.js";
 
 export interface TargetsProvenance {
@@ -23,7 +23,9 @@ export interface TargetsProvenance {
 interface TargetsState {
   officeDaily: Record<string, KpiTargets>;
   daily: KpiTargets;
-  revenueDaily: number;
+  /** WEEKLY written targets, £ — Mortgage + Insurance (the dashboard's "Revenue"). Kept weekly, not
+   *  daily: written business is charted per week (Market Momentum), not paced day-by-day. */
+  writtenWeekly: WrittenTargets;
   provenance: TargetsProvenance;
   /** The full weekly upload, kept for the next upload's week-over-week swing check. */
   lastParsed: ParsedTargets | null;
@@ -33,7 +35,7 @@ function placeholderState(): TargetsState {
   return {
     officeDaily: OFFICE_DAILY_TARGETS,
     daily: DAILY_TARGETS,
-    revenueDaily: REVENUE_DAILY_TARGET,
+    writtenWeekly: WRITTEN_WEEKLY_TARGET,
     provenance: { source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null },
     lastParsed: null,
   };
@@ -66,7 +68,7 @@ export function activateTargets(parsed: ParsedTargets, uploadedBy: string, uploa
   state = {
     officeDaily,
     daily: divideBy5(sumOffices(parsed.offices)),
-    revenueDaily: parsed.revenueWeekly / 5,
+    writtenWeekly: parsed.writtenWeekly,
     provenance: { source: "upload", effectiveWeek: parsed.effectiveWeek, uploadedBy, uploadedAt, note },
     lastParsed: parsed,
   };
@@ -80,7 +82,7 @@ export function getCurrentAsParsedTargets(today: string): ParsedTargets {
   if (state.lastParsed) return state.lastParsed;
   const offices: Record<string, KpiTargets> = {};
   for (const [office, daily] of Object.entries(state.officeDaily)) offices[office] = multiplyBy5(daily);
-  return { effectiveWeek: today, offices, revenueWeekly: state.revenueDaily * 5 };
+  return { effectiveWeek: today, offices, writtenWeekly: state.writtenWeekly };
 }
 
 /** Reset to the placeholder constants — used by tests; production has no "un-upload" path. */
@@ -96,8 +98,9 @@ export function getOfficeDailyTargets(): Record<string, KpiTargets> {
   return state.officeDaily;
 }
 
-export function getRevenueDailyTarget(): number {
-  return state.revenueDaily;
+/** WEEKLY written targets, £ — Mortgage + Insurance (the dashboard's "Revenue"). */
+export function getWrittenWeeklyTargets(): WrittenTargets {
+  return state.writtenWeekly;
 }
 
 export function getTargetsProvenance(): TargetsProvenance {

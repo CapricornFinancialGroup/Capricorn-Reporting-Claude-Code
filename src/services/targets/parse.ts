@@ -5,7 +5,8 @@
 //   "Office Targets"  — one row per office: Effective Week (Mon), Office, Leads, Applications,
 //                        Referrals, Sales (WEEKLY figures — "everything is measured against a
 //                        WEEKLY target", targets.ts's own header).
-//   "Revenue Target"  — one row, business-wide: Effective Week (Mon), Weekly Revenue.
+//   "Revenue Target"  — one row, business-wide: Effective Week (Mon), Weekly Mortgage Written,
+//                        Weekly Insurance Written (£; Kyle 2026-07-14: "Revenue" = written business).
 //
 // Validation collects EVERY issue in one pass rather than failing fast, so Arman gets one complete
 // fix-list, not a whack-a-mole of one-error-at-a-time reports.
@@ -26,8 +27,9 @@ export interface ParsedTargets {
   effectiveWeek: string;
   /** WEEKLY figures per office (not daily — callers divide as needed). */
   offices: Record<string, KpiTargets>;
-  /** WEEKLY business-wide revenue target, £. */
-  revenueWeekly: number;
+  /** WEEKLY business-wide written target, £ — Mortgage + Insurance (Kyle 2026-07-14: the dashboard's
+   *  "Revenue" is written business, split by product, each target-vs-actual). */
+  writtenWeekly: { mortgage: number; insurance: number };
 }
 
 export interface ParseOutcome {
@@ -41,7 +43,8 @@ const OFFICE_SHEET = "Office Targets";
 const REVENUE_SHEET = "Revenue Target";
 const WEEK_HEADER = "Effective Week (Mon)";
 const OFFICE_HEADER = "Office";
-const REVENUE_HEADER = "Weekly Revenue";
+const MORTGAGE_WRITTEN_HEADER = "Weekly Mortgage Written";
+const INSURANCE_WRITTEN_HEADER = "Weekly Insurance Written";
 const KPI_HEADER: Record<KpiKey, string> = { leads: "Leads", applications: "Applications", referrals: "Referrals", sales: "Sales" };
 
 // Soft-warning ceilings — generous multiples of the current placeholder scale (domain/targets.ts),
@@ -162,18 +165,21 @@ export function parseTargetsWorkbook(
     if (!seenOffices.has(office)) hardErrors.push(`"${OFFICE_SHEET}" is missing office "${office}".`);
   }
 
-  // --- Revenue Target ---
+  // --- Revenue Target (written business, £ — Mortgage + Insurance) ---
   const revenueHeaders = headerRow(revenueSheet);
-  for (const h of [WEEK_HEADER, REVENUE_HEADER]) {
+  for (const h of [WEEK_HEADER, MORTGAGE_WRITTEN_HEADER, INSURANCE_WRITTEN_HEADER]) {
     if (!revenueHeaders.includes(h)) hardErrors.push(`"${REVENUE_SHEET}" is missing column "${h}".`);
   }
-  let revenueWeekly: number | null = null;
-  if (revenueHeaders.includes(WEEK_HEADER) && revenueHeaders.includes(REVENUE_HEADER)) {
+  let mortgageWritten: number | null = null;
+  let insuranceWritten: number | null = null;
+  if ([WEEK_HEADER, MORTGAGE_WRITTEN_HEADER, INSURANCE_WRITTEN_HEADER].every((h) => revenueHeaders.includes(h))) {
     const rWeekCol = colIndex(revenueHeaders, WEEK_HEADER);
-    const rRevCol = colIndex(revenueHeaders, REVENUE_HEADER);
+    const rMortCol = colIndex(revenueHeaders, MORTGAGE_WRITTEN_HEADER);
+    const rInsCol = colIndex(revenueHeaders, INSURANCE_WRITTEN_HEADER);
     const row = revenueSheet.getRow(2);
     const week = cellToIsoDate(row.getCell(rWeekCol).value);
-    revenueWeekly = cellToNumber(row.getCell(rRevCol).value);
+    mortgageWritten = cellToNumber(row.getCell(rMortCol).value);
+    insuranceWritten = cellToNumber(row.getCell(rInsCol).value);
     if (!week) {
       hardErrors.push(`"${REVENUE_SHEET}": effective week is missing or not a date.`);
     } else if (effectiveWeek == null) {
@@ -181,8 +187,11 @@ export function parseTargetsWorkbook(
     } else if (week !== effectiveWeek) {
       hardErrors.push(`"${REVENUE_SHEET}": effective week ${week} doesn't match "${OFFICE_SHEET}" (${effectiveWeek}).`);
     }
-    if (revenueWeekly == null || revenueWeekly < 0) {
-      hardErrors.push(`"${REVENUE_SHEET}": "${REVENUE_HEADER}" must be a number ≥ 0.`);
+    if (mortgageWritten == null || mortgageWritten < 0) {
+      hardErrors.push(`"${REVENUE_SHEET}": "${MORTGAGE_WRITTEN_HEADER}" must be a number ≥ 0.`);
+    }
+    if (insuranceWritten == null || insuranceWritten < 0) {
+      hardErrors.push(`"${REVENUE_SHEET}": "${INSURANCE_WRITTEN_HEADER}" must be a number ≥ 0.`);
     }
   }
 
@@ -192,7 +201,11 @@ export function parseTargetsWorkbook(
 
   if (hardErrors.length > 0) return { ok: false, data: null, hardErrors, softWarnings };
 
-  const data: ParsedTargets = { effectiveWeek: effectiveWeek!, offices: officeWeekly, revenueWeekly: revenueWeekly! };
+  const data: ParsedTargets = {
+    effectiveWeek: effectiveWeek!,
+    offices: officeWeekly,
+    writtenWeekly: { mortgage: mortgageWritten!, insurance: insuranceWritten! },
+  };
 
   return { ok: true, data, hardErrors: [], softWarnings: runSoftChecks(data, previous, today) };
 }
@@ -214,10 +227,12 @@ export function runSoftChecks(data: ParsedTargets, previous: ParsedTargets | nul
       }
     }
   }
-  if (data.revenueWeekly > PLAUSIBLE_MAX_REVENUE) {
-    softWarnings.push(`Weekly Revenue (${data.revenueWeekly}) looks implausibly large — double-check it.`);
+  const combined = data.writtenWeekly.mortgage + data.writtenWeekly.insurance;
+  if (combined > PLAUSIBLE_MAX_REVENUE) {
+    softWarnings.push(`Weekly Written (£${Math.round(combined).toLocaleString()}) looks implausibly large — double-check it.`);
   }
   if (previous) {
+    const prevCombined = previous.writtenWeekly.mortgage + previous.writtenWeekly.insurance;
     for (const [office, values] of Object.entries(data.offices)) {
       const prev = previous.offices[office];
       if (!prev) continue;
@@ -231,13 +246,10 @@ export function runSoftChecks(data: ParsedTargets, previous: ParsedTargets | nul
         }
       }
     }
-    if (previous.revenueWeekly > 0 && data.revenueWeekly === 0) {
-      softWarnings.push(`Weekly Revenue dropped to 0 from ${previous.revenueWeekly} last week — is that intentional?`);
-    } else if (
-      previous.revenueWeekly > 0 &&
-      (data.revenueWeekly > previous.revenueWeekly * SWING_MULTIPLE || data.revenueWeekly < previous.revenueWeekly / SWING_MULTIPLE)
-    ) {
-      softWarnings.push(`Weekly Revenue swung more than ${SWING_MULTIPLE}x week-over-week (${previous.revenueWeekly} → ${data.revenueWeekly}) — check for a transposed digit.`);
+    if (prevCombined > 0 && combined === 0) {
+      softWarnings.push(`Weekly Written dropped to £0 from £${Math.round(prevCombined).toLocaleString()} last week — is that intentional?`);
+    } else if (prevCombined > 0 && (combined > prevCombined * SWING_MULTIPLE || combined < prevCombined / SWING_MULTIPLE)) {
+      softWarnings.push(`Weekly Written swung more than ${SWING_MULTIPLE}x week-over-week (£${Math.round(prevCombined).toLocaleString()} → £${Math.round(combined).toLocaleString()}) — check for a transposed digit.`);
     }
   }
 

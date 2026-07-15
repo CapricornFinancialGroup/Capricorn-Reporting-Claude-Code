@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { OFFICES } from "../../domain/offices.js";
-import { DAILY_TARGETS, OFFICE_DAILY_TARGETS, REVENUE_DAILY_TARGET } from "../../domain/targets.js";
+import { DAILY_TARGETS, OFFICE_DAILY_TARGETS, WRITTEN_WEEKLY_TARGET } from "../../domain/targets.js";
 import type { ParsedTargets } from "./parse.js";
 import {
   activateTargets,
@@ -8,8 +8,8 @@ import {
   getDailyTargets,
   getLastParsed,
   getOfficeDailyTargets,
-  getRevenueDailyTarget,
   getTargetsProvenance,
+  getWrittenWeeklyTargets,
   resetTargetsForTest,
 } from "./store.js";
 
@@ -19,18 +19,18 @@ describe("store — seeded from placeholders, zero behaviour change before any u
   it("returns the exact placeholder constants", () => {
     expect(getDailyTargets()).toEqual(DAILY_TARGETS);
     expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
-    expect(getRevenueDailyTarget()).toBe(REVENUE_DAILY_TARGET);
+    expect(getWrittenWeeklyTargets()).toEqual(WRITTEN_WEEKLY_TARGET);
     expect(getTargetsProvenance()).toEqual({ source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null });
     expect(getLastParsed()).toBeNull();
   });
 });
 
 describe("store — activateTargets", () => {
-  it("converts uploaded WEEKLY figures to DAILY (÷5) and sums offices for the business-wide daily target", () => {
+  it("converts uploaded WEEKLY KPI figures to DAILY (÷5), keeps written targets WEEKLY, and sums offices", () => {
     const parsed: ParsedTargets = {
       effectiveWeek: "2026-07-06",
       offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }])),
-      revenueWeekly: 250_000,
+      writtenWeekly: { mortgage: 200_000, insurance: 50_000 },
     };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-06T09:00:00.000Z");
 
@@ -41,7 +41,7 @@ describe("store — activateTargets", () => {
       referrals: 1 * OFFICES.length,
       sales: 1 * OFFICES.length,
     });
-    expect(getRevenueDailyTarget()).toBe(50_000);
+    expect(getWrittenWeeklyTargets()).toEqual({ mortgage: 200_000, insurance: 50_000 });
     expect(getTargetsProvenance()).toEqual({
       source: "upload",
       effectiveWeek: "2026-07-06",
@@ -55,7 +55,7 @@ describe("store — activateTargets", () => {
     const parsed: ParsedTargets = {
       effectiveWeek: "2026-07-06",
       offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }])),
-      revenueWeekly: 250_000,
+      writtenWeekly: { mortgage: 200_000, insurance: 50_000 },
     };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-06T09:00:00.000Z", "Applications & Sales from Datarails import");
     expect(getTargetsProvenance().note).toBe("Applications & Sales from Datarails import");
@@ -66,7 +66,7 @@ describe("store — getCurrentAsParsedTargets", () => {
   it("reconstructs the placeholder constants as WEEKLY figures when nothing has been uploaded", () => {
     const data = getCurrentAsParsedTargets("2026-07-08");
     expect(data.effectiveWeek).toBe("2026-07-08");
-    expect(data.revenueWeekly).toBe(REVENUE_DAILY_TARGET * 5);
+    expect(data.writtenWeekly).toEqual(WRITTEN_WEEKLY_TARGET);
     expect(data.offices["Hammersmith"]).toEqual({
       leads: OFFICE_DAILY_TARGETS["Hammersmith"].leads * 5,
       applications: OFFICE_DAILY_TARGETS["Hammersmith"].applications * 5,
@@ -79,7 +79,7 @@ describe("store — getCurrentAsParsedTargets", () => {
     const parsed: ParsedTargets = {
       effectiveWeek: "2026-07-06",
       offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }])),
-      revenueWeekly: 250_000,
+      writtenWeekly: { mortgage: 200_000, insurance: 50_000 },
     };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-06T09:00:00.000Z");
     expect(getCurrentAsParsedTargets("2026-07-08")).toBe(parsed);
