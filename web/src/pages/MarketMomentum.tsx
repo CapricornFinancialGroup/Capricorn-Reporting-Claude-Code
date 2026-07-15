@@ -69,8 +69,6 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               actual={data.series.writtenActualK}
               forecast={data.series.writtenForecastK}
               vsQ={vsQ(data, "written")}
-              reference={{ value: data.writtenTargetCombinedK, label: `£${data.writtenTargetCombinedK}k target` }}
-              written={data.written}
             />
             <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Avg Case Size (£k) *" weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
@@ -140,16 +138,18 @@ function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
 }
 
 /** Weekly Written (item 12, reframed; Kyle 2026-07-14 "Revenue" = written business) — actuals stop
- *  at the last complete week, the current week shows a day-by-day forecast segment, a reference line
- *  marks the combined weekly target, and a footer breaks out Mortgage / Insurance vs their targets. */
-function RevenueTrend({ title, weeks, actual, forecast, vsQ, reference, written }: {
+ *  at the last complete week, the current week shows a day-by-day forecast segment.
+ *  NOTE: the Mortgage/Insurance vs-target breakdown is intentionally HIDDEN pending Capricorn
+ *  confirming what their "Weekly Written Target" measures — Arman's targets (~£360k/wk) are on a
+ *  different basis from the Total Written report's loan-value actuals (~£30m/wk), so the comparison
+ *  would be meaningless. The server still computes `written`/`writtenTargetCombinedK`, so re-enabling
+ *  is a one-line change once the target basis is reconciled. */
+function RevenueTrend({ title, weeks, actual, forecast, vsQ }: {
   title: string;
   weeks: string[];
   actual: Array<number | null>;
   forecast: Array<number | null>;
   vsQ: number | null;
-  reference?: { value: number; label: string };
-  written: MarketMomentumPayload["written"];
 }) {
   const accel =
     vsQ == null ? null : (
@@ -161,24 +161,8 @@ function RevenueTrend({ title, weeks, actual, forecast, vsQ, reference, written 
     <div className="card">
       <div className="card-title"><span>{title}</span>{accel}</div>
       <div className="grow">
-        <EChart height={300} option={momentumForecastChart({ weeks, actual, forecast, referenceLine: reference })} />
-      </div>
-      <div style={{ display: "flex", gap: 16, fontSize: 12, marginTop: 6, opacity: 0.9 }}>
-        <WrittenVsTarget label="Mortgage" row={written.mortgage} />
-        <WrittenVsTarget label="Insurance" row={written.insurance} />
+        <EChart height={355} option={momentumForecastChart({ weeks, actual, forecast })} />
       </div>
     </div>
-  );
-}
-
-/** One product's written-vs-target for the latest complete week (£), with a pace pill. */
-function WrittenVsTarget({ label, row }: { label: string; row: { actual: number; target: number } }) {
-  const pct = row.target > 0 ? Math.round((row.actual / row.target) * 100) : null;
-  const cls = pct == null ? "on_pace" : pct >= 100 ? "ahead" : pct >= 80 ? "on_pace" : "behind";
-  return (
-    <span style={{ display: "inline-flex", alignItems: "baseline", gap: 6 }}>
-      <strong>{label}:</strong> {gbpCompact(row.actual)} / {gbpCompact(row.target)}
-      {pct != null && <span className={`pill ${cls}`}>{pct}%</span>}
-    </span>
   );
 }
