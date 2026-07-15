@@ -9,6 +9,7 @@ export interface TargetsProvenance {
   effectiveWeek: string | null;
   uploadedBy: string | null;
   uploadedAt: string | null;
+  note?: string;
 }
 
 export interface Meta {

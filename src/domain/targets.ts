@@ -28,8 +28,9 @@ export const KPI_KEYS: KpiKey[] = ["leads", "applications", "referrals", "sales"
 
 export type KpiTargets = Record<KpiKey, number>;
 
-/** Business-wide daily targets — sum of the office targets below. */
-export const DAILY_TARGETS: KpiTargets = { leads: 124, applications: 23, referrals: 6, sales: 5 };
+/** Business-wide daily targets — sum of the office targets below. Leads = 633/wk (Kyle 2026-07-14,
+ *  see OFFICE_DAILY_TARGETS); referrals mirror sales (the protection pledge is both). */
+export const DAILY_TARGETS: KpiTargets = { leads: 126.6, applications: 23, referrals: 5, sales: 5 };
 
 // ---------------------------------------------------------------------------
 // Weekly run chase (Conor's principles, 2026-07-06 email)
@@ -68,23 +69,30 @@ export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
   return (OFFICE_DAILY_TARGETS[office]?.[kpi] ?? 0) * 5;
 }
 
-// Per-office daily targets. PLACEHOLDER — data-derived (see file header), NOT Capricorn's real
-// targets. Capricorn's Datarails "Adviser Mapping" export also carries real per-adviser targets
-// ("Weekly Par" / "Monthly Par" / "Written Par" / "Paid Par") — summing those by office is a
-// candidate real source once the "Par" semantics are confirmed (see docs). Weekly figures behind
-// these dailies (weekly = daily × 5): Hammersmith 500/90/20/20, Mayfair 80/12/3/2, Newmarket
-// 12/3/2/1, Hong Kong 10/3/2/1, Singapore 12/4/2/1, Shanghai/Dubai 3/1/1/1 (nominal floor —
-// negligible trailing volume, kept non-zero so they stay visible). No Türkiye row (Conor confirmed
-// 2026-07-07 there's no Turkey office — its 2 advisers are UNASSIGNED pending a real mapping).
-// Unassigned carries none by design.
+// Per-office daily targets (weekly = daily × 5). Mixed provenance now that Capricorn has confirmed
+// some of these (Kyle, 2026-07-14):
+//   • LEADS — CONFIRMED. 633 leads/wk group target, split across offices weighted by adviser
+//     headcount (Kyle's rule: ~10 leads/adviser/wk). Headcount from the Datarails Adviser Mapping
+//     (domain/offices.ts): Hammersmith 55, Mayfair 6, Newmarket 4, Hong Kong 2, Singapore 3,
+//     Shanghai 1 (71 total → ~8.9 leads each) → weekly 490/53/36/18/27/9. Dubai has no mapped
+//     advisers → 0. Weekly ÷ 5 below.
+//   • REFERRALS = SALES — CONFIRMED. The protection "pledge" is one weekly activity number that is
+//     both the referral target and the sales target (Kyle), so referrals mirrors sales here (actual
+//     referrals-made comes from the lake → drives the target-vs-actual %). The Datarails import
+//     mirrors the same way (server/routes/targets.ts).
+//   • APPLICATIONS, SALES, REVENUE — still PLACEHOLDER (data-derived, see file header). Kyle asked
+//     us to hold Applications as a fixed benchmark for now; it'll auto-consume once their Weekly_Par
+//     tab starts updating. Sales here is the placeholder pending the real weekly pledge from file.
+// No Türkiye row (Conor confirmed 2026-07-07 there's no Turkey office — its 2 advisers are
+// UNASSIGNED pending a real mapping). Unassigned carries none by design.
 export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
-  Hammersmith: { leads: 100, applications: 18, referrals: 4, sales: 4 },
-  Mayfair: { leads: 16, applications: 2.4, referrals: 0.6, sales: 0.4 },
-  Newmarket: { leads: 2.4, applications: 0.6, referrals: 0.4, sales: 0.2 },
-  "Hong Kong": { leads: 2, applications: 0.6, referrals: 0.4, sales: 0.2 },
-  Singapore: { leads: 2.4, applications: 0.8, referrals: 0.4, sales: 0.2 },
-  Shanghai: { leads: 0.6, applications: 0.2, referrals: 0.2, sales: 0.2 },
-  Dubai: { leads: 0.6, applications: 0.2, referrals: 0.2, sales: 0.2 },
+  Hammersmith: { leads: 98, applications: 18, referrals: 4, sales: 4 },
+  Mayfair: { leads: 10.6, applications: 2.4, referrals: 0.4, sales: 0.4 },
+  Newmarket: { leads: 7.2, applications: 0.6, referrals: 0.2, sales: 0.2 },
+  "Hong Kong": { leads: 3.6, applications: 0.6, referrals: 0.2, sales: 0.2 },
+  Singapore: { leads: 5.4, applications: 0.8, referrals: 0.2, sales: 0.2 },
+  Shanghai: { leads: 1.8, applications: 0.2, referrals: 0.2, sales: 0.2 },
+  Dubai: { leads: 0, applications: 0.2, referrals: 0.2, sales: 0.2 },
   [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0 },
 };
 

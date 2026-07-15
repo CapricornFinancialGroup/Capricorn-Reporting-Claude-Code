@@ -14,6 +14,10 @@ export interface TargetsProvenance {
   effectiveWeek: string | null;
   uploadedBy: string | null;
   uploadedAt: string | null;
+  /** Set when the active targets are a blend of sources (e.g. the Datarails import only supplies
+   *  Applications/Sales, leaving Leads/Referrals/Revenue whatever they were before) — surfaced on
+   *  the Targets admin page so it's clear the figures aren't all from one upload. */
+  note?: string;
 }
 
 interface TargetsState {
@@ -41,6 +45,10 @@ function divideBy5(t: KpiTargets): KpiTargets {
   return Object.fromEntries(KPI_KEYS.map((k) => [k, t[k] / 5])) as KpiTargets;
 }
 
+function multiplyBy5(t: KpiTargets): KpiTargets {
+  return Object.fromEntries(KPI_KEYS.map((k) => [k, t[k] * 5])) as KpiTargets;
+}
+
 function sumOffices(offices: Record<string, KpiTargets>): KpiTargets {
   const total: KpiTargets = { leads: 0, applications: 0, referrals: 0, sales: 0 };
   for (const t of Object.values(offices)) {
@@ -51,17 +59,28 @@ function sumOffices(offices: Record<string, KpiTargets>): KpiTargets {
 
 /** Activate a freshly-parsed, validated upload. Call ONLY after the blob write succeeds — never
  *  the other order, so a failed blob write can't leave the UI claiming success while nothing
- *  durable happened. */
-export function activateTargets(parsed: ParsedTargets, uploadedBy: string, uploadedAt: string): void {
+ *  durable happened. `note` flags a blended-source activation (e.g. the Datarails import). */
+export function activateTargets(parsed: ParsedTargets, uploadedBy: string, uploadedAt: string, note?: string): void {
   const officeDaily: Record<string, KpiTargets> = {};
   for (const [office, weekly] of Object.entries(parsed.offices)) officeDaily[office] = divideBy5(weekly);
   state = {
     officeDaily,
     daily: divideBy5(sumOffices(parsed.offices)),
     revenueDaily: parsed.revenueWeekly / 5,
-    provenance: { source: "upload", effectiveWeek: parsed.effectiveWeek, uploadedBy, uploadedAt },
+    provenance: { source: "upload", effectiveWeek: parsed.effectiveWeek, uploadedBy, uploadedAt, note },
     lastParsed: parsed,
   };
+}
+
+/** The currently-active targets, reconstructed as a full WEEKLY `ParsedTargets` (i.e. undoing the
+ *  ÷5 that getters normally expose) — the merge base for imports that only supply some KPIs (e.g.
+ *  Datarails only has Applications/Sales). Works from the placeholder constants when nothing has
+ *  been uploaded yet, so there's always a valid base to merge into. */
+export function getCurrentAsParsedTargets(today: string): ParsedTargets {
+  if (state.lastParsed) return state.lastParsed;
+  const offices: Record<string, KpiTargets> = {};
+  for (const [office, daily] of Object.entries(state.officeDaily)) offices[office] = multiplyBy5(daily);
+  return { effectiveWeek: today, offices, revenueWeekly: state.revenueDaily * 5 };
 }
 
 /** Reset to the placeholder constants — used by tests; production has no "un-upload" path. */

@@ -10,6 +10,13 @@ export interface AdviserRevenue {
   revenue: number | null;
 }
 
+/** Every known adviser (username + display name), no date/activity filter — a name-resolution
+ *  lookup for matching external sources (e.g. the Datarails targets workbook) to offices via
+ *  domain/offices.ts, not a KPI query. */
+export function adviserRoster(): BuiltQuery {
+  return { text: `SELECT DISTINCT Username AS username, FullName AS fullName FROM dbo.useraccount;`, params: [] };
+}
+
 /** Estimated mortgage revenue per adviser over [from, to] (written cases). INDICATIVE — commission
  *  column choice pending Capricorn confirmation (NetCommission → ProductCommission fallback,
  *  plus client fees). */

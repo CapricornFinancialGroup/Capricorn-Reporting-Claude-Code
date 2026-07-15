@@ -11,6 +11,16 @@ interface UploadResult {
   error?: string;
   hardErrors?: string[];
   softWarnings?: string[];
+  unmatchedAdvisers?: string[];
+}
+
+/** Next Saturday (today inclusive) as YYYY-MM-DD — the Datarails workbook's week columns are
+ *  Saturday-anchored, and Arman sets targets Monday morning for the week just starting. */
+function nextSaturdayIso(): string {
+  const d = new Date();
+  const day = d.getDay(); // 0=Sun..6=Sat
+  d.setDate(d.getDate() + ((6 - day + 7) % 7));
+  return d.toISOString().slice(0, 10);
 }
 
 export function Targets({ meta }: PageProps) {
@@ -18,7 +28,35 @@ export function Targets({ meta }: PageProps) {
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
 
+  const [drFile, setDrFile] = useState<File | null>(null);
+  const [drWeek, setDrWeek] = useState(nextSaturdayIso);
+  const [drImporting, setDrImporting] = useState(false);
+  const [drResult, setDrResult] = useState<UploadResult | null>(null);
+
   const provenance = meta.targetsProvenance;
+
+  const importDatarails = async () => {
+    if (!drFile) return;
+    setDrImporting(true);
+    setDrResult(null);
+    try {
+      const body = new FormData();
+      body.append("week", drWeek);
+      body.append("file", drFile);
+      const res = await fetch("/api/targets/import-datarails", { method: "POST", body });
+      const json = (await res.json()) as UploadResult;
+      if (res.ok && json.ok) {
+        setDrResult({ ok: true, softWarnings: json.softWarnings, unmatchedAdvisers: json.unmatchedAdvisers });
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setDrResult({ ok: false, error: json.error, hardErrors: json.hardErrors, softWarnings: json.softWarnings });
+      }
+    } catch (err) {
+      setDrResult({ ok: false, error: String(err instanceof Error ? err.message : err) });
+    } finally {
+      setDrImporting(false);
+    }
+  };
 
   const upload = async () => {
     if (!file) return;
@@ -51,6 +89,7 @@ export function Targets({ meta }: PageProps) {
           <div className="placeholder-note">
             Effective week {provenance.effectiveWeek} — uploaded by {provenance.uploadedBy} on{" "}
             {provenance.uploadedAt ? new Date(provenance.uploadedAt).toLocaleString("en-GB") : "—"}.
+            {provenance.note && <div>{provenance.note}</div>}
           </div>
         ) : (
           <div className="placeholder-note">
@@ -130,6 +169,64 @@ export function Targets({ meta }: PageProps) {
                 <thead><tr><th>Warning</th></tr></thead>
                 <tbody>
                   {result.softWarnings.map((w) => <tr key={w}><td>{w}</td></tr>)}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-title"><span>Import Applications &amp; Sales from Datarails Export</span></div>
+        <div className="placeholder-note">
+          Reads Capricorn's own per-adviser Datarails workbook and aggregates Applications
+          (Weekly_Par) and Protection Sales (Insurance_Weekly_Target_Number) by office for one
+          week. Leads, Referrals and Revenue are left untouched.
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, maxWidth: 480, marginTop: 10 }}>
+          <label>
+            Week (the workbook's Saturday column):{" "}
+            <input type="date" value={drWeek} onChange={(e) => setDrWeek(e.target.value)} />
+          </label>
+          <input
+            type="file"
+            accept=".xlsx"
+            onChange={(e) => setDrFile(e.target.files?.[0] ?? null)}
+          />
+          <button className="filter-chip" disabled={!drFile || drImporting} onClick={() => void importDatarails()} style={{ alignSelf: "flex-start" }}>
+            {drImporting ? "Importing…" : "Import"}
+          </button>
+        </div>
+
+        {drResult?.ok && (
+          <div className="placeholder-note" style={{ marginTop: 10, color: "var(--green)" }}>
+            Import successful — refreshing…
+            {drResult.softWarnings && drResult.softWarnings.length > 0 && (
+              <ul>
+                {drResult.softWarnings.map((w) => <li key={w}>{w}</li>)}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {drResult && !drResult.ok && (
+          <div style={{ marginTop: 10 }}>
+            <div className="alert critical">
+              <div className="alert-title">{drResult.error ?? "Import failed"}</div>
+            </div>
+            {drResult.hardErrors && drResult.hardErrors.length > 0 && (
+              <table className="lb-table" style={{ marginTop: 10 }}>
+                <thead><tr><th>Issue</th></tr></thead>
+                <tbody>
+                  {drResult.hardErrors.map((e) => <tr key={e}><td>{e}</td></tr>)}
+                </tbody>
+              </table>
+            )}
+            {drResult.softWarnings && drResult.softWarnings.length > 0 && (
+              <table className="lb-table" style={{ marginTop: 10 }}>
+                <thead><tr><th>Warning</th></tr></thead>
+                <tbody>
+                  {drResult.softWarnings.map((w) => <tr key={w}><td>{w}</td></tr>)}
                 </tbody>
               </table>
             )}

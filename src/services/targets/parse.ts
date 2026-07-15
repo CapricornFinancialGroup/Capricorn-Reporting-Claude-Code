@@ -194,7 +194,16 @@ export function parseTargetsWorkbook(
 
   const data: ParsedTargets = { effectiveWeek: effectiveWeek!, offices: officeWeekly, revenueWeekly: revenueWeekly! };
 
-  // --- Soft checks (upload still succeeds) ---
+  return { ok: true, data, hardErrors: [], softWarnings: runSoftChecks(data, previous, today) };
+}
+
+/** Soft-warning checks shared by every path that activates a `ParsedTargets` (the manual upload
+ *  above, and the Datarails import route) — far-from-now week, implausible max, >5x week-over-week
+ *  swing or a drop to zero. These never block activation, they just surface a residual risk hard
+ *  validation can't catch: a structurally-valid but simply-wrong number. */
+export function runSoftChecks(data: ParsedTargets, previous: ParsedTargets | null, today: string): string[] {
+  const softWarnings: string[] = [];
+
   if (Math.abs(daysBetween(today, data.effectiveWeek)) > FAR_FROM_NOW_DAYS) {
     softWarnings.push(`Effective week "${data.effectiveWeek}" is more than ${FAR_FROM_NOW_DAYS} days from today (${today}) — check this is the week you meant.`);
   }
@@ -232,5 +241,5 @@ export function parseTargetsWorkbook(
     }
   }
 
-  return { ok: true, data, hardErrors: [], softWarnings };
+  return softWarnings;
 }
