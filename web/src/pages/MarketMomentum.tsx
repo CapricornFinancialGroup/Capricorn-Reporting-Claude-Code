@@ -69,6 +69,8 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               actual={data.series.writtenActualK}
               forecast={data.series.writtenForecastK}
               vsQ={vsQ(data, "written")}
+              mortgage={data.written.mortgage}
+              weekLabel={data.written.weekLabel}
             />
             <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Avg Case Size (£k) *" weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
@@ -137,19 +139,19 @@ function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
   );
 }
 
-/** Weekly Written (item 12, reframed; Kyle 2026-07-14 "Revenue" = written business) — actuals stop
- *  at the last complete week, the current week shows a day-by-day forecast segment.
- *  NOTE: the Mortgage/Insurance vs-target breakdown is intentionally HIDDEN pending Capricorn
- *  confirming what their "Weekly Written Target" measures — Arman's targets (~£360k/wk) are on a
- *  different basis from the Total Written report's loan-value actuals (~£30m/wk), so the comparison
- *  would be meaningless. The server still computes `written`/`writtenTargetCombinedK`, so re-enabling
- *  is a one-line change once the target basis is reconciled. */
-function RevenueTrend({ title, weeks, actual, forecast, vsQ }: {
+/** Weekly Written (item 12, reframed; Kyle 2026-07-15 "Revenue" = written COMMISSION) — actuals stop
+ *  at the last complete week, the current week shows a day-by-day forecast segment. Mortgage
+ *  target-vs-actual is shown (reference line + footer, latest fully-loaded week). Protection is
+ *  intentionally NOT shown yet — its actual source is still unconfirmed with Capricorn, so only the
+ *  mortgage side is trustworthy. Combined written == mortgage for now (protection parked at £0). */
+function RevenueTrend({ title, weeks, actual, forecast, vsQ, mortgage, weekLabel }: {
   title: string;
   weeks: string[];
   actual: Array<number | null>;
   forecast: Array<number | null>;
   vsQ: number | null;
+  mortgage: MarketMomentumPayload["written"]["mortgage"];
+  weekLabel: string;
 }) {
   const accel =
     vsQ == null ? null : (
@@ -157,11 +159,19 @@ function RevenueTrend({ title, weeks, actual, forecast, vsQ }: {
         {vsQ >= 0 ? "+" : ""}{vsQ}% vs qtr avg
       </span>
     );
+  const targetK = Math.round(mortgage.target / 1000);
+  const pct = mortgage.target > 0 ? Math.round((mortgage.actual / mortgage.target) * 100) : null;
+  const cls = pct == null ? "on_pace" : pct >= 100 ? "ahead" : pct >= 80 ? "on_pace" : "behind";
   return (
     <div className="card">
       <div className="card-title"><span>{title}</span>{accel}</div>
       <div className="grow">
-        <EChart height={355} option={momentumForecastChart({ weeks, actual, forecast })} />
+        <EChart height={320} option={momentumForecastChart({ weeks, actual, forecast, referenceLine: { value: targetK, label: `£${targetK}k mortgage target` } })} />
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 12, marginTop: 6, opacity: 0.9 }}>
+        <span><strong>Mortgage {weekLabel}:</strong> {gbpCompact(mortgage.actual)} / {gbpCompact(mortgage.target)}</span>
+        {pct != null && <span className={`pill ${cls}`}>{pct}%</span>}
+        <span style={{ marginLeft: "auto", opacity: 0.6 }}>Protection pending</span>
       </div>
     </div>
   );

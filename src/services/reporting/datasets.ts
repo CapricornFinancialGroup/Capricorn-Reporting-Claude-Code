@@ -819,15 +819,22 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
           ? "Momentum softening — most measures behind the quarter average."
           : "Holding steady — measures tracking the quarter average.";
 
-    // Written vs target (Kyle 2026-07-14): Mortgage and Insurance each shown target-vs-actual for the
-    // latest COMPLETE week (li), combined for the headline. Targets are weekly £ from the store.
+    // Written vs target (Kyle 2026-07-14/15): Mortgage shown target-vs-actual; Insurance carried but
+    // hidden on the board until its actual is sourced. Use the last week whose data is FULLY loaded
+    // (its Friday ≤ dataAsOf), NOT `li` — on a Friday the calendar week can read as "complete" while
+    // the nightly lake still lags a day, which would understate the actual against target (~23% on a
+    // half-loaded week instead of the true ~45%).
+    let completeIdx = 0;
+    for (let i = weekStarts.length - 1; i >= 0; i--) {
+      if (shiftDays(weekStarts[i], 6) <= asOf) { completeIdx = i; break; }
+    }
     const writtenTargets = getWrittenWeeklyTargets();
     const writtenTargetCombined = writtenTargets.mortgage + writtenTargets.insurance;
     const writtenBlock = {
-      weekLabel: weeks[li],
-      mortgage: { actual: Math.round(mortW[li] ?? 0), target: Math.round(writtenTargets.mortgage) },
-      insurance: { actual: Math.round(insW[li] ?? 0), target: Math.round(writtenTargets.insurance) },
-      combined: { actual: Math.round(combW[li] ?? 0), target: Math.round(writtenTargetCombined) },
+      weekLabel: weeks[completeIdx],
+      mortgage: { actual: Math.round(mortW[completeIdx] ?? 0), target: Math.round(writtenTargets.mortgage) },
+      insurance: { actual: Math.round(insW[completeIdx] ?? 0), target: Math.round(writtenTargets.insurance) },
+      combined: { actual: Math.round(combW[completeIdx] ?? 0), target: Math.round(writtenTargetCombined) },
     };
 
     return {
