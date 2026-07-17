@@ -820,13 +820,14 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
           : "Holding steady — measures tracking the quarter average.";
 
     // Written vs target (Kyle 2026-07-14/15): Mortgage shown target-vs-actual; Insurance carried but
-    // hidden on the board until its actual is sourced. Use the last week whose data is FULLY loaded
-    // (its Friday ≤ dataAsOf), NOT `li` — on a Friday the calendar week can read as "complete" while
-    // the nightly lake still lags a day, which would understate the actual against target (~23% on a
-    // half-loaded week instead of the true ~45%).
+    // hidden on the board until its actual is sourced. Reference the last week that has genuinely
+    // ENDED (its Saturday start is before THIS reporting week) AND is fully data-loaded (Friday ≤
+    // dataAsOf) — not `li`. Otherwise the in-progress week (e.g. mid-Friday) reads as complete and
+    // understates the actual against a full-week target (~23% of a week-in-progress vs the true ~45%).
+    const currentWeekStart = weekStartOf(tzToday(new Date(), config.reporting.timeZone));
     let completeIdx = 0;
     for (let i = weekStarts.length - 1; i >= 0; i--) {
-      if (shiftDays(weekStarts[i], 6) <= asOf) { completeIdx = i; break; }
+      if (weekStarts[i] < currentWeekStart && shiftDays(weekStarts[i], 6) <= asOf) { completeIdx = i; break; }
     }
     const writtenTargets = getWrittenWeeklyTargets();
     const writtenTargetCombined = writtenTargets.mortgage + writtenTargets.insurance;
