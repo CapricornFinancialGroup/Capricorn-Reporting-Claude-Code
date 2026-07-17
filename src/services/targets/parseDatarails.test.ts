@@ -13,6 +13,8 @@ const ROSTER: AdviserRosterEntry[] = [
 function buildWorkbook(opts: {
   parRows?: Array<{ adviser: string; value: unknown }>;
   insuranceRows?: Array<{ adviser: string; value: unknown }>;
+  mortgageWrittenRows?: Array<{ adviser: string; value: unknown }>;
+  insuranceWrittenRows?: Array<{ adviser: string; value: unknown }>;
   skipParSheet?: boolean;
   skipInsuranceSheet?: boolean;
   week?: string;
@@ -37,6 +39,17 @@ function buildWorkbook(opts: {
     const sheet = wb.addWorksheet("Insurance_Weekly_Target_Number");
     sheet.addRow(["Adviser", week]);
     for (const r of insuranceRows) sheet.addRow([r.adviser, r.value]);
+  }
+  // Written-target sheets (as in the consolidated workbook), only when the test supplies rows.
+  if (opts.mortgageWrittenRows) {
+    const sheet = wb.addWorksheet("Mortgage_Weekly_Written _Target"); // stray space as in the real export
+    sheet.addRow(["Adviser", week]);
+    for (const r of opts.mortgageWrittenRows) sheet.addRow([r.adviser, r.value]);
+  }
+  if (opts.insuranceWrittenRows) {
+    const sheet = wb.addWorksheet("Insurance_Weekly_Written _Ta");
+    sheet.addRow(["Adviser", week]);
+    for (const r of opts.insuranceWrittenRows) sheet.addRow([r.adviser, r.value]);
   }
   return wb;
 }
@@ -70,6 +83,30 @@ describe("parseDatarailsWorkbook — happy path", () => {
     });
     const outcome = parseDatarailsWorkbook(wb, WEEK, roster);
     expect(outcome.offices?.["Mayfair"].applications).toBe(8);
+  });
+});
+
+describe("parseDatarailsWorkbook — written targets (Revenue) from the consolidated file", () => {
+  it("sums Mortgage + Insurance written business-wide (£-strings tolerated), null when a sheet is absent", () => {
+    const wb = buildWorkbook({
+      mortgageWrittenRows: [
+        { adviser: "Alex Smith", value: 10000 },
+        { adviser: "Dale Shaw", value: "£8,000​" },
+      ],
+      // no insuranceWrittenRows → that sheet absent
+    });
+    const outcome = parseDatarailsWorkbook(wb, WEEK, ROSTER);
+    expect(outcome.ok).toBe(true);
+    expect(outcome.mortgageWritten).toBe(18000);
+    expect(outcome.insuranceWritten).toBeNull();
+  });
+
+  it("is null for a written sheet with no data for the week (left unchanged, not zeroed)", () => {
+    const wb = buildWorkbook({
+      mortgageWrittenRows: [{ adviser: "Alex Smith", value: null }],
+    });
+    const outcome = parseDatarailsWorkbook(wb, WEEK, ROSTER);
+    expect(outcome.mortgageWritten).toBeNull();
   });
 });
 

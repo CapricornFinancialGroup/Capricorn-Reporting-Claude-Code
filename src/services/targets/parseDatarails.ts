@@ -1,6 +1,7 @@
 // Pure parser for Capricorn's real Datarails export ("Weekly Targets.xlsx", Kyle, 2026-07-08) —
 // a per-adviser, per-product-line workbook, structurally nothing like our own upload template
-// (parse.ts). Only two of its ~13 sheets map onto dashboard KPIs we track:
+// (parse.ts). Four of its ~13 sheets feed dashboard targets — this consolidated file is the SINGLE
+// upload Capricorn use (Luke, 2026-07-17: collapse the three upload cards to one Datarails import):
 //
 //   "Weekly_Par"                    — flat per-adviser weekly case-count benchmark. No case-count
 //                                      "Target" sheet exists for mortgages, so this is the best
@@ -8,10 +9,12 @@
 //                                      confirmed use it, flagged as Par-derived not a real target).
 //   "Insurance_Weekly_Target_Number" — per-adviser weekly protection case-count target. Capricorn's
 //                                      "Insurance" here means protection (Luke confirmed) — maps to
-//                                      the `sales` KPI ("Protection Sales").
+//                                      the `sales`/`referrals` (pledge) target.
+//   "Mortgage_Weekly_Written _Target" / "Insurance_Weekly_Written _Ta" — per-adviser weekly WRITTEN
+//                                      COMMISSION £ (the dashboard's "Revenue"), summed business-wide.
 //
-// `leads`/`referrals`/revenue have no corresponding sheet in this workbook at all and are left
-// untouched by callers (see store.ts's getCurrentAsParsedTargets + the merge in the import route).
+// `leads` has no sheet here (hard-coded 633, Kyle) and is left untouched by callers. Each KPI is left
+// unchanged when its sheet has no data for the week (see the merge in the import route) — never zeroed.
 //
 // The workbook has no Office column — only adviser names. Office attribution goes through the
 // SAME single source of truth as everywhere else (domain/offices.ts's officeOf(username)), via a
@@ -23,6 +26,11 @@ import { officeOf } from "../../domain/offices.js";
 
 const PAR_SHEET = "Weekly_Par";
 const INSURANCE_NUMBER_SHEET = "Insurance_Weekly_Target_Number";
+// Written-target sheets in the same consolidated workbook (Arman's separate "Weekly Written" files
+// are just extracts of these). Matched by name PREFIX — Capricorn's export has stray spaces in the
+// sheet names ("Mortgage_Weekly_Written _Target", "Insurance_Weekly_Written _Ta").
+const MORTGAGE_WRITTEN_PREFIX = "Mortgage_Weekly_Written";
+const INSURANCE_WRITTEN_PREFIX = "Insurance_Weekly_Written";
 const ADVISER_HEADER = "Adviser";
 
 export interface AdviserRosterEntry {
@@ -50,6 +58,11 @@ export interface DatarailsParseOutcome {
   /** Adviser names in the workbook that couldn't be matched to a known lake adviser — their
    *  figures are excluded from the totals rather than guessed at. */
   unmatchedAdvisers: string[];
+  /** WEEKLY business-wide written targets, £ (the dashboard's "Revenue"), summed across every
+   *  adviser row of the written sheets. Null when the sheet is absent or has no data for the week —
+   *  the caller then leaves the existing written target untouched (same guard as Applications/Sales). */
+  mortgageWritten: number | null;
+  insuranceWritten: number | null;
 }
 
 function normalizeName(name: string): string {
@@ -126,11 +139,39 @@ function sumSheetByOffice(
   return { byOffice, skippedCells, numericCellsFound, hardError: null };
 }
 
+/** Business-wide £ total for a written-target sheet (matched by name prefix) at `weekSaturday`.
+ *  Null when the sheet is missing, mis-shaped, or has no readable figures for that week — the caller
+ *  leaves the existing written target unchanged rather than importing a spurious 0. */
+function sumWrittenBusinessWide(workbook: ExcelJS.Workbook, prefix: string, weekSaturday: string): number | null {
+  const sheet = workbook.worksheets.find((ws) => ws.name.trim().startsWith(prefix));
+  if (!sheet) return null;
+  const headers = headerRow(sheet);
+  if (headers[0] !== ADVISER_HEADER) return null;
+  const weekColIndex = headers.indexOf(weekSaturday);
+  if (weekColIndex === -1) return null;
+  const weekCol = weekColIndex + 1;
+
+  let total = 0;
+  let numericCellsFound = 0;
+  sheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    if (!String(row.getCell(1).value ?? "").trim()) return;
+    const n = cellToCount(row.getCell(weekCol).value);
+    if (n != null) {
+      numericCellsFound++;
+      total += n;
+    }
+  });
+  return numericCellsFound > 0 ? total : null;
+}
+
 export function parseDatarailsWorkbook(
   workbook: ExcelJS.Workbook,
   weekSaturday: string,
   roster: AdviserRosterEntry[],
 ): DatarailsParseOutcome {
+  const mortgageWritten = sumWrittenBusinessWide(workbook, MORTGAGE_WRITTEN_PREFIX, weekSaturday);
+  const insuranceWritten = sumWrittenBusinessWide(workbook, INSURANCE_WRITTEN_PREFIX, weekSaturday);
   const hardErrors: string[] = [];
   const softWarnings: string[] = [];
 
@@ -139,7 +180,7 @@ export function parseDatarailsWorkbook(
   if (!parSheet) hardErrors.push(`Missing sheet "${PAR_SHEET}".`);
   if (!insuranceSheet) hardErrors.push(`Missing sheet "${INSURANCE_NUMBER_SHEET}".`);
   if (!parSheet || !insuranceSheet) {
-    return { ok: false, hardErrors, softWarnings, offices: null, applicationsAvailable: false, salesAvailable: false, unmatchedAdvisers: [] };
+    return { ok: false, hardErrors, softWarnings, offices: null, applicationsAvailable: false, salesAvailable: false, unmatchedAdvisers: [], mortgageWritten, insuranceWritten };
   }
 
   const rosterByName = new Map<string, string | null>();
@@ -153,7 +194,7 @@ export function parseDatarailsWorkbook(
   if (apps.hardError) hardErrors.push(apps.hardError);
   if (sales.hardError) hardErrors.push(sales.hardError);
   if (hardErrors.length > 0) {
-    return { ok: false, hardErrors, softWarnings, offices: null, applicationsAvailable: false, salesAvailable: false, unmatchedAdvisers: [] };
+    return { ok: false, hardErrors, softWarnings, offices: null, applicationsAvailable: false, salesAvailable: false, unmatchedAdvisers: [], mortgageWritten, insuranceWritten };
   }
 
   const skippedCells = apps.skippedCells + sales.skippedCells;
@@ -171,7 +212,7 @@ export function parseDatarailsWorkbook(
   }
   if (!applicationsAvailable && !salesAvailable) {
     hardErrors.push(`Neither sheet has any data for week ${weekSaturday} — nothing to import. Pick a different week.`);
-    return { ok: false, hardErrors, softWarnings: [], offices: null, applicationsAvailable: false, salesAvailable: false, unmatchedAdvisers: [] };
+    return { ok: false, hardErrors, softWarnings: [], offices: null, applicationsAvailable: false, salesAvailable: false, unmatchedAdvisers: [], mortgageWritten, insuranceWritten };
   }
 
   const offices: Record<string, OfficeAppsSales> = {};
@@ -179,5 +220,5 @@ export function parseDatarailsWorkbook(
     offices[office] = { applications: apps.byOffice[office] ?? 0, sales: sales.byOffice[office] ?? 0 };
   }
 
-  return { ok: true, hardErrors: [], softWarnings, offices, applicationsAvailable, salesAvailable, unmatchedAdvisers: Array.from(unmatched).sort() };
+  return { ok: true, hardErrors: [], softWarnings, offices, applicationsAvailable, salesAvailable, unmatchedAdvisers: Array.from(unmatched).sort(), mortgageWritten, insuranceWritten };
 }

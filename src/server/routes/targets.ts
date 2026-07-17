@@ -129,7 +129,12 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const base = getCurrentAsParsedTargets(today);
     const merged: ParsedTargets = {
       effectiveWeek: shiftDays(weekSaturday, 2), // Saturday → the Monday that starts its working week
-      writtenWeekly: base.writtenWeekly,
+      // Revenue = written commission £ (Mortgage + Insurance), from the same consolidated file's
+      // written sheets. Each product left unchanged when its sheet has no data for the week.
+      writtenWeekly: {
+        mortgage: outcome.mortgageWritten ?? base.writtenWeekly.mortgage,
+        insurance: outcome.insuranceWritten ?? base.writtenWeekly.insurance,
+      },
       offices: Object.fromEntries(
         Object.entries(base.offices).map(([office, values]) => [
           office,
@@ -158,8 +163,18 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
       softWarnings.push(`${outcome.unmatchedAdvisers.length} adviser name(s) in the workbook didn't match a known adviser and were excluded: ${outcome.unmatchedAdvisers.join(", ")}.`);
     }
 
-    const imported = [outcome.applicationsAvailable && "Applications", outcome.salesAvailable && "Sales & Referrals"].filter(Boolean).join(" & ");
-    const unchanged = [!outcome.applicationsAvailable && "Applications", !outcome.salesAvailable && "Sales & Referrals", "Leads", "Revenue"].filter(Boolean).join("/");
+    const writtenImported = outcome.mortgageWritten != null || outcome.insuranceWritten != null;
+    const imported = [
+      outcome.applicationsAvailable && "Applications",
+      outcome.salesAvailable && "Sales & Referrals",
+      writtenImported && "Revenue (written)",
+    ].filter(Boolean).join(", ");
+    const unchanged = [
+      !outcome.applicationsAvailable && "Applications",
+      !outcome.salesAvailable && "Sales & Referrals",
+      !writtenImported && "Revenue",
+      "Leads",
+    ].filter(Boolean).join("/");
     const uploadedBy = viewer.email;
     const uploadedAt = new Date().toISOString();
     const note = `${imported} from Datarails import (week of ${weekSaturday}); ${unchanged} unchanged.`;
