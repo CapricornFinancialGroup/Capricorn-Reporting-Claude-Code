@@ -682,12 +682,11 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   const weekStarts = weekStartsFor(asOf, f.from, 13);
   const from = weekStarts[0];
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
-    const [leads, apps, refs, revenue, written] = await Promise.all([
+    const [leads, apps, refs, revenue] = await Promise.all([
       q<DailyCount>(config, kpiDaily("leads", from, asOf)),
       q<DailyCount>(config, kpiDaily("applications", from, asOf)),
       q<DailyCount>(config, kpiDaily("referrals", from, asOf)),
       q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(from, asOf)),
-      q<momentumQ.WrittenByProductDaily>(config, momentumQ.writtenByProductDaily(from, asOf)),
     ]);
 
     const weekIndex = (d: string): number => weekStarts.indexOf(weekStartOf(d));
@@ -705,22 +704,23 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const refsW = bucket(refs);
     const valW = weekStarts.map(() => 0);
     const casesW = weekStarts.map(() => 0);
+    // Written business = written COMMISSION (Kyle 2026-07-15 corrected: "written" is commission, NOT
+    // loan value — the £30m loan-value figure was wrong). Mortgage written = revenueDaily.revenue
+    // (NetCommission/ProductCommission + ClientFee), which reconciles to Capricorn's own Total
+    // Written report (~£161k last complete week vs his ~£186k).
+    const mortW = weekStarts.map(() => 0);
     for (const r of revenue) {
       const i = weekIndex(isoDay(r.d));
       if (i < 0) continue;
       valW[i] += r.totalValue ?? 0;
       casesW[i] += r.cases;
+      mortW[i] += r.revenue ?? 0;
     }
-    // Written business £ by product (the dashboard's "Revenue", Kyle 2026-07-14) — Mortgage +
-    // Insurance from the Total Written view, combined for the headline.
-    const mortW = weekStarts.map(() => 0);
+    // Insurance/protection written PARKED (£0) pending Capricorn confirming its source — Kyle's
+    // ~£41k/wk matched no lake field we've validated (the view's ProtectionWritten returned ~£1.6k).
+    // Loan value (SUM MortgageValue → valW / Avg Case Size, and the Daily Run Chase "Total Lending"
+    // tile) is shown SEPARATELY, never as "written". combW is mortgage commission only for now.
     const insW = weekStarts.map(() => 0);
-    for (const r of written) {
-      const i = weekIndex(isoDay(r.d));
-      if (i < 0) continue;
-      mortW[i] += r.mortgageWritten ?? 0;
-      insW[i] += r.insuranceWritten ?? 0;
-    }
     const combW = mortW.map((m, i) => m + insW[i]);
     const avgCaseW = casesW.map((n, i) => (n > 0 ? valW[i] / n : null));
     const refRateW = appsW.map((n, i) => (n > 0 ? (refsW[i] / n) * 100 : null));
@@ -756,7 +756,7 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // weekday's own trailing average (last 6 occurrences in the fetched window) rather than a flat
     // proportional scale-up — it shrinks toward the true total as real days land through the week.
     // Only touches Weekly Revenue; the other 3 series keep the simpler flat scale-up above.
-    const writtenCombinedDaily = written.map((r) => ({ d: isoDay(r.d), v: (r.mortgageWritten ?? 0) + (r.insuranceWritten ?? 0) }));
+    const writtenCombinedDaily = revenue.map((r) => ({ d: isoDay(r.d), v: r.revenue ?? 0 }));
     let writtenForecastTotal: number | null = null;
     if (partialLast && weekFraction > 0) {
       const currentWeekEnd = shiftDays(weekStarts[lastIdx], 6); // Friday

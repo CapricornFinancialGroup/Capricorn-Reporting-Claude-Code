@@ -38,7 +38,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
               League's "Est. Revenue" for that). Conor 2026-07-07, item 5. */}
           <div className="card" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "6px 14px" }}>
             <span className="card-title" style={{ marginBottom: 0, whiteSpace: "nowrap" }}>
-              Total Written <span className="card-sub">this week · total mortgage value</span>
+              Total Lending <span className="card-sub">this week · mortgage loan value (not commission)</span>
             </span>
             <span style={{ fontSize: 20, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
               {gbpCompact(data.totalWritten)}
