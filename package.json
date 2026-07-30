@@ -1,19 +1,20 @@
 {
   "name": "capricorn-growth-os",
   "version": "0.1.0",
-  "description": "Capricorn Growth OS — wall-dashboard/kiosk over the GAGold_Capricorn Fabric lakehouse",
+  "description": "Capricorn Growth OS \u2014 wall-dashboard/kiosk over the GAGold_Capricorn Fabric lakehouse",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
     "build:web": "npm --prefix web ci && npm --prefix web run build",
-    "build:all": "npm run build && npm run build:web",
+    "build:all": "npm run build && npm run build:web && npm run stamp",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
     "dev:web": "npm --prefix web run dev",
     "lint": "eslint src/",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "stamp": "node scripts/deployment/stamp-build.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
