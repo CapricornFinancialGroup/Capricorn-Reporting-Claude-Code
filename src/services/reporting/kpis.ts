@@ -7,13 +7,16 @@
 //
 // Semantics (verified against the live lake 2026-07-06; open questions flagged in the README):
 //   leads         mortgagecase by LeadDate, COUNT(DISTINCT LeadId) (case rows are per product)
-//   applications  mortgagecase by WrittenDate, COUNT(*) (per product written, dictionary ex. 4)
-//   referrals     crosssellreferral by CreatedDate — the mortgagecase referral columns
-//                 (ReferredToProtectionYN / ProtectionReferralDate) are UNPOPULATED for Capricorn
-//                 (0 rows all-time), so the cross-sell fact is the source of truth. Adviser-declined
-//                 and errored rows are excluded (a decline is not a referral).
-//   sales         protectioncase by WrittenDate, COUNT(*)
+//   applications  mortgagecase by WorkflowStatusPreOfferProcessingDate (= "written" as Capricorn's
+//                 own Total Written Report defines it), COUNT(*) per product written
+//   referrals     protectioncase by CreatedDate = protection OPPORTUNITIES opened. Was
+//                 crosssellreferral until 2026-07-30 — which is PaymentShield/currency cross-sell,
+//                 not protection. Capricorn does not record protection referrals as an event at all
+//                 (see PROTECTION_OPPORTUNITY_NOTE in domain/data-quality.ts).
+//   sales         protectioncase by WrittenDate, COUNT(*) (status 65 is only 20% populated — see
+//                 PROTECTION_WRITTEN_DATE in domain/data-quality.ts)
 
+import { MORTGAGE_WRITTEN_DATE, PROTECTION_WRITTEN_DATE } from "../../domain/data-quality.js";
 import type { KpiKey } from "../../domain/targets.js";
 import { combine, dateRange, excludeMigrations, notDeleted, orgFilter, whereClause, type Fragment } from "./filters.js";
 import type { BuiltQuery } from "./query.js";
@@ -26,7 +29,7 @@ interface KpiSpec {
   extraClause: string;
   /** Adviser attribution key on the fact. */
   adviserKey: string;
-  /** crosssellreferral has no DeletedYN column. */
+  /** Some facts have no DeletedYN column. */
   hasDeletedFlag: boolean;
 }
 
@@ -41,23 +44,29 @@ export const KPI_SPECS: Record<KpiKey, KpiSpec> = {
   },
   applications: {
     table: "dbo.mortgagecase",
-    dateColumn: "WrittenDate",
+    // MORTGAGE_WRITTEN_DATE, not WrittenDate — the same basis as Capricorn's Total Written Report,
+    // so the count and the £ on the board agree with each other AND with their report. See
+    // domain/data-quality.ts for the proof and the accepted 6.4% exclusion.
+    dateColumn: MORTGAGE_WRITTEN_DATE,
     countExpr: "COUNT(*)",
     extraClause: "",
     adviserKey: "PrimaryAdviserUserAccountKey",
     hasDeletedFlag: true,
   },
+  // Protection OPPORTUNITIES — protection cases opened. Replaced `crosssellreferral` on 2026-07-30
+  // after the full definition review; see PROTECTION_OPPORTUNITY_NOTE in domain/data-quality.ts for
+  // why the old source was wrong and why the platform's own referral field is unusable here.
   referrals: {
-    table: "dbo.crosssellreferral",
+    table: "dbo.protectioncase",
     dateColumn: "CreatedDate",
     countExpr: "COUNT(*)",
-    extraClause: "COALESCE(f.AdviserDeclinedYN, 'N') <> 'Y' AND COALESCE(f.HasErrorYN, 'N') <> 'Y'",
-    adviserKey: "AdviserUserAccountKey",
-    hasDeletedFlag: false,
+    extraClause: "",
+    adviserKey: "PrimaryAdviserUserAccountKey",
+    hasDeletedFlag: true,
   },
   sales: {
     table: "dbo.protectioncase",
-    dateColumn: "WrittenDate",
+    dateColumn: PROTECTION_WRITTEN_DATE,
     countExpr: "COUNT(*)",
     extraClause: "",
     adviserKey: "PrimaryAdviserUserAccountKey",
@@ -69,9 +78,10 @@ function baseWhere(s: KpiSpec, from: string, to: string): Fragment {
   return combine(
     orgFilter("f"),
     s.hasDeletedFlag ? notDeleted("f") : { clause: "", params: [] },
-    // mortgagecase carries the LeadDate/OrganisationKey the migration guard needs; the crosssell
-    // and protection facts don't (and aren't affected by the bulk-lead event).
-    s.table === "dbo.mortgagecase" ? excludeMigrations("f") : { clause: "", params: [] },
+    // The bulk-migration batch is mis-dated on LeadDate, so it only distorts LeadDate-keyed
+    // metrics. Applying it to WrittenDate-keyed ones (applications) dropped genuine written
+    // business — see excludeMigrations' own warning.
+    s.dateColumn === "LeadDate" ? excludeMigrations("f") : { clause: "", params: [] },
     dateRange(`f.${s.dateColumn}`, from, to),
     { clause: s.extraClause, params: [] },
   );

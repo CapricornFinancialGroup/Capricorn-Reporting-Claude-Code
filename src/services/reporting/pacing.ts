@@ -46,6 +46,28 @@ export function weekElapsedFraction(iso: string): number {
   return isoDow < 2 ? 0 : CUMULATIVE_WEEK_SHARES[isoDow - 2];
 }
 
+/**
+ * The latest day the nightly lake can honestly claim to hold COMPLETE data for.
+ *
+ * `MAX(LeadDate)` is NOT that day. Leads are created live in the platform, so a handful dated today
+ * land in the overnight build and drag the whole board's "data as of" a day forward while every other
+ * fact still stops at yesterday. Observed 2026-07-30: MAX(LeadDate) = 30 Jul with **1 lead**, while
+ * MAX(WrittenDate) and MAX(status-70) were both 29 Jul.
+ *
+ * That is not cosmetic. `weeklyPacing` derives `fraction` from this date, so the board compared
+ * Wednesday's data against Thursday's expectation and reported the firm ~1 day of target further
+ * behind than it was: leads 351 against an expected 527 ("BEHIND −176"), applications 40 against 96
+ * ("−56"), both KPIs flagged CRITICAL with the headline day showing 1 lead and 0 applications at
+ * 11:19. That is what Kyle saw on 2026-07-30.
+ *
+ * The lake is rebuilt overnight, so TODAY is never a complete day — cap at yesterday. Kept pure and
+ * separate from the query so the rule is unit-testable.
+ */
+export function completeThrough(maxLeadDate: string, today: string): string {
+  const yesterday = shiftDays(today, -1);
+  return maxLeadDate < yesterday ? maxLeadDate : yesterday;
+}
+
 /** The most recent working day (Mon–Fri) on or before `iso`. */
 export function latestWorkingDayOnOrBefore(iso: string): string {
   let d = iso;

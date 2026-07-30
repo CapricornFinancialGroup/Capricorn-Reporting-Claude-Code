@@ -26,6 +26,13 @@ function fmtDelta(k: MomentumKpi): { text: string; cls: string } {
   };
 }
 
+/** The tile's window in words. These tiles report the LAST COMPLETE Sat–Fri week while the run-chase
+ *  screens report the current one; showing only "W30" let a full week be read as three days and
+ *  reconciled against a report sharing none of its days (Kyle 2026-07-28). Spell out the dates. */
+function windowLabel(k: MomentumKpi): string {
+  return `${shortDate(k.weekFrom)} – ${shortDate(k.weekTo)}`;
+}
+
 export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<MarketMomentumPayload>("market-momentum", filters, mode, refreshMs);
   const { data: compareData } = usePayload<MarketMomentumPayload>("market-momentum", compareFilters ?? null, mode, refreshMs);
@@ -39,9 +46,13 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               return (
                 <div className="card mom-kpi" key={k.key}>
                   <div className="mom-kpi-label">{k.label}</div>
+                  <div className="mom-kpi-window">
+                    Week to {shortDate(k.weekTo)}
+                    {k.provisional && <span className="mom-kpi-prov" title="Cases are entered ~6 days after the date they were written, so this week is still filling.">provisional</span>}
+                  </div>
                   <div className="mom-kpi-value">{fmtValue(k)}</div>
                   <div className={`mom-kpi-delta ${d.cls}`}>{d.text}</div>
-                  <div className="mom-kpi-vs">{k.weekLabel} vs prior week</div>
+                  <div className="mom-kpi-vs">{windowLabel(k)} vs {k.priorWeekLabel ? "prior week" : "—"}</div>
                 </div>
               );
             })}
@@ -61,21 +72,20 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
           )}
 
           <div className="row cols-3 grow">
-            <Trend title="Mortgage Applications" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
-            <Trend title="Protection Referrals" weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
+            <Trend title="Mortgages Written" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
+            <Trend title="Protection Opportunities" weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
             <RevenueTrend
               title="Weekly Written (£k)"
               weeks={data.weeks}
               actual={data.series.writtenActualK}
               forecast={data.series.writtenForecastK}
               vsQ={vsQ(data, "written")}
-              mortgage={data.written.mortgage}
-              weekLabel={data.written.weekLabel}
+              written={data.written}
             />
             <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Avg Case Size (£k) *" weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
             <Trend
-              title="Protection Referral Rate (%) *"
+              title="Protection Attach Rate (%) *"
               weeks={data.weeks}
               values={data.series.referralRatePct}
               vsQ={null}
@@ -139,19 +149,20 @@ function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
   );
 }
 
-/** Weekly Written (item 12, reframed; Kyle 2026-07-15 "Revenue" = written COMMISSION) — actuals stop
- *  at the last complete week, the current week shows a day-by-day forecast segment. Mortgage
- *  target-vs-actual is shown (reference line + footer, latest fully-loaded week). Protection is
- *  intentionally NOT shown yet — its actual source is still unconfirmed with Capricorn, so only the
- *  mortgage side is trustworthy. Combined written == mortgage for now (protection parked at £0). */
-function RevenueTrend({ title, weeks, actual, forecast, vsQ, mortgage, weekLabel }: {
+/** Weekly Written (Kyle 2026-07-15 "Revenue" = written COMMISSION) — actuals stop at the last
+ *  complete week, the current week shows a day-by-day forecast segment.
+ *
+ *  Written is COMMISSION ONLY. Client fees are stated separately in the footer rather than folded in
+ *  (they were, silently, until 2026-07-28) so this figure is on the same basis as Capricorn's own
+ *  Total Written report. Protection is now sourced rather than parked at £0, but its basis is still
+ *  an open question with Kyle, hence the "indicative" marker. */
+function RevenueTrend({ title, weeks, actual, forecast, vsQ, written }: {
   title: string;
   weeks: string[];
   actual: Array<number | null>;
   forecast: Array<number | null>;
   vsQ: number | null;
-  mortgage: MarketMomentumPayload["written"]["mortgage"];
-  weekLabel: string;
+  written: MarketMomentumPayload["written"];
 }) {
   const accel =
     vsQ == null ? null : (
@@ -159,19 +170,28 @@ function RevenueTrend({ title, weeks, actual, forecast, vsQ, mortgage, weekLabel
         {vsQ >= 0 ? "+" : ""}{vsQ}% vs qtr avg
       </span>
     );
-  const targetK = Math.round(mortgage.target / 1000);
-  const pct = mortgage.target > 0 ? Math.round((mortgage.actual / mortgage.target) * 100) : null;
+  const targetK = Math.round(written.combined.target / 1000);
+  const pct = written.combined.target > 0 ? Math.round((written.combined.actual / written.combined.target) * 100) : null;
   const cls = pct == null ? "on_pace" : pct >= 100 ? "ahead" : pct >= 80 ? "on_pace" : "behind";
   return (
     <div className="card">
-      <div className="card-title"><span>{title}</span>{accel}</div>
-      <div className="grow">
-        <EChart height={320} option={momentumForecastChart({ weeks, actual, forecast, referenceLine: { value: targetK, label: `£${targetK}k mortgage target` } })} />
+      <div className="card-title">
+        <span>{title}</span>
+        {written.provisional && <span className="mom-kpi-prov">provisional</span>}
+        {accel}
       </div>
-      <div style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 12, marginTop: 6, opacity: 0.9 }}>
-        <span><strong>Mortgage {weekLabel}:</strong> {gbpCompact(mortgage.actual)} / {gbpCompact(mortgage.target)}</span>
+      <div className="grow">
+        <EChart height={320} option={momentumForecastChart({ weeks, actual, forecast, referenceLine: { value: targetK, label: `£${targetK}k combined target` } })} />
+      </div>
+      <div style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 12, marginTop: 6, opacity: 0.9, flexWrap: "wrap" }}>
+        <span><strong>{shortDate(written.weekFrom)} – {shortDate(written.weekTo)}:</strong> {gbpCompact(written.combined.actual)} / {gbpCompact(written.combined.target)}</span>
         {pct != null && <span className={`pill ${cls}`}>{pct}%</span>}
-        <span style={{ marginLeft: "auto", opacity: 0.6 }}>Protection pending</span>
+        <span style={{ opacity: 0.7 }}>
+          Mortgage {gbpCompact(written.mortgage.actual)} · Protection {gbpCompact(written.insurance.actual)}
+        </span>
+        <span style={{ marginLeft: "auto", opacity: 0.6 }}>
+          commission only — client fees {gbpCompact(written.clientFees)} excluded
+        </span>
       </div>
     </div>
   );

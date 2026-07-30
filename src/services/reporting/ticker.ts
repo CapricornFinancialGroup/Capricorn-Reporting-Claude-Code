@@ -3,6 +3,7 @@
 // PII rule: adviser names, lenders, introducer companies and £ values only — the ticker NEVER
 // joins the client table (no client PII on an office wall).
 
+import { MORTGAGE_WRITTEN_DATE } from "../../domain/data-quality.js";
 import { combine, excludeMigrations, notDeleted, orgFilter } from "./filters.js";
 import type { BuiltQuery, SqlParam } from "./query.js";
 
@@ -14,7 +15,9 @@ export interface ApplicationEvent {
 }
 
 export function applicationEvents(day: string, top = 25): BuiltQuery {
-  const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"));
+  // No migration guard (LeadDate-keyed — it was dropping genuine written cases) and the day keys on
+  // MORTGAGE_WRITTEN_DATE so the ticker names the same events the KPI counts.
+  const base = combine(orgFilter("f"), notDeleted("f"));
   const params: SqlParam[] = [...base.params, { name: "D", value: day, kind: "date" }];
   return {
     text: `SELECT TOP ${Math.max(1, Math.min(100, top))}
@@ -23,7 +26,7 @@ export function applicationEvents(day: string, top = 25): BuiltQuery {
              FROM dbo.mortgagecase f
              LEFT JOIN dbo.useraccount adv ON adv.UserAccountKey = f.PrimaryAdviserUserAccountKey
              LEFT JOIN dbo.lender l ON l.LenderKey = f.LenderKey
-            WHERE ${base.clause} AND f.WrittenDate = @D
+            WHERE ${base.clause} AND f.${MORTGAGE_WRITTEN_DATE} = @D
             ORDER BY f.MortgageValue DESC;`,
     params,
   };
@@ -58,18 +61,18 @@ export interface ReferralEvent {
 }
 
 export function referralEvents(day: string, top = 25): BuiltQuery {
-  // Cross-sell referrals are the live referral signal (mortgagecase referral flags are unpopulated
-  // for Capricorn). No DeletedYN on this fact.
-  const base = orgFilter("f");
+  // Protection OPPORTUNITIES — protection cases opened on the day. Was crosssellreferral (PaymentShield
+  // quotes + currency exchange, not protection at all) until 2026-07-30; see
+  // PROTECTION_OPPORTUNITY_NOTE in domain/data-quality.ts.
+  const base = combine(orgFilter("f"), notDeleted("f"));
   const params: SqlParam[] = [...base.params, { name: "D", value: day, kind: "date" }];
   return {
     text: `SELECT TOP ${Math.max(1, Math.min(100, top))}
                   adv.FullName AS fullName, adv.Username AS username
-             FROM dbo.crosssellreferral f
-             LEFT JOIN dbo.useraccount adv ON adv.UserAccountKey = f.AdviserUserAccountKey
+             FROM dbo.protectioncase f
+             LEFT JOIN dbo.useraccount adv ON adv.UserAccountKey = f.PrimaryAdviserUserAccountKey
             WHERE ${base.clause} AND f.CreatedDate = @D
-              AND COALESCE(f.AdviserDeclinedYN, 'N') <> 'Y' AND COALESCE(f.HasErrorYN, 'N') <> 'Y'
-            ORDER BY f.CreatedAt DESC;`,
+            ORDER BY f.ProtectionPolicyAmount DESC;`,
     params,
   };
 }

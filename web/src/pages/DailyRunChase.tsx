@@ -115,7 +115,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                   <th style={{ width: 44 }}>Rank</th>
                   <th>Office</th>
                   <th>Leads</th>
-                  <th>Applications</th>
+                  <th>Written</th>
                   <th>Referrals</th>
                   <th>Sales</th>
                   <th style={{ textAlign: "right" }}>Status</th>

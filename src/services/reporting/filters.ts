@@ -64,8 +64,14 @@ export function notDeleted(alias = ""): Fragment {
   return { clause: `COALESCE(${col}, 'N') <> 'Y'`, params: [] };
 }
 
-/** Exclude known bulk-migration batches from mortgagecase metrics (see domain/data-quality.ts).
- *  Alias must be a mortgagecase row (has OrganisationKey + LeadDate). Empty when nothing to exclude. */
+/** Exclude known bulk-migration batches from LEAD metrics (see domain/data-quality.ts).
+ *  Alias must be a mortgagecase row (has OrganisationKey + LeadDate). Empty when nothing to exclude.
+ *
+ *  ⚠ LeadDate-keyed metrics ONLY. The batch is real business mis-dated on LeadDate, so it distorts
+ *  "new leads on 1 Jul" and nothing else. Applying it to WrittenDate-keyed metrics (applications,
+ *  written £, revenue) silently deletes genuine written business whose lead happens to sit in the
+ *  batch — that cost 16 cases / £19,592 of July written commission before this was scoped down
+ *  (Kyle's 2026-07-28 reconciliation). */
 export function excludeMigrations(alias = "f"): Fragment {
   if (MIGRATION_EXCLUSIONS.length === 0) return { clause: "", params: [] };
   const clauses: string[] = [];

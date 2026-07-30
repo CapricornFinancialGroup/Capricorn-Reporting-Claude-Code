@@ -18,3 +18,124 @@ export interface MigrationExclusion {
 export const MIGRATION_EXCLUSIONS: MigrationExclusion[] = [
   { orgKey: 486, leadDate: "2026-07-01", note: "CFM go-live back-book migration (~4,094 leads bulk-dated 1 Jul)" },
 ];
+
+/**
+ * Days after a week ends before its WrittenDate-keyed figures can be treated as settled.
+ *
+ * Cases are entered on the platform well after the date they were written. Measured on the live
+ * lake 2026-07-29 (mortgagecase, both Capricorn orgs, WrittenDate ≥ 1 May 2026, n=1,745):
+ *
+ *   same day  36%   |  1–3 days  16%  |  4–7 days  18%  |  8–30 days  28%  |  31+ days  2%
+ *   mean lag  6.0 days
+ *
+ * By value (WrittenDate ≥ 1 Jun): only 52% of written commission+fees lands within a day of the
+ * written date; 22% arrives 8 or more days late.
+ *
+ * Consequence, and the reason this constant exists: W30 (18–24 Jul) reported £266.3k written and
+ * 133 mortgages written on 28 Jul, and £299.6k / 147 on 29 Jul — up 12.5% in 24 hours, still
+ * climbing. Presenting a just-closed week as final produced Kyle's 2026-07-28 challenge. Anything
+ * inside this window is flagged `provisional` so the board says so on its face.
+ *
+ * ⚠ UNVERIFIED on the current basis. Both figures above were measured while the board keyed on
+ * `WrittenDate`, which the platform backdates. MORTGAGE_WRITTEN_DATE (below) is a workflow
+ * status-change date, recorded when the status actually moves, so it should be materially more
+ * stable — but that has NOT been observed across snapshots yet. Keeping the flag is the cautious
+ * choice; confirm over a fortnight of daily snapshots and drop or shorten it if the drift is small.
+ *
+ * 14 days ≈ the point the distribution above has substantially settled (~70% within 7 days). It is
+ * a judgement call on Capricorn's behalf, not a measured threshold — revisit with Kyle.
+ */
+export const INPUT_LAG_SETTLE_DAYS = 14;
+
+/**
+ * The column that means "a mortgage was written", matching Capricorn's own Total Written Report.
+ *
+ * That report is `usp_GetTotalProductReport` in the platform (Occfinance.Database). It does NOT read
+ * a written-date field: it joins `FinanceStatusDate` and keys on the date a product ENTERED the
+ * status `'Pre-offer Processing'` (FinanceStatusId 70). The Gold ETL exposes that as
+ * `mortgagecase.WorkflowStatusPreOfferProcessingDate`.
+ *
+ * `mortgagecase.WrittenDate` is a DIFFERENT date. The Gold load builds it as
+ * `COALESCE(SubmissionDate when plausible, <status-70 date>)`, so `SubmissionDate` wins wherever it
+ * is set — and it usually sits EARLIER: of ~900 recent cases only 323 share the same day, the rest
+ * skew 1–21 days earlier. That single difference is why the dashboard could not be reconciled to the
+ * report (Kyle 2026-07-28).
+ *
+ * Proof, 25–28 Jul 2026 against Kyle's screenshot (£112,083 mortgage commission, org 486):
+ *
+ *   basis                                  cases   commission
+ *   WrittenDate (what the board used)         28      £49,166   ← nothing like his figure
+ *   status 70, org 486, 25–27 Jul             60     £110,689   ← his report ran 09:41 on the 28th
+ *
+ * Four advisers tie to the penny on this basis — Albano Toska £22,225.43, Ross Culley £4,668.00,
+ * Toby Scott-Mason £3,367.22, Jacob Furniss £3,388.00 — and the adviser SET matches his report,
+ * where the WrittenDate basis shared barely a name with it.
+ *
+ * ⚠ Trade-off, accepted deliberately: 112 of 1,745 recent mortgage cases (6.4%, £178k commission)
+ * have no status-70 date and are therefore EXCLUDED. That is exactly what the platform report does
+ * — it inner-joins the status — so matching it means matching that exclusion too. Raise the 6.4% as
+ * a data-quality item with Capricorn rather than papering over it with a fallback, which would put
+ * the board back out of step with the report.
+ */
+export const MORTGAGE_WRITTEN_DATE = "WorkflowStatusPreOfferProcessingDate";
+
+/**
+ * Protection deliberately stays on `protectioncase.WrittenDate`.
+ *
+ * The platform report keys protection on status 65 ('Submitted to Underwriters'), and where both are
+ * present the two agree exactly — 25–28 Jul 2026 gives £18,884.98 on either basis. But status 65 is
+ * populated for only 50 of 246 recent protection cases (20%); switching would silently drop 80% of
+ * protection business. Protection's remaining gap to the report (£18,885 vs his £22,694) is
+ * ATTRIBUTION, not date: the report credits `tblLead.InsuranceAdviser` and splits commission via
+ * `tblSplitCommission`, whereas the lake carries one `PrimaryAdviserUserAccountKey` per case.
+ */
+export const PROTECTION_WRITTEN_DATE = "WrittenDate";
+
+/**
+ * The column that means "a mortgage offer was issued", matching the platform's own reports.
+ *
+ * The platform treats reaching status **100** as offer-issued — `GetConversionRateForInsuranceReferrals`
+ * literally declares `@MortgageOfferIssuedStatusId = 100`. Status 100 is named 'Post-offer Processing'
+ * (`0000_insert-FinanceStatus.sql`), and the Gold ETL exposes its date as
+ * `mortgagecase.WorkflowStatusPostOfferProcessingDate`.
+ *
+ * The dashboard used `mortgagecase.OfferIssueDate` instead. That column is NULL on 24,458 of 25,116
+ * Capricorn cases created since 1 Jan 2026 — **97% empty** — so it was never a viable source:
+ *
+ *   July 2026 offers, OfferIssueDate (what the funnel showed):        66
+ *   July 2026 offers, status 100 (what the platform reports):        526   ← 8× more
+ *
+ * Funnel Health therefore showed 604 written collapsing to 61 offers — a catastrophic-looking leak
+ * that was pure measurement error. Verified live 2026-07-30.
+ */
+export const MORTGAGE_OFFER_DATE = "WorkflowStatusPostOfferProcessingDate";
+
+/**
+ * Why the protection KPI is "Opportunities" (protection cases opened) and not "Referrals".
+ *
+ * Until 2026-07-30 the referrals KPI read `dbo.crosssellreferral`. That table is not protection at
+ * all — the Gold load unions three cross-sell integrations, and for Capricorn in July it held 112
+ * PaymentShield **quote** events (home insurance) plus 8 SmartCurrencyExchange (currency) referrals,
+ * and zero protection referrals. The KPI reported 110 of those as July's protection referrals. It
+ * went unnoticed because the wrong number (~24/wk) sat close to the 25/wk target.
+ *
+ * The platform's own Referrals report (`GetConversionRateForInsuranceReferrals`) defines a protection
+ * referral as `tblLead.InsuranceAdviser > 0`. Capricorn does not use that workflow: the field resolves
+ * on 3 of 1,839 written mortgage cases over three months and 0 in W30, so their in-platform Referrals
+ * report is near-empty too. Bringing `InsuranceAdviser` into the share would deliver an empty column —
+ * it is not a pipeline gap, it is a behaviour Capricorn does not record.
+ *
+ * What they DO record is protection cases. Weekly, `protectioncase` created: 70 / 51 / 42 / 46 / 49
+ * (w/c 22 Jun → 20 Jul) — stable, properly dated, and therefore chaseable. The referring-adviser flag
+ * on those cases is noise (6 / 3 / 3 / 3 / 1), so it cannot narrow this to genuine referrals.
+ *
+ * Hence: count protection cases OPENED and label the tile "Protection Opportunities", so nobody reads
+ * it as the old measure or as a true referral.
+ *
+ * ⚠ TARGET NEEDS RESETTING. The 5/day, 25/week figure was set against the old (wrong) number.
+ * Opportunities run ~48/week — roughly 2× it. Awaiting Kyle's ruling on the definition and target;
+ * until then the board will show this comfortably ahead of a target that no longer means anything.
+ * Note separately that protection cases WRITTEN ran 4 in W30 and 52 in July against the same 25/week
+ * target — a real gap the old referral number was masking.
+ */
+export const PROTECTION_OPPORTUNITY_NOTE = "protectioncase.CreatedDate — see docstring" as const;

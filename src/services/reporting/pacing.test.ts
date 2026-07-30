@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS } from "../../domain/targets.js";
-import { mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
+import { completeThrough, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
 describe("weekly weights (Conor's principles)", () => {
   it("Mon–Thu carry 20.83% each, Friday 16.67% (80% of a Mon–Thu day)", () => {
@@ -84,5 +84,39 @@ describe("mtdPacing (month-window screens)", () => {
 
   it("caps the fraction at 1 on the final day", () => {
     expect(mtdPacing("2026-07-31").fraction).toBe(1);
+  });
+});
+
+// Regression: the 2026-07-30 incident. One lead dated "today" pulled MAX(LeadDate) forward, so the
+// board paced Wednesday's data against Thursday's expectation and reported the firm a full day of
+// target further behind than it was — leads 351 vs an expected 527, applications 40 vs 96, both
+// CRITICAL, headline day showing 1 lead at 11:19. The lake is a nightly build: today is never
+// complete.
+describe("completeThrough — today is never a complete day in a nightly lake", () => {
+  it("caps a MAX(LeadDate) that has run ahead to today", () => {
+    // Thu 30 Jul held exactly 1 lead; every other fact stopped at Wed 29 Jul.
+    expect(completeThrough("2026-07-30", "2026-07-30")).toBe("2026-07-29");
+  });
+
+  it("never trusts a future-dated lead either", () => {
+    expect(completeThrough("2026-08-05", "2026-07-30")).toBe("2026-07-29");
+  });
+
+  it("leaves a genuinely lagging lake alone (load has not run yet)", () => {
+    expect(completeThrough("2026-07-27", "2026-07-30")).toBe("2026-07-27");
+  });
+
+  it("accepts yesterday exactly", () => {
+    expect(completeThrough("2026-07-29", "2026-07-30")).toBe("2026-07-29");
+  });
+
+  it("keeps the pacing fraction on the day the data actually covers", () => {
+    // Before the fix: fraction came from Thu (83.33%). After: Wed (62.5%).
+    const asOf = completeThrough("2026-07-30", "2026-07-30");
+    const ctx = weeklyPacing("2026-07-30", asOf);
+    expect(ctx.dataAsOf).toBe("2026-07-29");
+    expect(Math.round(ctx.fraction * 10000) / 100).toBeCloseTo(62.5, 1);
+    // 115 apps/wk × 62.5% = 71.9 expected, not the 95.8 that produced "−56".
+    expect(Math.round(115 * ctx.fraction)).toBe(72);
   });
 });

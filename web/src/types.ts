@@ -136,7 +136,11 @@ export interface AdviserLeaguePayload {
     applications: number;
     referrals: number;
     sales: number;
+    /** Commission + client fees — deliberately wider than Momentum's "Weekly Written" (commission
+     *  only). Both parts are returned so the difference is explicit. */
     revenue: number;
+    commission: number;
+    clientFees: number;
     avgConversion: number | null;
   };
   top: Array<{
@@ -182,6 +186,15 @@ export interface MomentumKpi {
   fmt: "int" | "gbp" | "gbpk";
   latest: number | null;
   weekLabel: string;
+  /** The tile's ACTUAL window (inclusive, Sat–Fri). Rendered on the tile: the tiles report the last
+   *  COMPLETE week while the run-chase screens report the current one, and a bare "W30" gave no way
+   *  to tell them apart (Kyle 2026-07-28). */
+  weekFrom: string;
+  weekTo: string;
+  priorWeekLabel: string | null;
+  /** True when this week's WrittenDate-keyed figure is still filling from input lag — mean 6 days,
+   *  so a just-closed week is not final. */
+  provisional: boolean;
   delta: number | null;
   deltaPct: number | null;
   vsQuarterPct: number | null;
@@ -204,12 +217,17 @@ export interface MarketMomentumPayload {
     avgCaseSizeK: Array<number | null>;
     referralRatePct: Array<number | null>;
   };
-  /** Written business vs target for the latest COMPLETE week (£), split by product + combined. */
+  /** Written business vs target for the latest COMPLETE week (£), split by product + combined.
+   *  "Written" is COMMISSION; `clientFees` is carried alongside, never folded in. */
   written: {
     weekLabel: string;
+    weekFrom: string;
+    weekTo: string;
     mortgage: { actual: number; target: number };
     insurance: { actual: number; target: number };
     combined: { actual: number; target: number };
+    clientFees: number;
+    provisional: boolean;
   };
   /** Combined weekly written target, £k — reference line on the Weekly Written trend. */
   writtenTargetCombinedK: number;

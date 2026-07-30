@@ -10,6 +10,7 @@
 // the live Team-Targets source when Capricorn provides one.
 
 import type { Config } from "../../config.js";
+import { INPUT_LAG_SETTLE_DAYS } from "../../domain/data-quality.js";
 import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import {
   dayTarget,
@@ -26,7 +27,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
@@ -60,7 +61,12 @@ function isoDay(v: unknown): string {
 // Shared chase core (cached): pacing context + the 4 KPIs at both grains
 // ---------------------------------------------------------------------------
 
-/** Latest complete day in the lake — MAX(LeadDate) (lead creation trails nothing else we chart). */
+/** Latest COMPLETE day in the lake.
+ *
+ *  MAX(LeadDate) alone is wrong: leads are created live, so a few dated today ride into the overnight
+ *  build and pull "data as of" a day ahead of every other fact — which then makes the whole run chase
+ *  pace against a day it has no data for. `completeThrough` caps it at yesterday. See its docstring
+ *  for the 2026-07-30 case that exposed this. */
 async function dataAsOf(config: Config): Promise<string> {
   return cached("data-as-of", 5 * 60_000, async () => {
     const rows = await q<{ maxDay: unknown }>(config, {
@@ -69,7 +75,7 @@ async function dataAsOf(config: Config): Promise<string> {
     });
     const v = rows[0]?.maxDay;
     if (!v) throw new Error("Lake returned no MAX(LeadDate) — is GAGold_Capricorn loaded?");
-    return isoDay(v);
+    return completeThrough(isoDay(v), tzToday(new Date(), config.reporting.timeZone));
   });
 }
 
@@ -265,9 +271,9 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     const { ctx } = core;
     const days = ctx.weekDays;
 
-    // Total Written (Conor 2026-07-07, item 5): total mortgage value written this chase week — the
-    // same WrittenDate column the Applications KPI already uses, so date semantics line up. Not
-    // commission revenue (that's Adviser League's "Est. Revenue") — total mortgage/loan value.
+    // Total LENDING (Conor 2026-07-07, item 5): total mortgage/loan value written this chase week —
+    // the same WrittenDate column the Mortgages Written KPI uses, so date semantics line up. NOT
+    // commission (that's Momentum's "Weekly Written" and the League's "Est. Revenue").
     const writtenRows = await q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(ctx.windowStart, ctx.dataAsOf));
     const totalWritten = Math.round(sum(writtenRows.map((r) => r.totalValue ?? 0)));
 
@@ -516,7 +522,12 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
       row.trendDir = second > first * 1.15 ? "up" : second < first * 0.85 ? "down" : "flat";
     }
 
-    const revenue = sum(revRows.map((r) => r.revenue ?? 0));
+    // Est. Revenue = written commission + client fees, deliberately WIDER than Momentum's "Weekly
+    // Written" (commission only). Both parts are returned so the difference is visible rather than
+    // looking like two screens disagreeing (Kyle 2026-07-28).
+    const commission = sum(revRows.map((r) => r.commission ?? 0));
+    const clientFees = sum(revRows.map((r) => r.clientFees ?? 0));
+    const revenue = commission + clientFees;
     const totalApps = sum([...byName.values()].map((r) => r.apps));
     const totalRefs = sum([...byName.values()].map((r) => r.refs));
     const totalSales = sum([...byName.values()].map((r) => r.sales));
@@ -579,6 +590,8 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
         referrals: totalRefs,
         sales: totalSales,
         revenue: Math.round(revenue),
+        commission: Math.round(commission),
+        clientFees: Math.round(clientFees),
         avgConversion: round(divide(totalRefs, totalApps), 3),
       },
       top: rows.slice(0, 8).map((r) => ({
@@ -639,9 +652,9 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
     const sales = sum(salesDaily.map((r) => r.n));
     const stages = [
       { key: "leads", label: "Leads", count: s.leads },
-      { key: "applications", label: "Mortgage Apps", count: s.applications },
+      { key: "applications", label: "Mortgages Written", count: s.applications },
       { key: "offers", label: "Offers", count: s.offers },
-      { key: "referrals", label: "Referrals", count: referrals },
+      { key: "referrals", label: "Protection Opportunities", count: referrals },
       { key: "sales", label: "Protection Sales", count: sales },
     ];
     // Each stage's share of TOTAL LEADS in the period — deliberately NOT a stage-to-stage case
@@ -682,11 +695,12 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   const weekStarts = weekStartsFor(asOf, f.from, 13);
   const from = weekStarts[0];
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
-    const [leads, apps, refs, revenue] = await Promise.all([
+    const [leads, apps, refs, revenue, protWritten] = await Promise.all([
       q<DailyCount>(config, kpiDaily("leads", from, asOf)),
       q<DailyCount>(config, kpiDaily("applications", from, asOf)),
       q<DailyCount>(config, kpiDaily("referrals", from, asOf)),
       q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(from, asOf)),
+      q<momentumQ.ProtectionWrittenDaily>(config, momentumQ.protectionWrittenDaily(from, asOf)),
     ]);
 
     const weekIndex = (d: string): number => weekStarts.indexOf(weekStartOf(d));
@@ -704,23 +718,30 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const refsW = bucket(refs);
     const valW = weekStarts.map(() => 0);
     const casesW = weekStarts.map(() => 0);
-    // Written business = written COMMISSION (Kyle 2026-07-15 corrected: "written" is commission, NOT
-    // loan value — the £30m loan-value figure was wrong). Mortgage written = revenueDaily.revenue
-    // (NetCommission/ProductCommission + ClientFee), which reconciles to Capricorn's own Total
-    // Written report (~£161k last complete week vs his ~£186k).
+    // Written business = written COMMISSION (Kyle 2026-07-15). Mortgage written = commission ONLY —
+    // client fees are carried separately (feeW) because Capricorn's Total Written report is a
+    // commission report; folding fees in silently inflated the board against it (Kyle 2026-07-28).
+    // Loan value (valW → Avg Case Size, and the Daily Run Chase "Total Lending" tile) is shown
+    // SEPARATELY, never as "written".
     const mortW = weekStarts.map(() => 0);
+    const feeW = weekStarts.map(() => 0);
     for (const r of revenue) {
       const i = weekIndex(isoDay(r.d));
       if (i < 0) continue;
       valW[i] += r.totalValue ?? 0;
       casesW[i] += r.cases;
-      mortW[i] += r.revenue ?? 0;
+      mortW[i] += r.commission ?? 0;
+      feeW[i] += r.clientFees ?? 0;
     }
-    // Insurance/protection written PARKED (£0) pending Capricorn confirming its source — Kyle's
-    // ~£41k/wk matched no lake field we've validated (the view's ProtectionWritten returned ~£1.6k).
-    // Loan value (SUM MortgageValue → valW / Avg Case Size, and the Daily Run Chase "Total Lending"
-    // tile) is shown SEPARATELY, never as "written". combW is mortgage commission only for now.
+    // Protection written is now SOURCED (protectioncase.ProductCommission) rather than hardcoded
+    // £0, which understated combined written by ~£24k/wk. Still INDICATIVE: it reads ~£21–24k/wk
+    // against Kyle's previously quoted ~£41k/wk, an open question with him (2026-07-29).
     const insW = weekStarts.map(() => 0);
+    for (const r of protWritten) {
+      const i = weekIndex(isoDay(r.d));
+      if (i < 0) continue;
+      insW[i] += r.commission ?? 0;
+    }
     const combW = mortW.map((m, i) => m + insW[i]);
     const avgCaseW = casesW.map((n, i) => (n > 0 ? valW[i] / n : null));
     const refRateW = appsW.map((n, i) => (n > 0 ? (refsW[i] / n) * 100 : null));
@@ -756,7 +777,19 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // weekday's own trailing average (last 6 occurrences in the fetched window) rather than a flat
     // proportional scale-up — it shrinks toward the true total as real days land through the week.
     // Only touches Weekly Revenue; the other 3 series keep the simpler flat scale-up above.
-    const writtenCombinedDaily = revenue.map((r) => ({ d: isoDay(r.d), v: r.revenue ?? 0 }));
+    // Combined (mortgage + protection) written commission per day — the forecast's own history.
+    const combinedByDay = new Map<string, number>();
+    for (const r of revenue) {
+      const d = isoDay(r.d);
+      combinedByDay.set(d, (combinedByDay.get(d) ?? 0) + (r.commission ?? 0));
+    }
+    for (const r of protWritten) {
+      const d = isoDay(r.d);
+      combinedByDay.set(d, (combinedByDay.get(d) ?? 0) + (r.commission ?? 0));
+    }
+    const writtenCombinedDaily = [...combinedByDay.entries()]
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([d, v]) => ({ d, v }));
     let writtenForecastTotal: number | null = null;
     if (partialLast && weekFraction > 0) {
       const currentWeekEnd = shiftDays(weekStarts[lastIdx], 6); // Friday
@@ -784,16 +817,29 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       const usable = xs.slice(0, li + 1).filter((x): x is number => x != null);
       return usable.length ? sum(usable) / usable.length : null;
     };
+    // Every tile carries its ACTUAL date range, not just "W30". The tiles report the last COMPLETE
+    // Sat–Fri week while the run-chase screens report the current one, and a bare week number gave
+    // no way to tell — Kyle read a full week (18–24 Jul) as "3 days" and reconciled it against a
+    // 25–28 Jul report that shares no days with it (2026-07-28).
+    const windowOf = (i: number) => ({ from: weekStarts[i], to: shiftDays(weekStarts[i], 6) });
+    // WrittenDate-keyed measures keep climbing for days after the week ends (INPUT_LAG_SETTLE_DAYS);
+    // LeadDate/CreatedDate-keyed ones (leads, referrals) land same-day and are settled on close.
+    const WRITTEN_DATE_KEYED = new Set(["applications", "written", "case-size"]);
     const kpi = (key: string, label: string, series: Array<number | null>, fmt: "int" | "gbp" | "gbpk") => {
       const latest = series[li] ?? null;
       const prior = series[li - 1] ?? null;
       const qa = quarterAvg(series);
+      const w = windowOf(li);
       return {
         key,
         label,
         fmt,
         latest,
         weekLabel: weeks[li],
+        weekFrom: w.from,
+        weekTo: w.to,
+        priorWeekLabel: li > 0 ? weeks[li - 1] : null,
+        provisional: WRITTEN_DATE_KEYED.has(key) && shiftDays(w.to, INPUT_LAG_SETTLE_DAYS) > asOf,
         delta: latest != null && prior != null ? round(latest - prior, 1) : null,
         deltaPct: latest != null && prior != null ? pctDelta(latest, prior) : null,
         vsQuarterPct: latest != null && qa ? round(((latest - qa) / qa) * 100, 1) : null,
@@ -801,8 +847,10 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     };
 
     const kpis = [
-      kpi("applications", "Mortgage Applications", appsW, "int"),
-      kpi("referrals", "Protection Referrals", refsW, "int"),
+      // "Mortgages Written", not "Applications": this counts mortgagecase rows by WrittenDate, i.e.
+      // business written, not applications submitted (Kyle read it as the latter, 2026-07-28).
+      kpi("applications", "Mortgages Written", appsW, "int"),
+      kpi("referrals", "Protection Opportunities", refsW, "int"),
       kpi("written", "Weekly Written", combW, "gbpk"),
       kpi("leads", "Lead Volume", leadsW, "int"),
       kpi("case-size", "Avg Case Size", avgCaseW, "gbpk"),
@@ -831,11 +879,22 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     }
     const writtenTargets = getWrittenWeeklyTargets();
     const writtenTargetCombined = writtenTargets.mortgage + writtenTargets.insurance;
+    const writtenWindow = windowOf(completeIdx);
     const writtenBlock = {
       weekLabel: weeks[completeIdx],
+      weekFrom: writtenWindow.from,
+      weekTo: writtenWindow.to,
       mortgage: { actual: Math.round(mortW[completeIdx] ?? 0), target: Math.round(writtenTargets.mortgage) },
       insurance: { actual: Math.round(insW[completeIdx] ?? 0), target: Math.round(writtenTargets.insurance) },
       combined: { actual: Math.round(combW[completeIdx] ?? 0), target: Math.round(writtenTargetCombined) },
+      /** Client fees written in the same week — NOT part of "written" (which is commission), shown
+       *  so the gap to a fees-inclusive figure like Est. Revenue is explicit, not mysterious. */
+      clientFees: Math.round(feeW[completeIdx] ?? 0),
+      /** Cases written whose WrittenDate falls in the week but were input later. Mean input lag is
+       *  ~6 days and 22% of written £ arrives 8+ days late, so a just-closed week keeps climbing:
+       *  W30 read £266.3k/133 on 28 Jul and £299.6k/147 on 29 Jul. The board must say "provisional"
+       *  rather than imply a closed week is final (Kyle 2026-07-28). */
+      provisional: shiftDays(writtenWindow.to, INPUT_LAG_SETTLE_DAYS) > asOf,
     };
 
     return {

@@ -53,7 +53,7 @@ export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageP
 
           <div className="card grow">
             <div className="card-title">
-              <span>Applications vs Referrals</span>
+              <span>Mortgages Written vs Referrals</span>
               <span className="card-sub">the gap is the unreferred opportunity · indicative</span>
             </div>
             <div className="grow">

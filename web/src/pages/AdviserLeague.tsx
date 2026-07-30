@@ -18,17 +18,27 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
+          {/* Every dial states its window. These are week-to-date (usually 1–3 trading days), while
+              Market Momentum's tiles report the last COMPLETE week — reading one as the other is how
+              £24.2k here got compared with £266.3k there (Kyle 2026-07-28). */}
           <div className="row" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
             {[
-              { label: "Total Applications", value: num(data.totals.applications), cls: "val-blue" },
-              { label: "Total Referrals", value: num(data.totals.referrals), cls: "" },
-              { label: "Total Protection Sales", value: num(data.totals.sales), cls: "val-green" },
-              { label: "Est. Revenue *", value: gbpCompact(data.totals.revenue), cls: "" },
-              { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue" },
+              { label: "Mortgages Written", value: num(data.totals.applications), cls: "val-blue", sub: null },
+              { label: "Total Referrals", value: num(data.totals.referrals), cls: "", sub: null },
+              { label: "Total Protection Sales", value: num(data.totals.sales), cls: "val-green", sub: null },
+              {
+                label: "Est. Revenue *",
+                value: gbpCompact(data.totals.revenue),
+                cls: "",
+                sub: `commission ${gbpCompact(data.totals.commission)} + fees ${gbpCompact(data.totals.clientFees)}`,
+              },
+              { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue", sub: null },
             ].map((k) => (
               <div className="card mom-kpi" key={k.label}>
                 <div className="mom-kpi-label">{k.label}</div>
+                <div className="mom-kpi-window">{shortDate(data.window.from)} – {shortDate(data.window.to)}</div>
                 <div className={`mom-kpi-value ${k.cls}`}>{k.value}</div>
+                {k.sub && <div className="mom-kpi-vs">{k.sub}</div>}
               </div>
             ))}
           </div>
@@ -38,7 +48,7 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
               primaryLabel={`${shortDate(data.window.from)} – ${shortDate(data.window.to)}`}
               compareLabel={`${shortDate(compareData.window.from)} – ${shortDate(compareData.window.to)}`}
               rows={[
-                { label: "Applications", primary: data.totals.applications, compare: compareData.totals.applications, fmt: "int" },
+                { label: "Mortgages Written", primary: data.totals.applications, compare: compareData.totals.applications, fmt: "int" },
                 { label: "Referrals", primary: data.totals.referrals, compare: compareData.totals.referrals, fmt: "int" },
                 { label: "Protection Sales", primary: data.totals.sales, compare: compareData.totals.sales, fmt: "int" },
                 { label: "Est. Revenue", primary: data.totals.revenue, compare: compareData.totals.revenue, fmt: "gbp" },
@@ -126,8 +136,10 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
           </div>
 
           <div className="placeholder-note">
-            * Est. revenue = written commission + client fees (indicative — commission basis pending Capricorn confirmation).
-            Conversion = referrals ÷ applications.
+            * Est. revenue = written commission <em>plus client fees</em>, for the dates shown above — a wider measure
+            than Market Momentum's "Weekly Written", which is commission only and reports the last complete week.
+            Both are indicative: the lake does not currently reconcile to Capricorn's Total Written report
+            (open with Kyle, 2026-07-28). Conversion = referrals ÷ mortgages written.
           </div>
         </div>
       )}

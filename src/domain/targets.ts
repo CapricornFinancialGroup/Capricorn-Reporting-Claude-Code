@@ -17,10 +17,16 @@ import { UNASSIGNED } from "./offices.js";
 
 export type KpiKey = "leads" | "applications" | "referrals" | "sales";
 
+// Display labels. `applications` reads "Mortgages Written" because that is what it counts:
+// mortgagecase rows by WrittenDate, i.e. business written, NOT applications submitted to a lender.
+// Called "Applications" it was read as the latter (Kyle 2026-07-28). The KEY stays `applications` —
+// it's the targets-upload column name and the API contract.
 export const KPI_LABELS: Record<KpiKey, string> = {
   leads: "Leads",
-  applications: "Applications",
-  referrals: "Protection Referrals",
+  applications: "Mortgages Written",
+  // "Opportunities", not "Referrals": this counts protection cases OPENED. Capricorn records no
+  // referral event — see PROTECTION_OPPORTUNITY_NOTE in domain/data-quality.ts.
+  referrals: "Protection Opportunities",
   sales: "Protection Sales",
 };
 
@@ -101,8 +107,12 @@ export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
  *  business-wide weekly totals from Capricorn's Weekly Written Targets files (Arman, week
  *  2026-07-04): Mortgage £359,550/wk, Insurance £75,200/wk. Uploadable via /api/targets/import-written
  *  (parseWrittenTargets.ts) — these are the fallback until an upload lands, same pattern as the KPI
- *  targets above. Actuals come from the lake's vw_total_written_by_product (the view behind
- *  Capricorn's own Total Written report), so the board reconciles to that report by construction. */
+ *  targets above.
+ *
+ *  ⚠ Actuals do NOT come from vw_total_written_by_product — that view holds loan value and policy
+ *  amount, not commission (see the removal note in services/reporting/momentum.ts). They come from
+ *  mortgagecase/protectioncase commission keyed on the platform's status dates; see
+ *  MORTGAGE_WRITTEN_DATE in domain/data-quality.ts for the reconciliation. */
 export interface WrittenTargets {
   mortgage: number;
   insurance: number;
