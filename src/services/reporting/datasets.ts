@@ -11,6 +11,7 @@
 
 import type { Config } from "../../config.js";
 import { INPUT_LAG_SETTLE_DAYS } from "../../domain/data-quality.js";
+import { DATA_CADENCE, METRIC_DEFINITIONS } from "../../domain/metrics.js";
 import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import {
   dayTarget,
@@ -1045,6 +1046,17 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
 }
 
 // ---------------------------------------------------------------------------
+// definitions — THE metric dictionary (Conor 2026-08-04: every KPI clickable)
+// ---------------------------------------------------------------------------
+
+/** The single definition set behind every tile's info panel and the Glossary. Pure config — no lake
+ *  round-trip — but served through the dataset layer so the kiosk and the dashboard resolve it the
+ *  same way as everything else. */
+export async function definitions(_config: Config, _f: ReportFilters) {
+  return { cadence: DATA_CADENCE, metrics: METRIC_DEFINITIONS };
+}
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -1056,6 +1068,7 @@ export const DATASETS = {
   "funnel-health": funnelHealth,
   "market-momentum": marketMomentum,
   "live-feed": liveFeed,
+  definitions,
 } as const;
 
 export type DatasetName = keyof typeof DATASETS;

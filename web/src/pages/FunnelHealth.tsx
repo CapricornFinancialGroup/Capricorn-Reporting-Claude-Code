@@ -6,6 +6,7 @@ import { usePayload } from "../api.js";
 import { applicationsReferralsGapChart, funnelStagesChart } from "../charts.js";
 import { CompareStrip } from "../components/CompareStrip.js";
 import { EChart } from "../components/EChart.js";
+import { MetricInfo } from "../components/MetricInfo.js";
 import { num, shortDate } from "../format.js";
 import type { FunnelHealthPayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
@@ -36,6 +37,15 @@ export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageP
                 }),
               )}
             />
+            {/* The funnel itself is a chart, so the stage definitions hang off a strip beneath it —
+                every stage still clickable through to its single definition (Conor 2026-08-04). */}
+            <div className="funnel-defs">
+              {data.stages.map((st) => (
+                <span className="funnel-def" key={st.key}>
+                  {st.label} <MetricInfo metricKey={st.key} mode={mode} />
+                </span>
+              ))}
+            </div>
           </div>
 
           {compareFilters && compareData && (

@@ -1,27 +1,51 @@
-// The navy Growth OS header (strawman anatomy): brand · page title + live clock · date + LIVE
-// badge. The clock ticks client-side every second — the Formula One "alive" signal.
+// The navy Growth OS header: brand · page title + wall clock · WHICH DATA IS ON SCREEN.
+//
+// The right-hand block used to show today's date and a pulsing red "Live" badge. Both were untrue:
+// the Growth OS reads a warehouse copy rebuilt overnight, so the figures are a complete day behind.
+// Showing today's date next to yesterday's numbers, under the word "Live", is why Kyle asked three
+// times whether the board was live (2026-07-28 → 08-03) and why a Monday view of Sunday's data read
+// as broken. Per Conor's 2026-08-04 note — "every screen should clearly show its refresh frequency
+// and a 'Data as at' timestamp" — the header now states the data date and the cadence, and the word
+// "Live" is gone. The clock stays: it is the time now, labelled as such, not a claim about the data.
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import capricornLogo from "../assets/logos/capricorn.svg";
+import type { TargetsProvenance } from "../types.js";
 
-function useClock(): { time: string; date: string } {
+/** What the header says about the data on screen. */
+export interface Freshness {
+  /** Latest COMPLETE day the figures cover (YYYY-MM-DD). */
+  dataAsOf: string;
+  /** Where the targets come from — a placeholder is called out, not hidden (Conor 2026-08-04). */
+  targetsProvenance?: TargetsProvenance;
+}
+
+function asAtLabel(iso: string): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${months[d.getUTCMonth()]}`;
+}
+
+function useClock(): string {
   const [now, setNow] = useState(() => new Date());
   useEffect(() => {
     const id = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
   const pad = (n: number) => String(n).padStart(2, "0");
-  const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return {
-    time: `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`,
-    date: `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`,
-  };
+  return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
-export function GosHeader({ title, right }: { title: string; right?: ReactNode }) {
-  const { time, date } = useClock();
+export function GosHeader({ title, right, freshness }: {
+  title: string;
+  right?: ReactNode;
+  /** Omitted only before meta loads — the stamp then reads "—" rather than guessing a date. */
+  freshness?: Freshness;
+}) {
+  const time = useClock();
+  const placeholderTargets = freshness?.targetsProvenance?.source === "placeholder";
   return (
     <header className="gos-header">
       <div className="gos-brand">
@@ -29,11 +53,21 @@ export function GosHeader({ title, right }: { title: string; right?: ReactNode }
       </div>
       <div className="gos-header-center">
         <div className="gos-title">{title}</div>
-        <div className="gos-clock">{time}</div>
+        <div className="gos-clock" title="Current time — not the data date">{time}</div>
       </div>
       <div className="gos-header-right">
-        <div className="gos-date">{date}</div>
-        <div className="live-badge"><span className="live-dot" />Live</div>
+        <div className="gos-asat">
+          <div className="gos-asat-value">Data as at {freshness ? asAtLabel(freshness.dataAsOf) : "—"}</div>
+          <div className="gos-asat-cadence">Overnight refresh · not live</div>
+        </div>
+        {/* Targets are config, and until Capricorn uploads their own they are OUR placeholders. A
+            "vs target" that nobody can trace is exactly what generates the emails Conor wants to
+            stop, so the board says so on its face rather than burying it on the Targets page. */}
+        {placeholderTargets && (
+          <div className="gos-warn-pill" title="No target file has been uploaded — targets shown are placeholders derived from trailing averages, not Capricorn's own targets.">
+            Targets: placeholder
+          </div>
+        )}
         {right}
       </div>
     </header>

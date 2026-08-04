@@ -248,3 +248,28 @@ export interface LiveFeedPayload {
   dayLabel: string;
   items: FeedItem[];
 }
+
+// --------------------------------------------------------------- definitions
+
+/** Confidence the board is claiming for a figure — rendered as a badge wherever it appears. */
+export type MetricStatus = "agreed" | "indicative" | "open";
+
+/** One metric's single agreed definition. Mirrors src/domain/metrics.ts, which is the only place a
+ *  definition is written down (Conor 2026-08-04: one definition per KPI, clickable from the tile). */
+export interface MetricDefinition {
+  key: string;
+  label: string;
+  definition: string;
+  calculation: string;
+  source: string;
+  reconcilesTo: string | null;
+  owner: string;
+  frequency: string;
+  status: MetricStatus;
+  note?: string;
+}
+
+export interface DefinitionsPayload {
+  cadence: { summary: string; asOfRule: string; refresh: string };
+  metrics: MetricDefinition[];
+}

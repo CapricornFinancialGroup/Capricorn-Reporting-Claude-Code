@@ -2,22 +2,27 @@
 // working day's actual vs that day's target, with a day ahead/behind. Week-to-date sits underneath
 // as context (the cumulative trend chart lives on the card below this one).
 
+import type { Mode } from "../api.js";
+import { MetricInfo } from "./MetricInfo.js";
 import type { DayView } from "../types.js";
 import { num, shortDate, signed, statusLabel } from "../format.js";
 import { StatusPill } from "./StatusPill.js";
 
-export function KpiCard({ name, day, weeklyTarget, wtd }: {
+export function KpiCard({ name, day, weeklyTarget, wtd, metricKey, mode }: {
   name: string;
   day: DayView;
   weeklyTarget: number;
   wtd: number;
+  /** Key into the metric dictionary — renders the clickable definition (Conor 2026-08-04). */
+  metricKey?: string;
+  mode?: Mode;
 }) {
   const pctOfDay = day.target > 0 ? Math.min(100, (day.actual / day.target) * 100) : 0;
   const gapClass = day.gap > 0 ? "val-green" : day.gap < 0 ? "val-amber" : "val-blue";
   const wtdPct = weeklyTarget > 0 ? Math.round((wtd / weeklyTarget) * 100) : 0;
   return (
     <div className={`card kpi-card ${day.status}`}>
-      <div className="kpi-name">{name} <span className="card-sub" style={{ letterSpacing: "0.04em" }}>· {shortDate(day.date)}</span></div>
+      <div className="kpi-name">{name} <span className="card-sub" style={{ letterSpacing: "0.04em" }}>· {shortDate(day.date)}</span>{metricKey && mode && <> <MetricInfo metricKey={metricKey} mode={mode} /></>}</div>
       <div className="kpi-main-row">
         <div className="kpi-current">{num(day.actual)}</div>
         <div className="kpi-target-block">

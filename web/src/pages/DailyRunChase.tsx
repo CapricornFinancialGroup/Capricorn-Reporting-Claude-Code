@@ -30,6 +30,8 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 day={k.day}
                 weeklyTarget={k.weeklyTarget}
                 wtd={k.wtd}
+                metricKey={k.key}
+                mode={mode}
               />
             ))}
           </div>

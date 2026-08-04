@@ -2,6 +2,9 @@
 // Targets tab; see App.tsx's PAGES filter). Reference material, not live data, so this is the one
 // page that doesn't call usePayload at all — it just reads static copy.
 
+import { EMPTY_FILTERS, usePayload } from "../api.js";
+import { MetricDetail, StatusBadge } from "../components/MetricInfo.js";
+import type { DefinitionsPayload } from "../types.js";
 import type { PageProps } from "./common.js";
 
 interface Term {
@@ -106,15 +109,56 @@ const TARGETS_TERMS: Term[] = [
   { name: "Uploading new targets", def: "An authorised admin downloads a blank template, fills in each office's weekly figures plus the business-wide weekly revenue target, and uploads it. It takes effect immediately across every screen. Anything that looks off (a missing office, a number that's jumped 5× overnight) is flagged before or after upload rather than silently accepted." },
 ];
 
-export function Glossary(_props: PageProps) {
+/** THE dictionary — rendered from src/domain/metrics.ts, the same registry behind every tile's ⓘ.
+ *  Hand-maintaining a second copy here is how definitions drift, which is what produced a fortnight
+ *  of "why does this number differ?" email (Conor 2026-08-04). The prose sections below remain
+ *  hand-written because they explain concepts, not metrics. */
+function MetricDictionary({ mode }: { mode: PageProps["mode"] }) {
+  const { data } = usePayload<DefinitionsPayload>("definitions", EMPTY_FILTERS, mode, 0);
+  if (!data) return <div className="card"><div className="loading">Loading definitions…</div></div>;
+  return (
+    <>
+      <div className="card">
+        <div className="card-title"><span>Data Freshness</span></div>
+        <div className="glossary-term-def">{data.cadence.summary}</div>
+        <div className="glossary-calc" style={{ marginTop: 6 }}>{data.cadence.asOfRule}</div>
+        <div className="glossary-calc">Refresh: {data.cadence.refresh}</div>
+      </div>
+      <div className="card">
+        <div className="card-title">
+          <span>Metric Dictionary</span>
+          <span className="card-sub">the single agreed definition of every figure · same source as the ⓘ on each tile</span>
+        </div>
+        <div className="glossary-list">
+          {data.metrics.map((m) => (
+            <div className="glossary-term" key={m.key}>
+              <div className="glossary-term-name">
+                {m.label} <StatusBadge status={m.status} />
+              </div>
+              <MetricDetail m={m} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function Glossary({ mode }: PageProps) {
   return (
     <div className="screen">
       <div className="card">
         <div className="card-title"><span>Dashboard Glossary</span></div>
         <div className="placeholder-note">
-          Plain-English definitions for every figure on the dashboard, plus how each is calculated underneath. Visible to Targets admins only.
+          Every figure on the dashboard, with its single agreed definition, calculation, source, owner and
+          frequency — the same content that opens from the ⓘ beside each tile, so the two can never
+          disagree. Statuses are honest: <b>agreed</b> reconciles to Capricorn's own reporting,
+          <b> indicative</b> has an open question against it, <b>definition open</b> means don't make
+          decisions on it yet. Visible to Targets admins only.
         </div>
       </div>
+
+      <MetricDictionary mode={mode} />
 
       <Section title="General Concepts" sub="A handful of ideas that apply across every screen." terms={CONCEPTS} />
 

@@ -4,6 +4,7 @@
 import { usePayload } from "../api.js";
 import { pctPaceChart, STATUS_COLOR } from "../charts.js";
 import { EChart } from "../components/EChart.js";
+import { MetricInfo } from "../components/MetricInfo.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { num, shortDate, signed } from "../format.js";
 import type { OfficeRunChasePayload } from "../types.js";
@@ -25,6 +26,15 @@ export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
           <div className="card" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: "8px 14px" }}>
             <span className="card-title" style={{ marginBottom: 0 }}>% to Weekly Target Pace <span className="card-sub">fixed office order · ranked #1-{data.offices.length} by pace</span></span>
             <span className="asof">Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · data as of {shortDate(data.dataAsOf)} · expected {data.week.expectedPct}%</span>
+          </div>
+
+          {/* One definitions strip rather than an ⓘ on all 4 KPIs × every office card — same reach,
+              without 28 triggers competing with the numbers. */}
+          <div className="funnel-defs" style={{ borderTop: "none", paddingTop: 0, marginTop: 0 }}>
+            {[["leads", "Leads"], ["applications", "Mortgages Written"], ["referrals", "Protection Opportunities"],
+              ["sales", "Protection Sales"], ["pace", "% of Pace"]].map(([key, label]) => (
+              <span className="funnel-def" key={key}>{label} <MetricInfo metricKey={key} mode={mode} /></span>
+            ))}
           </div>
 
           <div className="row cols-3 grow">

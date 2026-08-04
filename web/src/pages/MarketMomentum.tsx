@@ -5,8 +5,10 @@ import { usePayload } from "../api.js";
 import { AMBER, BLUE, momentumChart, momentumForecastChart, NAVY } from "../charts.js";
 import { CompareStrip } from "../components/CompareStrip.js";
 import { EChart } from "../components/EChart.js";
+import { MetricInfo } from "../components/MetricInfo.js";
 import { gbpCompact, num, shortDate } from "../format.js";
 import type { MarketMomentumPayload, MomentumKpi } from "../types.js";
+import type { Mode } from "../api.js";
 import { Load, type PageProps } from "./common.js";
 
 function fmtValue(k: MomentumKpi): string {
@@ -45,7 +47,7 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               const d = fmtDelta(k);
               return (
                 <div className="card mom-kpi" key={k.key}>
-                  <div className="mom-kpi-label">{k.label}</div>
+                  <div className="mom-kpi-label">{k.label} <MetricInfo metricKey={k.key} mode={mode} /></div>
                   <div className="mom-kpi-window">
                     Week to {shortDate(k.weekTo)}
                     {k.provisional && <span className="mom-kpi-prov" title="Cases are entered ~6 days after the date they were written, so this week is still filling.">provisional</span>}
@@ -72,8 +74,8 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
           )}
 
           <div className="row cols-3 grow">
-            <Trend title="Mortgages Written" weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
-            <Trend title="Protection Opportunities" weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
+            <Trend title="Mortgages Written" metricKey="applications" mode={mode} weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
+            <Trend title="Protection Opportunities" metricKey="referrals" mode={mode} weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
             <RevenueTrend
               title="Weekly Written (£k)"
               weeks={data.weeks}
@@ -82,10 +84,10 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               vsQ={vsQ(data, "written")}
               written={data.written}
             />
-            <Trend title="Lead Volume" weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
-            <Trend title="Avg Case Size (£k) *" weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
+            <Trend title="Lead Volume" metricKey="leads" mode={mode} weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
+            <Trend title="Avg Case Size (£k) *" metricKey="case-size" mode={mode} weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
             <Trend
-              title="Protection Attach Rate (%) *"
+              title="Protection Attach Rate (%) *" metricKey="attach-rate" mode={mode}
               weeks={data.weeks}
               values={data.series.referralRatePct}
               vsQ={null}
@@ -114,8 +116,10 @@ function vsQ(data: MarketMomentumPayload, key: string): number | null {
   return data.kpis.find((k) => k.key === key)?.vsQuarterPct ?? null;
 }
 
-function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
+function Trend({ title, weeks, values, vsQ, color, reference, estimated, metricKey, mode }: {
   title: string;
+  metricKey?: string;
+  mode?: Mode;
   weeks: string[];
   values: Array<number | null>;
   vsQ: number | null;
@@ -132,7 +136,7 @@ function Trend({ title, weeks, values, vsQ, color, reference, estimated }: {
     );
   return (
     <div className="card">
-      <div className="card-title"><span>{title}</span>{accel}</div>
+      <div className="card-title"><span>{title}{metricKey && mode && <> <MetricInfo metricKey={metricKey} mode={mode} /></>}</span>{accel}</div>
       <div className="grow">
         <EChart
           height={355}

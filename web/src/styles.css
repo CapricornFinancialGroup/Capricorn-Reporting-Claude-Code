@@ -89,16 +89,22 @@ button { font: inherit; }
 .gos-header-right { width: 320px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 .gos-date { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.6); letter-spacing: 0.05em; }
 
-.live-badge {
-  display: flex; align-items: center; gap: 7px;
-  background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 20px; padding: 3px 10px 3px 8px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.12em; color: #fff; text-transform: uppercase;
+/* "Data as at" replaces the old pulsing red LIVE badge. The board reads a warehouse copy rebuilt
+   overnight; calling that "Live" next to today's date is what made Kyle ask three times whether the
+   figures were live (Conor 2026-08-04: every screen must state its refresh frequency and data date). */
+.gos-asat { text-align: right; line-height: 1.25; }
+.gos-asat-value {
+  font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
 }
-.live-dot { width: 7px; height: 7px; border-radius: 50%; background: #FF3B3B; animation: pulse-red 1.4s ease-in-out infinite; }
-@keyframes pulse-red {
-  0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(255, 59, 59, 0.6); }
-  50% { opacity: 0.6; box-shadow: 0 0 0 5px rgba(255, 59, 59, 0); }
+.gos-asat-cadence {
+  font-size: 10px; font-weight: 500; color: rgba(255, 255, 255, 0.55); letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.gos-warn-pill {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: #FEF3C7; background: rgba(217, 119, 6, 0.35); border: 1px solid rgba(253, 230, 138, 0.55);
+  border-radius: 20px; padding: 4px 10px; white-space: nowrap;
 }
 
 .kiosk-dots { display: flex; gap: 6px; }
@@ -418,4 +424,66 @@ button { font: inherit; }
   margin-top: 6px; font-family: ui-monospace, "SF Mono", Consolas, monospace; font-size: 10.5px;
   color: var(--text-secondary); background: var(--bg); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px 10px; display: inline-block; max-width: 100%;
+}
+
+/* ------------------------------------------------- metric definitions (ⓘ) */
+/* Every KPI clickable through to its single agreed definition (Conor 2026-08-04). Muted at rest so it
+   never competes with the number; the status colour is the signal that a caveat exists. */
+.mi-trigger {
+  width: 14px; height: 14px; flex: 0 0 14px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--text-secondary); background: transparent; color: var(--text-secondary);
+  font-size: 9px; font-weight: 800; line-height: 1; padding: 0; font-family: Georgia, serif;
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+}
+.mi-trigger:hover { border-color: var(--blue); color: var(--blue); background: var(--blue-bg); }
+.mi-trigger-indicative { border-color: var(--amber); color: var(--amber); }
+.mi-trigger-open { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+
+.mi-backdrop {
+  position: fixed; inset: 0; background: rgba(14, 32, 64, 0.45); z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}
+.mi-panel {
+  background: var(--surface); border-radius: 12px; padding: 20px 22px; max-width: 560px; width: 100%;
+  max-height: 82vh; overflow-y: auto; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); text-align: left;
+}
+.mi-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.mi-title { font-size: 17px; font-weight: 800; color: var(--navy); margin-bottom: 5px; }
+.mi-close {
+  border: none; background: transparent; font-size: 24px; line-height: 1; cursor: pointer;
+  color: var(--text-secondary); padding: 0 4px;
+}
+.mi-close:hover { color: var(--red); }
+
+.mi-status {
+  display: inline-block; border-radius: 20px; padding: 2px 9px;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+}
+.mi-status-agreed { background: var(--green-bg); color: var(--green); }
+.mi-status-indicative { background: var(--amber-bg); color: var(--amber); }
+.mi-status-open { background: var(--red-bg); color: var(--red); }
+
+.mi-def { font-size: 14px; line-height: 1.55; color: var(--text-primary); margin-bottom: 12px; }
+.mi-note {
+  font-size: 12px; line-height: 1.5; border-radius: 8px; padding: 9px 11px; margin-bottom: 14px;
+  border-left: 3px solid var(--amber); background: var(--amber-bg); color: #78350F;
+}
+.mi-note-open { border-left-color: var(--red); background: var(--red-bg); color: #7F1D1D; }
+.mi-note-agreed { border-left-color: var(--green); background: var(--green-bg); color: #14532D; }
+
+.mi-fields { display: grid; grid-template-columns: 108px 1fr; gap: 6px 14px; font-size: 12px; }
+.mi-fields dt { font-weight: 700; color: var(--text-secondary); letter-spacing: 0.03em; }
+.mi-fields dd { color: var(--text-primary); line-height: 1.45; }
+.mi-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+.mi-cadence {
+  margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border);
+  font-size: 11px; line-height: 1.5; color: var(--text-secondary);
+}
+.funnel-defs {
+  display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px;
+  padding-top: 8px; border-top: 1px solid var(--border);
+}
+.funnel-def {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--text-secondary);
+  display: inline-flex; align-items: center; gap: 4px;
 }

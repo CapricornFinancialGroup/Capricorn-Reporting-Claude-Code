@@ -3,6 +3,7 @@
 import { usePayload } from "../api.js";
 import { CompareStrip } from "../components/CompareStrip.js";
 import { Sparkline } from "../components/ui.js";
+import { MetricInfo } from "../components/MetricInfo.js";
 import { gbpCompact, num, pct, shortDate } from "../format.js";
 import type { AdviserLeaguePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
@@ -23,19 +24,20 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
               £24.2k here got compared with £266.3k there (Kyle 2026-07-28). */}
           <div className="row" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
             {[
-              { label: "Mortgages Written", value: num(data.totals.applications), cls: "val-blue", sub: null },
-              { label: "Total Referrals", value: num(data.totals.referrals), cls: "", sub: null },
-              { label: "Total Protection Sales", value: num(data.totals.sales), cls: "val-green", sub: null },
+              { label: "Mortgages Written", value: num(data.totals.applications), cls: "val-blue", sub: null, mk: "applications" },
+              { label: "Protection Opportunities", value: num(data.totals.referrals), cls: "", sub: null, mk: "referrals" },
+              { label: "Total Protection Sales", value: num(data.totals.sales), cls: "val-green", sub: null, mk: "sales" },
               {
                 label: "Est. Revenue *",
                 value: gbpCompact(data.totals.revenue),
                 cls: "",
                 sub: `commission ${gbpCompact(data.totals.commission)} + fees ${gbpCompact(data.totals.clientFees)}`,
+                mk: "revenue",
               },
-              { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue", sub: null },
+              { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue", sub: null, mk: "attach-rate" },
             ].map((k) => (
               <div className="card mom-kpi" key={k.label}>
-                <div className="mom-kpi-label">{k.label}</div>
+                <div className="mom-kpi-label">{k.label} <MetricInfo metricKey={k.mk} mode={mode} /></div>
                 <div className="mom-kpi-window">{shortDate(data.window.from)} – {shortDate(data.window.to)}</div>
                 <div className={`mom-kpi-value ${k.cls}`}>{k.value}</div>
                 {k.sub && <div className="mom-kpi-vs">{k.sub}</div>}
