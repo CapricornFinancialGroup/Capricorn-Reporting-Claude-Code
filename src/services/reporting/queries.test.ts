@@ -39,12 +39,25 @@ describe("mortgage 'written' keys on the platform's status-70 date", () => {
     }
   });
 
-  // Protection deliberately stays on WrittenDate: status 65 is populated for only ~20% of cases, so
-  // switching would drop 80% of protection business. The two agree where both exist.
-  it("leaves protection on WrittenDate", () => {
-    expect(KPI_SPECS.sales.dateColumn).toBe("WrittenDate");
-    expect(protectionWrittenDaily("2026-07-01", "2026-07-31").text).toContain("WrittenDate");
-    expect(protectionWrittenDaily("2026-07-01", "2026-07-31").text).not.toContain(STATUS_70);
+  // Protection keys on ApplicationDate - Capricorn's own "Date Submitted" - and counts cases at or
+  // beyond submission. This is what reconciles to Kyle's c.£69K for Sat 25-31 Jul (the old
+  // WrittenDate basis gave £48,969). The previous note here claimed status 65 was populated on only
+  // ~20% of cases; that was read off the sparse WorkflowStatus*Date column, not WorkflowStatusId,
+  // which carries 65 on 220 of 248. See PROTECTION_WRITTEN_DATE.
+  it("keys protection written on ApplicationDate, at or beyond submission", () => {
+    expect(KPI_SPECS.sales.dateColumn).toBe("ApplicationDate");
+    expect(KPI_SPECS.sales.extraClause).toContain("WorkflowStatusId");
+    const q = protectionWrittenDaily("2026-07-01", "2026-07-31");
+    expect(q.text).toContain("GROUP BY CAST(f.ApplicationDate AS date)");
+    expect(q.text).toContain("WorkflowStatusId IN ('60', '65', '70', '105', '120')");
+    expect(q.text).not.toContain(STATUS_70);
+  });
+
+  // Never infer "reached status X" from a WorkflowStatus*Date column in this feed - they are
+  // unreliably populated, and doing so is what produced the wrong "£400k would disappear" warning.
+  it("never gates protection on a WorkflowStatus date column", () => {
+    const q = protectionWrittenDaily("2026-07-01", "2026-07-31");
+    expect(q.text).not.toContain("WorkflowStatusSubmittedtoUnderwriters");
   });
 });
 
@@ -141,7 +154,11 @@ describe("momentum + league builders", () => {
     const q = revenueDaily("2026-04-06", "2026-07-05");
     expectConventions(q);
     expect(q.text).toContain("GROUP BY CAST(f.WorkflowStatusPreOfferProcessingDate AS date)");
-    expect(q.text).toMatch(/SUM\(COALESCE\(f\.NetCommission, f\.ProductCommission, 0\)\) AS commission/);
+    // ProductCommission, the column Capricorn's own report sums. Was COALESCE(NetCommission, ...)
+    // until 2026-08-04; the two differ on 1 of 222 cases, which is a stray unexplained gap to their
+    // report - exactly the kind that generates the emails.
+    expect(q.text).toMatch(/SUM\(COALESCE\(f\.ProductCommission, 0\)\) AS commission/);
+    expect(q.text).not.toContain("NetCommission");
     expect(q.text).toMatch(/SUM\(COALESCE\(f\.ClientFeeAmount, 0\)\) AS clientFees/);
     // The old, conflated expression must not come back.
     expect(q.text).not.toMatch(/ProductCommission, 0\) \+ COALESCE\(f\.ClientFeeAmount/);
@@ -156,11 +173,11 @@ describe("momentum + league builders", () => {
 
   // Protection written was hardcoded to £0 until 2026-07-29, understating combined written by
   // ~£24k/wk against a report that includes it.
-  it("protectionWrittenDaily reads protectioncase commission by written date", () => {
+  it("protectionWrittenDaily reads protectioncase commission on Capricorn's own basis", () => {
     const q = protectionWrittenDaily("2026-06-01", "2026-06-30");
     expectConventions(q);
     expect(q.text).toContain("dbo.protectioncase");
-    expect(q.text).toContain("GROUP BY CAST(f.WrittenDate AS date)");
+    expect(q.text).toContain("GROUP BY CAST(f.ApplicationDate AS date)");
     expect(q.text).toContain("ProductCommission");
   });
 

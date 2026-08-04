@@ -42,31 +42,81 @@ export const DAILY_TARGETS: KpiTargets = { leads: 126.6, applications: 23, refer
 // Weekly run chase (Conor's principles, 2026-07-06 email)
 // ---------------------------------------------------------------------------
 //
-// Everything is measured against a WEEKLY target, distributed across the five working days with
-// Friday carrying 80% of a Mon–Thu day's weight:
-//   Mon–Thu = 5/24 (20.83%) each, Fri = 4/24 (16.67%)  → cumulative 20.83 / 41.67 / 62.50 / 83.33 / 100%.
-// Targets are meant to refresh each Monday 09:00 from the latest Team Targets — that dynamic
-// source doesn't exist yet, so weeklyTarget() derives from the config daily targets (daily × 5)
-// and is THE seam to re-point when Capricorn provides a live Team Targets feed.
+// Everything is measured against a WEEKLY target spread across the days of Capricorn's Sat–Fri week.
+//
+// Conor's rule (2026-07-06) sets the WEEKDAY shape: Mon–Thu carry equal weight and Friday 80% of a
+// Mon–Thu day, i.e. 5 : 5 : 5 : 5 : 4. That is unchanged and still the agreed rule.
+//
+// What was wrong until 2026-08-04 is that the curve ended there — Saturday and Sunday were given
+// ZERO expected share, so a day Capricorn actually trades was treated as if the firm were shut.
+// Kyle: "we do Saturday coverage which can result in circa 50+ leads … this is why we run our week
+// Sat–Friday to capture that." He is right, and the data agrees (8 whole weeks, Sat 6 Jun – Fri 31
+// Jul 2026, CFM migration day excluded, per-day averages):
+//
+//                     Sat    Sun    Mon    Tue    Wed    Thu    Fri
+//   Leads            36.3    7.6  134.4  112.1   98.0  106.6   94.8   → Sat 6.1%, Sun 1.3%
+//   Mortgages written 2.4    3.5   33.8   38.4   30.0   35.3   21.1   → Sat 1.4%, Sun 2.1%
+//   Prot. opps        1.0    0.0   14.5    9.8   11.1   11.6    7.9   → Sat 1.8%, Sun 0.0%
+//   Prot. written     1.0    0.0    5.0    6.3    5.0    6.9    3.1   → Sat 3.7%, Sun 0.0%
+//
+// So the weekend matters a lot for LEADS (enquiries arrive while people are house-hunting) and
+// barely at all for WRITTEN business (cases get progressed on weekdays). One shared curve cannot be
+// honest about both, so the weekend allowance is per-KPI; the weekday remainder is always split on
+// Conor's 5:5:5:5:4. Rounded to half a percent — these are targets, not measurements, and false
+// precision here would imply the curve is more certain than eight weeks of data can support.
 
-/** Mon..Fri share of the weekly target (sums to 1). */
-export const DAY_WEIGHTS: number[] = [5 / 24, 5 / 24, 5 / 24, 5 / 24, 4 / 24];
+/** Observed weekend share of the weekly total, per KPI: [Saturday, Sunday]. */
+const WEEKEND_SHARES: Record<KpiKey, [number, number]> = {
+  leads: [0.060, 0.015],
+  applications: [0.015, 0.020],
+  referrals: [0.020, 0.000],
+  sales: [0.035, 0.000],
+};
 
-/** Cumulative expected share of the weekly target by end of Mon..Fri. */
-export const CUMULATIVE_WEEK_SHARES: number[] = DAY_WEIGHTS.reduce<number[]>((acc, w) => {
-  acc.push((acc[acc.length - 1] ?? 0) + w);
-  return acc;
-}, []);
+/** Conor's weekday shape — Mon–Thu equal, Fri 80% of a Mon–Thu day. */
+const WEEKDAY_RATIO = [5, 5, 5, 5, 4];
+
+/** Day-of-week order of the chase week. Index 0 = Saturday, index 6 = Friday. */
+export const WEEK_DAY_NAMES = ["Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri"] as const;
+
+/** Share of the weekly target falling on each day of the Sat–Fri week (index 0 = Sat), per KPI.
+ *  Each row sums to 1. Weekend from observed share; weekdays share the remainder on 5:5:5:5:4. */
+export const DAY_WEIGHTS: Record<KpiKey, number[]> = Object.fromEntries(
+  KPI_KEYS.map((k) => {
+    const [sat, sun] = WEEKEND_SHARES[k];
+    const weekdayTotal = 1 - sat - sun;
+    const ratioSum = WEEKDAY_RATIO.reduce((a, b) => a + b, 0);
+    return [k, [sat, sun, ...WEEKDAY_RATIO.map((r) => (weekdayTotal * r) / ratioSum)]];
+  }),
+) as Record<KpiKey, number[]>;
+
+/** Cumulative expected share by END of each day of the Sat–Fri week, per KPI. */
+export const CUMULATIVE_WEEK_SHARES: Record<KpiKey, number[]> = Object.fromEntries(
+  KPI_KEYS.map((k) => [
+    k,
+    DAY_WEIGHTS[k].reduce<number[]>((acc, w) => {
+      acc.push((acc[acc.length - 1] ?? 0) + w);
+      return acc;
+    }, []),
+  ]),
+) as Record<KpiKey, number[]>;
+
+/** KPI-agnostic curve, for the few places that pace a mixed or unspecified measure (Momentum's
+ *  partial-week extrapolation, the League's most-improved). The straight mean of the four KPI
+ *  curves — never used where the KPI is known, because then the KPI's own curve is more honest. */
+export const BLENDED_CUMULATIVE_SHARES: number[] = WEEK_DAY_NAMES.map((_, i) =>
+  KPI_KEYS.reduce((sum, k) => sum + CUMULATIVE_WEEK_SHARES[k][i], 0) / KPI_KEYS.length,
+);
 
 /** Weekly target for a KPI (business-wide). Team-Targets feed plugs in here. */
 export function weeklyTarget(kpi: KpiKey): number {
   return DAILY_TARGETS[kpi] * 5;
 }
 
-/** Target for one weekday (Mon..Fri, index 0..4) = weekly target × that day's weight.
- *  Friday carries 80% of a Mon–Thu day (Conor's weighting). */
-export function dayTarget(weekly: number, dayIndex: number): number {
-  const w = DAY_WEIGHTS[dayIndex] ?? DAY_WEIGHTS[0];
+/** Target for one day of the Sat–Fri week (index 0 = Sat … 6 = Fri) = weekly target × that day's
+ *  share for THAT KPI. Saturday is no longer zero — see the table above. */
+export function dayTarget(kpi: KpiKey, weekly: number, dayIndex: number): number {
+  const w = DAY_WEIGHTS[kpi][dayIndex] ?? DAY_WEIGHTS[kpi][2];
   return Math.round(weekly * w);
 }
 

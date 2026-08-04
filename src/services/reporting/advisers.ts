@@ -24,13 +24,20 @@ export function adviserRoster(): BuiltQuery {
  *  (commission only, Capricorn's Total Written basis). Returned split so the two are reconcilable
  *  instead of being one number under two names (Kyle 2026-07-28).
  *
+ *  "Commission + Fees", which Kyle asked about on 2026-08-04, is exactly this pair: commission is the
+ *  lender's procuration fee (`ProductCommission`, the column their own report sums); FEES is the
+ *  CLIENT fee — the advice/arrangement fee charged to the client (`ClientFeeAmount`). Same
+ *  construction the platform uses: `TotalFeesDue = ProductCommission + ClientFee` in
+ *  usp_GetInsuranceProductReport. It excludes solicitor and miscellaneous fees, which are separate
+ *  columns on the case and are NOT counted here.
+ *
  *  No migration guard: it keys on LeadDate and was deleting genuine written business — see
  *  excludeMigrations in filters.ts. */
 export function revenueByAdviser(from: string, to: string): BuiltQuery {
   const where = combine(orgFilter("f"), notDeleted("f"), dateRange(`f.${MORTGAGE_WRITTEN_DATE}`, from, to));
   return {
     text: `SELECT adv.Username AS username, adv.FullName AS fullName,
-                  SUM(COALESCE(f.NetCommission, f.ProductCommission, 0)) AS commission,
+                  SUM(COALESCE(f.ProductCommission, 0)) AS commission,
                   SUM(COALESCE(f.ClientFeeAmount, 0)) AS clientFees
              FROM dbo.mortgagecase f
              LEFT JOIN dbo.useraccount adv ON adv.UserAccountKey = f.PrimaryAdviserUserAccountKey

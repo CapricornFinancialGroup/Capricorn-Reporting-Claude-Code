@@ -12,8 +12,6 @@ import { gbpCompact, num, shortDate, signed } from "../format.js";
 import type { DailyRunChasePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
-const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri"];
-
 export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
   return (
@@ -59,7 +57,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 return (
                   <div key={d} style={{ flex: 1, textAlign: "center" }}>
                     <div style={{ fontSize: 10, fontWeight: 700, color: done ? "var(--navy)" : "var(--text-secondary)" }}>
-                      {DAY_NAMES[i]}
+                      {data.week.dayNames[i]}
                     </div>
                     <div className="progress-bar-bg" style={{ marginTop: 3 }}>
                       <div
@@ -76,7 +74,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
             </div>
             <span className="asof" style={{ whiteSpace: "nowrap" }}>
               {data.week.pending
-                ? <>Awaiting this week&rsquo;s data · last day {shortDate(data.week.latestWorkingDay)}</>
+                ? <>Awaiting this week&rsquo;s data · last day {shortDate(data.week.latestDay)}</>
                 : <>Expected so far: <b>{data.week.expectedPct}%</b></>}
             </span>
           </div>

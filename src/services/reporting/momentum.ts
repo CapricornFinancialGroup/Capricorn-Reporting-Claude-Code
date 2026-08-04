@@ -1,7 +1,7 @@
 // Market Momentum (screen 5) — daily revenue/value rows the dataset layer buckets into Sat–Fri
 // reporting weeks in TS (weekStartOf from trends.ts), so the SQL stays trivially portable.
 
-import { MORTGAGE_WRITTEN_DATE, PROTECTION_WRITTEN_DATE } from "../../domain/data-quality.js";
+import { MORTGAGE_WRITTEN_DATE, PROTECTION_WRITTEN_DATE, PROTECTION_WRITTEN_STATUSES } from "../../domain/data-quality.js";
 import { combine, dateRange, notDeleted, orgFilter, whereClause } from "./filters.js";
 import type { BuiltQuery } from "./query.js";
 
@@ -21,14 +21,17 @@ export interface RevenueDaily {
  *  NOTE no migration guard: it keys on LeadDate and was deleting genuine written business here
  *  (16 cases / £19,592 in July) — see excludeMigrations in filters.ts.
  *
- *  Verified against the live lake 2026-07-29: NetCommission, ProductCommission and
- *  ActualCommissionPaid hold the SAME value on every Capricorn row, so the COALESCE chain is a
- *  no-op today; it's kept only as a guard for rows where NetCommission is genuinely null. */
+ *  Commission is `ProductCommission` — the column Capricorn's own report sums (`F.commission` in
+ *  usp_GetFinancialProductReport). It was COALESCE(NetCommission, ProductCommission) until
+ *  2026-08-04, on a 2026-07-29 check that found the two identical on every row. They are no longer:
+ *  for Sat 25-31 Jul they differ on 1 of 222 cases, £413,380.51 gross vs £411,841.61 net. Tiny, but
+ *  it is a stray difference against their report with no story behind it, which is exactly what
+ *  generates the emails — so match the platform column and stop guessing. */
 export function revenueDaily(from: string, to: string): BuiltQuery {
   const where = combine(orgFilter("f"), notDeleted("f"), dateRange(`f.${MORTGAGE_WRITTEN_DATE}`, from, to));
   return {
     text: `SELECT CAST(f.${MORTGAGE_WRITTEN_DATE} AS date) AS d,
-                  SUM(COALESCE(f.NetCommission, f.ProductCommission, 0)) AS commission,
+                  SUM(COALESCE(f.ProductCommission, 0)) AS commission,
                   SUM(COALESCE(f.ClientFeeAmount, 0)) AS clientFees,
                   SUM(f.MortgageValue) AS totalValue,
                   COUNT(*) AS cases
@@ -49,12 +52,19 @@ export interface ProtectionWrittenDaily {
 /** Daily written PROTECTION commission — the other half of "written business".
  *
  *  Momentum's insurance actual was hardcoded to £0 until 2026-07-29, so "Weekly Written" was
- *  mortgage-only while Capricorn's own Total Written report is mortgage + protection. This is the
- *  closest populated lake source: `protectioncase.ProductCommission` by WrittenDate, which yields
- *  ~£21.8k (W29) / ~£24.3k (W30). Kyle has previously quoted ~£41k/wk — the discrepancy is an OPEN
- *  question with him, so the board labels this figure indicative until he confirms the basis. */
+ *  mortgage-only while Capricorn's own Total Written report is mortgage + protection.
+ *
+ *  Now on Capricorn's own basis and RECONCILED: ApplicationDate, cases at or beyond submission, which
+ *  gives £68,951 for Sat 25-31 Jul against the c.£69K Kyle quoted. The old WrittenDate basis gave
+ *  £48,969 and drove my wrong "£400k would disappear" warning — see PROTECTION_WRITTEN_DATE in
+ *  domain/data-quality.ts for what that error actually was. */
 export function protectionWrittenDaily(from: string, to: string): BuiltQuery {
-  const where = combine(orgFilter("f"), notDeleted("f"), dateRange(`f.${PROTECTION_WRITTEN_DATE}`, from, to));
+  const where = combine(
+    orgFilter("f"),
+    notDeleted("f"),
+    dateRange(`f.${PROTECTION_WRITTEN_DATE}`, from, to),
+    { clause: `f.WorkflowStatusId IN (${PROTECTION_WRITTEN_STATUSES.map((s) => `'${s}'`).join(", ")})`, params: [] },
+  );
   return {
     text: `SELECT CAST(f.${PROTECTION_WRITTEN_DATE} AS date) AS d,
                   SUM(COALESCE(f.ProductCommission, 0)) AS commission,

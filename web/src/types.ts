@@ -79,12 +79,17 @@ export interface DailyRunChasePayload {
     start: string;
     end: string;
     days: string[];
-    /** Cumulative expected share by end of Mon..Fri, % (20.83 / 41.67 / 62.5 / 83.33 / 100). */
+    /** Cumulative expected share by end of each of the SEVEN days, Sat..Fri (%). Blended across the
+     *  four KPIs — each card paces on its own curve, because Saturday is ~6% of a week's leads but
+     *  ~1.5% of its written business. */
     cumulativeSharesPct: number[];
+    /** Day labels for `days`, i.e. ["Sat","Sun","Mon",…,"Fri"]. */
+    dayNames: string[];
     fraction: number;
     expectedPct: number;
     nowLabel: string;
-    latestWorkingDay: string;
+    /** Most recent day with data — can now be a Saturday. */
+    latestDay: string;
     /** True when the current week has no loaded data yet (early Monday). */
     pending: boolean;
   };
@@ -205,6 +210,18 @@ export interface MomentumKpi {
   delta: number | null;
   deltaPct: number | null;
   vsQuarterPct: number | null;
+  /** Where the week IN PROGRESS has got to. The headline above is the last COMPLETE week — that is
+   *  the only window whose delta and quarter-average compare like with like — but a headline up to
+   *  six days old reads as a frozen screen (Kyle, 2026-08-04: "Still showing week to 31 Jul?").
+   *  Null when the last bucket is already complete. */
+  current: {
+    weekLabel: string;
+    weekFrom: string;
+    weekTo: string;
+    /** Last complete day included in `soFar`. */
+    throughDay: string;
+    soFar: number | null;
+  } | null;
 }
 
 export interface MarketMomentumPayload {

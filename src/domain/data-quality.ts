@@ -80,16 +80,41 @@ export const INPUT_LAG_SETTLE_DAYS = 14;
 export const MORTGAGE_WRITTEN_DATE = "WorkflowStatusPreOfferProcessingDate";
 
 /**
- * Protection deliberately stays on `protectioncase.WrittenDate`.
+ * Protection written keys on `protectioncase.ApplicationDate` — which the platform itself labels
+ * "Date Submitted" (`usp_GetInsuranceProductReport`, `[DateSubmitted] = FinanceInsurance.ApplicationDate`).
  *
- * The platform report keys protection on status 65 ('Submitted to Underwriters'), and where both are
- * present the two agree exactly — 25–28 Jul 2026 gives £18,884.98 on either basis. But status 65 is
- * populated for only 50 of 246 recent protection cases (20%); switching would silently drop 80% of
- * protection business. Protection's remaining gap to the report (£18,885 vs his £22,694) is
- * ATTRIBUTION, not date: the report credits `tblLead.InsuranceAdviser` and splits commission via
- * `tblSplitCommission`, whereas the lake carries one `PrimaryAdviserUserAccountKey` per case.
+ * This reconciles to Capricorn exactly. Kyle, 2026-08-04: "as of last week we wrote c.£69K of
+ * protection business… something doesn't seem right." He was right. Sat 25–31 Jul 2026:
+ *
+ *   basis                                    cases   commission
+ *   WrittenDate (what the board used)           24     £48,969
+ *   CreatedDate                                 42     £25,825
+ *   ApplicationDate + status 60/65/70           30     £68,951   ← his figure
+ *
+ * Switching basis moves NO case between weeks: ApplicationDate equals WrittenDate on all 248 cases
+ * where WrittenDate is set. It only ADDS the cases that have been submitted but carry no WrittenDate
+ * yet — which is precisely the business Capricorn counts and we were dropping.
+ *
+ * ⚠ THE MISTAKE THIS CORRECTS, so it isn't repeated. Until 2026-08-04 the note here claimed status 65
+ * was "populated for only 50 of 246 recent protection cases (20%)", and on that basis I warned Kyle
+ * that adopting his definition would delete ~£400k of protection commission. That was wrong. It read
+ * the sparse workflow DATE column `WorkflowStatusSubmittedtoUnderwriters` (64 of 248 populated) as if
+ * it were the status. The status itself lives in `WorkflowStatusId`, and it is 65 on 220 of 248 —
+ * 89%. NEVER infer "has this case reached status X" from a WorkflowStatus*Date column in this feed;
+ * those dates are unreliably populated. Use `WorkflowStatusId`.
  */
-export const PROTECTION_WRITTEN_DATE = "WrittenDate";
+export const PROTECTION_WRITTEN_DATE = "ApplicationDate";
+
+/**
+ * Statuses that count as protection written. The platform's own total written sums `FinanceStatusId
+ * IN (60,65,70)` (`usp_Dashboard_GetMyTotalWritten`), matched on the date each status was REACHED —
+ * so a case now sitting at Completed still counts, from the day it was submitted. `WorkflowStatusId`
+ * in the lake is the CURRENT status only, so the set is widened to everything at or beyond
+ * submission — 105 Terms Offered and 120 Completed included — to avoid dropping cases that have
+ * simply moved on. For Sat 25–31 Jul this is identical to the strict 60/65/70 set (30 cases,
+ * £68,951); the widening only ever protects completed business.
+ */
+export const PROTECTION_WRITTEN_STATUSES = ["60", "65", "70", "105", "120"] as const;
 
 /**
  * The column that means "a mortgage offer was issued", matching the platform's own reports.

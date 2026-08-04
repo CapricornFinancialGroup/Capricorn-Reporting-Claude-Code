@@ -1,74 +1,135 @@
 import { describe, expect, it } from "vitest";
-import { CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS } from "../../domain/targets.js";
-import { completeThrough, isWorkingDay, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
+import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS, KPI_KEYS } from "../../domain/targets.js";
+import { completeThrough, isTradingDay, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
-describe("weekly weights (Conor's principles)", () => {
-  it("Mon–Thu carry 20.83% each, Friday 16.67% (80% of a Mon–Thu day)", () => {
-    expect(DAY_WEIGHTS[0]).toBeCloseTo(5 / 24);
-    expect(DAY_WEIGHTS[4]).toBeCloseTo(4 / 24);
-    expect(DAY_WEIGHTS[4] / DAY_WEIGHTS[0]).toBeCloseTo(0.8);
-    expect(DAY_WEIGHTS.reduce((a, b) => a + b, 0)).toBeCloseTo(1);
+// The week is Sat..Fri, so index 0 = Sat, 1 = Sun, 2 = Mon ... 6 = Fri.
+const [SAT, MON, TUE, WED, THU, FRI] = [0, 2, 3, 4, 5, 6];
+
+describe("weekly weights", () => {
+  it("keeps Conor's weekday shape: Mon\u2013Thu equal, Friday 80% of a Mon\u2013Thu day", () => {
+    for (const k of KPI_KEYS) {
+      const w = DAY_WEIGHTS[k];
+      expect(w[MON]).toBeCloseTo(w[TUE]);
+      expect(w[TUE]).toBeCloseTo(w[WED]);
+      expect(w[WED]).toBeCloseTo(w[THU]);
+      expect(w[FRI] / w[MON], `${k}: Friday must stay at 80% of a Mon-Thu day`).toBeCloseTo(0.8);
+    }
   });
 
-  it("cumulative expected positions match the spec table", () => {
-    const pct = CUMULATIVE_WEEK_SHARES.map((s) => Math.round(s * 10000) / 100);
-    expect(pct).toEqual([20.83, 41.67, 62.5, 83.33, 100]);
+  it("gives every KPI curve a total of exactly one week", () => {
+    for (const k of KPI_KEYS) {
+      expect(DAY_WEIGHTS[k].reduce((a, b) => a + b, 0), k).toBeCloseTo(1);
+      expect(CUMULATIVE_WEEK_SHARES[k][FRI], k).toBeCloseTo(1);
+    }
+  });
+
+  // The bug this fixes: Saturday used to carry ZERO expected share while Capricorn traded through it
+  // (~36 leads a day), so its business counted towards the actual and nothing towards the
+  // expectation. Kyle, 2026-08-04: "we do Saturday coverage which can result in circa 50+ leads".
+  it("no longer expects nothing on a Saturday", () => {
+    for (const k of KPI_KEYS) {
+      expect(DAY_WEIGHTS[k][SAT], `${k}: Saturday must carry a non-zero share`).toBeGreaterThan(0);
+    }
+  });
+
+  it("weights Saturday hardest for leads and lightest for written business, per the observed data", () => {
+    // Leads arrive at the weekend (6.1% of the week); cases get progressed on weekdays (1.4%).
+    expect(DAY_WEIGHTS.leads[SAT]).toBeCloseTo(0.06);
+    expect(DAY_WEIGHTS.applications[SAT]).toBeCloseTo(0.015);
+    expect(DAY_WEIGHTS.leads[SAT]).toBeGreaterThan(DAY_WEIGHTS.applications[SAT]);
+  });
+
+  it("keeps the weekday cumulative positions close to Conor's original table", () => {
+    // Conor's Mon..Fri table was 20.83 / 41.67 / 62.5 / 83.33 / 100 with the weekend at zero. The
+    // weekend now takes its real share, so the weekday steps shift down slightly - the SHAPE is
+    // unchanged and Friday still closes the week at 100%.
+    const pct = CUMULATIVE_WEEK_SHARES.applications.map((s) => Math.round(s * 10000) / 100);
+    expect(pct[FRI]).toBe(100);
+    expect(pct[MON]).toBeGreaterThan(18);
+    expect(pct[MON]).toBeLessThan(24);
+  });
+
+  it("blends the four curves for the KPI-agnostic case", () => {
+    expect(BLENDED_CUMULATIVE_SHARES[FRI]).toBeCloseTo(1);
+    expect(BLENDED_CUMULATIVE_SHARES[SAT]).toBeCloseTo(
+      KPI_KEYS.reduce((s, k) => s + DAY_WEIGHTS[k][SAT], 0) / KPI_KEYS.length,
+    );
   });
 });
 
-describe("weeklyPacing — Capricorn's Sat–Fri reporting week, data drives the fraction", () => {
-  it("mid-week: today Wed, data through Tue → this week, expected = end of Tue (41.67%)", () => {
+describe("weeklyPacing - Capricorn's Sat-Fri reporting week, data drives the fraction", () => {
+  it("spans all seven days of the week, Sat..Fri", () => {
     const ctx = weeklyPacing("2026-07-08", "2026-07-07"); // today Wed, data as of Tue
-    expect(ctx.windowStart).toBe("2026-07-04"); // Saturday starting THIS Sat–Fri week
-    expect(ctx.weekDays).toEqual(["2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10"]);
-    expect(ctx.windowEnd).toBe("2026-07-10"); // Friday — the window leads with the weekend
-    expect(ctx.fraction).toBeCloseTo(10 / 24); // through Tuesday
-    expect(ctx.currentWeekPending).toBe(false);
-    expect(ctx.latestWorkingDay).toBe("2026-07-07"); // day counter = Tuesday (has data)
-    expect(ctx.latestWorkingDayIndex).toBe(1);
-  });
-
-  it("early Monday: today Mon, data only through Sun → current week is pending, fraction 0", () => {
-    const ctx = weeklyPacing("2026-07-06", "2026-07-05"); // today Mon, data as of Sun
-    expect(ctx.windowStart).toBe("2026-07-04"); // the Saturday that led into this Mon
-    expect(ctx.fraction).toBe(0); // nothing loaded for this week's working days yet
-    expect(ctx.currentWeekPending).toBe(true);
-    expect(ctx.latestWorkingDay).toBe("2026-07-03"); // day counter falls back to last Friday
-    expect(ctx.latestWorkingDayIndex).toBe(4);
-    expect(ctx.loadStart).toBe("2026-07-03"); // load must reach back to the fallback day
-  });
-
-  it("early Saturday, no weekday data yet: still falls back to last Friday, not this week's Saturday", () => {
-    const ctx = weeklyPacing("2026-07-04", "2026-07-04"); // today Sat, data as of the same Sat
-    expect(ctx.windowStart).toBe("2026-07-04"); // Saturday anchors its own week
-    expect(ctx.currentWeekPending).toBe(true); // no weekday data yet
-    expect(ctx.loadStart).toBe("2026-07-03"); // latestWorkingDay (last Fri) is still before windowStart
-  });
-
-  it("Monday once weekday data lands: loadStart reaches back to windowStart (Saturday) so weekend rows get folded in, even though the day counter itself is a weekday", () => {
-    const ctx = weeklyPacing("2026-07-06", "2026-07-06"); // today Mon, data as of the same Mon
     expect(ctx.windowStart).toBe("2026-07-04"); // Saturday
-    expect(ctx.latestWorkingDay).toBe("2026-07-06"); // Monday itself has data
-    expect(ctx.loadStart).toBe("2026-07-04"); // load-bearing: reaches back past Monday to Saturday
+    expect(ctx.weekDays).toEqual([
+      "2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10",
+    ]);
+    expect(ctx.windowEnd).toBe("2026-07-10"); // Friday
+    expect(ctx.latestDay).toBe("2026-07-07");
+    expect(ctx.latestDayIndex).toBe(TUE);
+    expect(ctx.currentWeekPending).toBe(false);
   });
 
-  it("Friday with same-day data reaches 100%", () => {
-    expect(weeklyPacing("2026-07-10", "2026-07-10").fraction).toBeCloseTo(1);
+  it("paces each KPI on its OWN curve through the data-as-of day", () => {
+    const ctx = weeklyPacing("2026-07-08", "2026-07-07"); // data through Tuesday
+    for (const k of KPI_KEYS) {
+      expect(ctx.fractionByKpi[k], k).toBeCloseTo(CUMULATIVE_WEEK_SHARES[k][TUE]);
+    }
+    // Leads are further through their week by Tuesday than written business is, because the weekend
+    // they have already banked is worth more to them.
+    expect(ctx.fractionByKpi.leads).toBeGreaterThan(ctx.fractionByKpi.applications);
+  });
+
+  // Saturday used to be skipped entirely: the headline tile jumped back to the previous Friday, so a
+  // Saturday's trading was invisible on the wall all weekend.
+  it("gives Saturday its own day tile instead of falling back to Friday", () => {
+    const ctx = weeklyPacing("2026-07-05", "2026-07-04"); // today Sun, data through Sat
+    expect(ctx.latestDay).toBe("2026-07-04");
+    expect(ctx.latestDayIndex).toBe(SAT);
+    expect(ctx.currentWeekPending).toBe(false); // the week HAS started - Saturday is a trading day
+    expect(ctx.fractionByKpi.leads).toBeCloseTo(DAY_WEIGHTS.leads[SAT]);
+  });
+
+  it("treats the week as not started only when the data predates its Saturday", () => {
+    const ctx = weeklyPacing("2026-07-06", "2026-07-03"); // today Mon, data still on last Friday
+    expect(ctx.windowStart).toBe("2026-07-04");
+    expect(ctx.currentWeekPending).toBe(true);
+    expect(ctx.fraction).toBe(0);
+    for (const k of KPI_KEYS) expect(ctx.fractionByKpi[k], k).toBe(0);
+    expect(ctx.latestDay).toBe("2026-07-03"); // the tile shows last Friday
+    expect(ctx.loadStart).toBe("2026-07-03"); // load reaches back to it
+  });
+
+  it("reaches back to windowStart once the week is under way, so weekend rows get fetched", () => {
+    const ctx = weeklyPacing("2026-07-06", "2026-07-06"); // today Mon, data as of the same Mon
+    expect(ctx.loadStart).toBe("2026-07-04"); // Saturday
+  });
+
+  it("Friday with same-day data reaches 100% on every KPI", () => {
+    const ctx = weeklyPacing("2026-07-10", "2026-07-10");
+    expect(ctx.fraction).toBeCloseTo(1);
+    for (const k of KPI_KEYS) expect(ctx.fractionByKpi[k], k).toBeCloseTo(1);
   });
 });
 
-describe("weekElapsedFraction — shared by Momentum's extrapolation and the League's most-improved", () => {
-  it("Wednesday matches the cumulative curve", () => {
-    expect(weekElapsedFraction("2026-07-08")).toBeCloseTo(15 / 24); // Wed
+describe("weekElapsedFraction - shared by Momentum's extrapolation and the League's most-improved", () => {
+  it("matches the KPI's own cumulative curve when a KPI is given", () => {
+    expect(weekElapsedFraction("2026-07-08", "leads")).toBeCloseTo(CUMULATIVE_WEEK_SHARES.leads[WED]);
+  });
+
+  it("falls back to the blended curve when the measure is mixed", () => {
+    expect(weekElapsedFraction("2026-07-08")).toBeCloseTo(BLENDED_CUMULATIVE_SHARES[WED]);
   });
 
   it("Friday reaches 100%", () => {
     expect(weekElapsedFraction("2026-07-10")).toBeCloseTo(1);
   });
 
-  it("a leading weekend counts the week as NOT yet started (flipped from the old trailing-weekend model)", () => {
-    expect(weekElapsedFraction("2026-07-11")).toBe(0); // Sat
-    expect(weekElapsedFraction("2026-07-12")).toBe(0); // Sun
+  it("counts a Saturday as part of its week, not as zero", () => {
+    // Was 0 for both Sat and Sun. Saturday trades, so it is no longer zero.
+    expect(weekElapsedFraction("2026-07-11", "leads")).toBeCloseTo(DAY_WEIGHTS.leads[SAT]);
+    expect(weekElapsedFraction("2026-07-11", "leads")).toBeGreaterThan(0);
+    expect(weekElapsedFraction("2026-07-12", "referrals")).toBeCloseTo(DAY_WEIGHTS.referrals[SAT]);
   });
 });
 
@@ -111,13 +172,19 @@ describe("completeThrough — today is never a complete day, however many times 
   });
 
   it("keeps the pacing fraction on the day the data actually covers", () => {
-    // Before the fix: fraction came from Thu (83.33%). After: Wed (62.5%).
+    // The 2026-07-30 regression. Before the cap the fraction came from THURSDAY, so 115 apps/wk
+    // expected 95.8 by then and the board reported "−56". It must come from Wednesday.
     const asOf = completeThrough("2026-07-30", "2026-07-30");
     const ctx = weeklyPacing("2026-07-30", asOf);
-    expect(ctx.dataAsOf).toBe("2026-07-29");
-    expect(Math.round(ctx.fraction * 10000) / 100).toBeCloseTo(62.5, 1);
-    // 115 apps/wk × 62.5% = 71.9 expected, not the 95.8 that produced "−56".
-    expect(Math.round(115 * ctx.fraction)).toBe(72);
+    expect(ctx.dataAsOf).toBe("2026-07-29"); // Wednesday
+    expect(ctx.latestDayIndex).toBe(4); // index 4 of Sat..Fri = Wednesday
+    // Wednesday's expectation, on written business's own curve. Not the 62.5% of the old
+    // weekend-is-worth-nothing curve — the weekend now takes its ~3.5% — but nowhere near Thursday's.
+    const wed = ctx.fractionByKpi.applications;
+    expect(Math.round(115 * wed)).toBeLessThan(80);
+    expect(Math.round(115 * wed)).toBeGreaterThan(65);
+    // The point of the test: Wednesday's expectation, never Thursday's.
+    expect(wed).toBeLessThan(ctx.cumulativeShares.applications[5]); // < end of Thursday
   });
 
   // The "today so far" figure exists BECAUSE of the cap, and must never undo it: today is always
@@ -132,16 +199,15 @@ describe("completeThrough — today is never a complete day, however many times 
   });
 });
 
-describe("isWorkingDay — gates the 'today so far' figure", () => {
-  it("is true Mon–Fri", () => {
-    // Mon 3 Aug 2026 → Fri 7 Aug 2026.
-    for (const d of ["2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07"]) {
-      expect(isWorkingDay(d), d).toBe(true);
+describe("isTradingDay - gates the 'today so far' figure", () => {
+  it("counts Monday through SATURDAY", () => {
+    // Mon 3 Aug 2026 -> Sat 8 Aug 2026. Saturday is a trading day (Kyle 2026-08-04): ~36 leads.
+    for (const d of ["2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07", "2026-08-08"]) {
+      expect(isTradingDay(d), d).toBe(true);
     }
   });
 
-  it("is false at the weekend, so the wall never shows a red-looking 'Today so far: 0' on a Saturday", () => {
-    expect(isWorkingDay("2026-08-08")).toBe(false); // Sat
-    expect(isWorkingDay("2026-08-09")).toBe(false); // Sun
+  it("excludes only Sunday, which runs 0-10 leads", () => {
+    expect(isTradingDay("2026-08-09")).toBe(false); // Sun
   });
 });

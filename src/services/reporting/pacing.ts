@@ -15,7 +15,7 @@
 // If a true intraday feed (or the simulated "drip" mode) ever lands, it plugs in HERE — pages and
 // datasets consume PacingContext and never know the cadence.
 
-import { CUMULATIVE_WEEK_SHARES } from "../../domain/targets.js";
+import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, KPI_KEYS, type KpiKey } from "../../domain/targets.js";
 import { monthOf, shiftDays, weekStartOf } from "./trends.js";
 import { workingDaysElapsed, workingDaysInMonth } from "../../domain/targets.js";
 
@@ -36,15 +36,25 @@ function dow(iso: string): number {
   return new Date(`${iso}T00:00:00Z`).getUTCDay(); // 0=Sun … 6=Sat
 }
 
-/** How far through its Sat–Fri week `iso` is, by the same weighted day curve as the run chase
- *  (leading Sat/Sun = week not yet started, 0). The one seam for "is this week still in progress,
- *  and by how much" — anywhere that compares a current, possibly-partial week against a complete
- *  one (Momentum's trend, the League's most-improved) should extrapolate through this, not
- *  re-derive its own day-of-week math (two copies of this drifting apart would just reopen the
- *  "the numbers don't agree across screens" complaint Conor already raised once, 2026-07-07). */
-export function weekElapsedFraction(iso: string): number {
-  const isoDow = (dow(iso) + 1) % 7; // 0=Sat,1=Sun,2=Mon … 6=Fri
-  return isoDow < 2 ? 0 : CUMULATIVE_WEEK_SHARES[isoDow - 2];
+/** Index of `iso` within its own Sat–Fri week: 0=Sat, 1=Sun, 2=Mon … 6=Fri. */
+export function weekDayIndex(iso: string): number {
+  return (dow(iso) + 1) % 7;
+}
+
+/** How far through its Sat–Fri week `iso` is, by the same weighted day curve as the run chase.
+ *  The one seam for "is this week still in progress, and by how much" — anywhere that compares a
+ *  current, possibly-partial week against a complete one (Momentum's trend, the League's
+ *  most-improved) should extrapolate through this, not re-derive its own day-of-week math (two
+ *  copies of this drifting apart would just reopen the "the numbers don't agree across screens"
+ *  complaint Conor already raised once, 2026-07-07).
+ *
+ *  Saturday is NO LONGER zero. It used to be, which meant a Saturday's trading — ~36 leads a day —
+ *  counted towards the actual while contributing nothing to the expectation, so the board read
+ *  "ahead" on Saturday and Sunday every week for the wrong reason. Pass `kpi` when it is known; the
+ *  blended curve is only for genuinely mixed measures. */
+export function weekElapsedFraction(iso: string, kpi?: KpiKey): number {
+  const i = weekDayIndex(iso);
+  return kpi ? CUMULATIVE_WEEK_SHARES[kpi][i] : BLENDED_CUMULATIVE_SHARES[i];
 }
 
 /**
@@ -71,18 +81,13 @@ export function completeThrough(maxLeadDate: string, today: string): string {
   return maxLeadDate < yesterday ? maxLeadDate : yesterday;
 }
 
-/** Mon–Fri. Gates the "today so far" figure: a wall board reading "Today so far: 0" on a Saturday
- *  is noise, not information — nobody is writing business, so there is nothing to be behind on. */
-export function isWorkingDay(iso: string): boolean {
-  const d = dow(iso);
-  return d !== 0 && d !== 6;
-}
-
-/** The most recent working day (Mon–Fri) on or before `iso`. */
-export function latestWorkingDayOnOrBefore(iso: string): string {
-  let d = iso;
-  while (dow(d) === 0 || dow(d) === 6) d = shiftDays(d, -1);
-  return d;
+/** Gates the "today so far" figure: a wall board reading "Today so far: 0" on a non-trading day
+ *  is noise, not information — nobody is writing business, so there is nothing to be behind on.
+ *
+ *  Saturday IS a trading day at Capricorn (Kyle, 2026-08-04) — ~36 leads a day, and the reporting
+ *  week is Sat–Fri precisely to capture it. Only Sunday is excluded, which runs 0–10 leads. */
+export function isTradingDay(iso: string): boolean {
+  return dow(iso) !== 0; // 0 = Sunday
 }
 
 function shortLabel(iso: string): string {
@@ -92,21 +97,27 @@ function shortLabel(iso: string): string {
 }
 
 export interface WeeklyPacingContext extends PacingContext {
-  /** The five working days of the CURRENT week (Mon..Fri, YYYY-MM-DD). */
+  /** All SEVEN days of the current chase week, Sat..Fri (YYYY-MM-DD). Was Mon..Fri until
+   *  2026-08-04, which is why a Saturday's trading had nowhere to appear (Kyle: "we do Saturday
+   *  coverage which can result in circa 50+ leads"). */
   weekDays: string[];
-  /** Cumulative expected share of the weekly target by end of each working day (0..1). */
-  cumulativeShares: number[];
-  /** The headline day counter's working day — the most recent working day WITH data (≤ dataAsOf),
-   *  which early in the week may be last week's Friday so the board is never blank. */
-  latestWorkingDay: string;
-  /** DAY_WEIGHTS index (0..4) of latestWorkingDay within ITS week — picks that day's target share. */
-  latestWorkingDayIndex: number;
-  /** True when the current week has no loaded data yet (e.g. Monday, whose only complete day so far
-   *  is last Friday — the chase measures through complete days) —
-   *  the day counter is then showing last week's last working day. */
+  /** Cumulative expected share by end of each of the seven days, per KPI (0..1). */
+  cumulativeShares: Record<KpiKey, number[]>;
+  /** Blended cumulative curve — for charts and screens that pace a mixed measure. */
+  blendedShares: number[];
+  /** The headline day counter's day: the most recent day WITH data (≤ dataAsOf). Early in a week
+   *  this may be last week's Friday, so the board is never blank. */
+  latestDay: string;
+  /** Index (0=Sat … 6=Fri) of latestDay within ITS week — picks that day's target share. */
+  latestDayIndex: number;
+  /** True when the current week has no loaded data yet — the day counter is then showing a day from
+   *  last week. Now measured against the week's FIRST day (Saturday), not Monday: with Saturday a
+   *  real trading day, a Sunday dataAsOf is no longer "the week hasn't started". */
   currentWeekPending: boolean;
   /** Earliest day the dataset layer must load to cover both the current week and the day counter. */
   loadStart: string;
+  /** Expected-by-now fraction of the weekly target, per KPI. */
+  fractionByKpi: Record<KpiKey, number>;
 }
 
 /** Weighted CURRENT-week chase, Capricorn's Sat–Fri reporting week (`docs/data-dictionary.md`).
@@ -114,36 +125,36 @@ export interface WeeklyPacingContext extends PacingContext {
  *  (drives how much data we actually have). */
 export function weeklyPacing(today: string, dataAsOf: string): WeeklyPacingContext {
   const windowStart = weekStartOf(today); // Saturday
-  const weekDays = Array.from({ length: 5 }, (_, i) => shiftDays(windowStart, i + 2)); // Mon..Fri
-  const firstWorkingDay = weekDays[0]; // Monday-equivalent
-  const friday = weekDays[4];
+  const weekDays = Array.from({ length: 7 }, (_, i) => shiftDays(windowStart, i)); // Sat..Fri
+  const friday = weekDays[6];
 
-  // Expected-by-now: measured through the latest CURRENT-WEEK day that has data (≤ dataAsOf),
-  // capped at Friday. Before any current-week weekday data exists (dataAsOf < Monday) → 0 — the
-  // leading Sat/Sun of the window haven't started the working week yet.
-  let fraction = 0;
-  if (dataAsOf >= firstWorkingDay) {
-    const inWeek = dataAsOf < friday ? dataAsOf : friday;
-    fraction = weekElapsedFraction(inWeek);
-  }
+  // Expected-by-now: measured through the latest CURRENT-WEEK day that has data (≤ dataAsOf), capped
+  // at Friday. Before the week has started at all (dataAsOf < Saturday) → 0.
+  const inWeek = dataAsOf < friday ? dataAsOf : friday;
+  const fractionFor = (kpi: KpiKey): number =>
+    dataAsOf < windowStart ? 0 : weekElapsedFraction(inWeek, kpi);
+  const fractionByKpi = Object.fromEntries(KPI_KEYS.map((k) => [k, fractionFor(k)])) as Record<KpiKey, number>;
 
-  // Headline day = most recent working day with data (falls back to last week early in this week).
-  const latestWorkingDay = latestWorkingDayOnOrBefore(dataAsOf);
-  const latestWorkingDayIndex = dow(latestWorkingDay) - 1; // Mon(1)→0 … Fri(5)→4
+  // Headline day = the most recent day with data. Every day of the week now carries a target share,
+  // so there is no weekend to skip over — Saturday's business gets its own tile.
+  const latestDay = dataAsOf;
+  const latestDayIndex = weekDayIndex(latestDay);
 
   return {
     dataAsOf,
     windowStart,
-    windowEnd: shiftDays(windowStart, 6), // Friday — the window already leads with the weekend
+    windowEnd: friday,
     weekDays,
-    cumulativeShares: [...CUMULATIVE_WEEK_SHARES],
-    fraction,
-    latestWorkingDay,
-    latestWorkingDayIndex,
-    currentWeekPending: dataAsOf < firstWorkingDay,
+    cumulativeShares: CUMULATIVE_WEEK_SHARES,
+    blendedShares: [...BLENDED_CUMULATIVE_SHARES],
+    fraction: dataAsOf < windowStart ? 0 : weekElapsedFraction(inWeek),
+    fractionByKpi,
+    latestDay,
+    latestDayIndex,
+    currentWeekPending: dataAsOf < windowStart,
     // Load-bearing: reaching back to windowStart (Saturday) is what makes weekend rows actually
     // get fetched once the week is under way, not just the fallback day early on.
-    loadStart: latestWorkingDay < windowStart ? latestWorkingDay : windowStart,
+    loadStart: latestDay < windowStart ? latestDay : windowStart,
     nowLabel: shortLabel(dataAsOf),
   };
 }

@@ -13,10 +13,11 @@
 //                 crosssellreferral until 2026-07-30 — which is PaymentShield/currency cross-sell,
 //                 not protection. Capricorn does not record protection referrals as an event at all
 //                 (see PROTECTION_OPPORTUNITY_NOTE in domain/data-quality.ts).
-//   sales         protectioncase by WrittenDate, COUNT(*) (status 65 is only 20% populated — see
-//                 PROTECTION_WRITTEN_DATE in domain/data-quality.ts)
+//   sales         protectioncase by ApplicationDate (Capricorn's "Date Submitted"), cases at status
+//                 60/65/70/105/120. Reconciles to their Total Written Report — see
+//                 PROTECTION_WRITTEN_DATE in domain/data-quality.ts for the £48,969 -> £68,951 proof
 
-import { MORTGAGE_WRITTEN_DATE, PROTECTION_WRITTEN_DATE } from "../../domain/data-quality.js";
+import { MORTGAGE_WRITTEN_DATE, PROTECTION_WRITTEN_DATE, PROTECTION_WRITTEN_STATUSES } from "../../domain/data-quality.js";
 import type { KpiKey } from "../../domain/targets.js";
 import { combine, dateRange, excludeMigrations, notDeleted, orgFilter, whereClause, type Fragment } from "./filters.js";
 import type { BuiltQuery } from "./query.js";
@@ -64,11 +65,13 @@ export const KPI_SPECS: Record<KpiKey, KpiSpec> = {
     adviserKey: "PrimaryAdviserUserAccountKey",
     hasDeletedFlag: true,
   },
+  // Protection written on Capricorn's own basis: ApplicationDate (their "Date Submitted"), counting
+  // cases that have reached submission or beyond. Reconciles to Kyle's £69K for Sat 25-31 Jul.
   sales: {
     table: "dbo.protectioncase",
     dateColumn: PROTECTION_WRITTEN_DATE,
     countExpr: "COUNT(*)",
-    extraClause: "",
+    extraClause: `f.WorkflowStatusId IN (${PROTECTION_WRITTEN_STATUSES.map((s) => `'${s}'`).join(", ")})`,
     adviserKey: "PrimaryAdviserUserAccountKey",
     hasDeletedFlag: true,
   },

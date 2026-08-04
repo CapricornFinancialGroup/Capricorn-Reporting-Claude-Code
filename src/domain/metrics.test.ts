@@ -45,10 +45,21 @@ describe("metric dictionary", () => {
   });
 
   it("keeps the metrics with live open questions marked open", () => {
-    // These are unresolved with Capricorn as of 2026-08-04. If one is downgraded to "agreed", it must
-    // be because Kyle ruled — not because the note was tidied away.
-    for (const key of ["referrals", "sales", "attach-rate"]) {
+    // Still unresolved with Capricorn. If one is downgraded to "agreed", it must be because Kyle
+    // ruled — not because the note was tidied away.
+    //
+    // `sales` came OFF this list on 2026-08-04: Kyle ruled ("the 'Written' for protection should be
+    // as per the written report"), and the board now reproduces his figure — £68,951 against the
+    // c.£69K he quoted for Sat 25–31 Jul. That is a ruling plus a reconciliation, which is the bar.
+    for (const key of ["referrals", "attach-rate"]) {
       expect(metricDefinition(key)?.status, `${key} is still awaiting a Capricorn ruling`).toBe("open");
     }
+  });
+
+  it("states what a fee IS wherever a metric adds fees to commission", () => {
+    // Kyle, 2026-08-04: "Could you advise what Commission is + Fees? What are the fees referring to?"
+    // A tile that adds two things together has to name both, or it generates that email again.
+    const revenue = metricDefinition("revenue");
+    expect(revenue?.calculation.toLowerCase()).toContain("client fee");
   });
 });

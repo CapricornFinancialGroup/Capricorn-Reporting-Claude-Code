@@ -19,6 +19,7 @@ import {
   KPI_LABELS,
   LEAGUE,
   REFERRAL_RATE_TARGET,
+  WEEK_DAY_NAMES,
   type KpiKey,
   type KpiTargets,
 } from "../../domain/targets.js";
@@ -28,7 +29,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, isWorkingDay, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, isTradingDay, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
@@ -117,12 +118,12 @@ export interface TodaySoFar {
  * quietly recover by evening. So this is a SEPARATE query over [today, today] and a separate figure on
  * the card; `chaseCore` and every wtd/pace/projection number it feeds are untouched by it.
  *
- * Null at weekends — see `isWorkingDay`.
+ * Null on Sundays — see `isTradingDay`.
  */
 async function todaySoFar(config: Config): Promise<TodaySoFar | null> {
   return cached("today-so-far", 60_000, async () => {
     const today = tzToday(new Date(), config.reporting.timeZone);
-    if (!isWorkingDay(today)) return null;
+    if (!isTradingDay(today)) return null;
     const [rows, loadedAt] = await Promise.all([
       loadPerKpi<DailyCount>(config, (k) => kpiDaily(k, today, today)),
       lastRefreshAt(config),
@@ -264,7 +265,7 @@ function officeAggregates(core: ChaseCore): OfficeCums[] {
       const mine = core.byAdviser[k].filter((r) => officeOf(r.username) === name);
       const dailyMine: DailyCount[] = weekRows(mine.map((r) => ({ d: r.d, n: r.n })), core.ctx);
       mtd[k] = sum(dailyMine.map((r) => r.n)); // week-to-date for this office
-      latest[k] = sum(mine.filter((r) => isoDay(r.d) === core.ctx.latestWorkingDay).map((r) => r.n));
+      latest[k] = sum(mine.filter((r) => isoDay(r.d) === core.ctx.latestDay).map((r) => r.n));
       series[k] = cumulativeSeries(dailyMine, days, core.ctx.dataAsOf);
     }
     return { office: name, color, mtd, latest, series };
@@ -276,7 +277,7 @@ function pctToPace(wtd: KpiTargets, dailyTargets: KpiTargets, ctx: WeeklyPacingC
   const ratios: number[] = [];
   for (const k of KPI_KEYS) {
     const weekly = dailyTargets[k] * 5;
-    const expected = weekly * ctx.fraction;
+    const expected = weekly * ctx.fractionByKpi[k];
     if (expected > 0) ratios.push(wtd[k] / expected);
   }
   if (!ratios.length) return null;
@@ -342,15 +343,18 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       const weekly = dailyTargets[k] * 5;
       const thisWeek = weekRows(core.daily[k], ctx);
       const wtd = sum(thisWeek.map((r) => r.n));
-      const pace: Pace = computePace(weekly, wtd, ctx.fraction);
+      // Each KPI paces against ITS OWN day curve: Saturday is 6% of a week's leads but 1.5% of its
+      // written business, so a shared curve would misstate one of them (see DAY_WEIGHTS).
+      const fraction = ctx.fractionByKpi[k];
+      const pace: Pace = computePace(weekly, wtd, fraction);
       const actual = cumulativeSeries(thisWeek, days, ctx.dataAsOf);
       // WTD context (for the trend chart + a secondary line): cumulative weekly position in %.
       const actualPct = weekly > 0 ? round((wtd / weekly) * 100, 1) : null;
-      const expectedPct = round(ctx.fraction * 100, 1);
-      // DAY view (the headline counter, per Conor's 2026-07-06 feedback): the latest WORKING day's
-      // actual vs that day's target (weekday-weighted), with a day ahead/behind.
-      const dayActual = dayTotal(core.daily[k], ctx.latestWorkingDay);
-      const target = dayTarget(weekly, ctx.latestWorkingDayIndex);
+      const expectedPct = round(fraction * 100, 1);
+      // DAY view (the headline counter, per Conor's 2026-07-06 feedback): the latest day's actual vs
+      // that day's target, with a day ahead/behind. Saturday now gets its own tile.
+      const dayActual = dayTotal(core.daily[k], ctx.latestDay);
+      const target = dayTarget(k, weekly, ctx.latestDayIndex);
       return {
         key: k,
         label: KPI_LABELS[k],
@@ -359,7 +363,7 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         // Week pace — drives the trend chart's header status (the chart is the WTD trend).
         pace,
         day: {
-          date: ctx.latestWorkingDay,
+          date: ctx.latestDay,
           actual: dayActual,
           target,
           gap: dayActual - target,
@@ -374,7 +378,7 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         chart: {
           days,
           actual,
-          targetPace: weeklyTargetPace(weekly, ctx.cumulativeShares),
+          targetPace: weeklyTargetPace(weekly, ctx.cumulativeShares[k]),
           projection: projectionSeries(actual, pace.projectedFinish),
         },
       };
@@ -401,18 +405,20 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     return {
       dataAsOf: ctx.dataAsOf,
       totalWritten,
-      // Intraday context, NOT part of the chase — see `todaySoFar`. Null at weekends.
+      // Intraday context, NOT part of the chase — see `todaySoFar`. Null on Sundays.
       today,
       week: {
         start: ctx.windowStart,
-        end: ctx.weekDays[4],
+        end: ctx.windowEnd,
         days,
-        // Cumulative expected share by end of each day, % (20.83 / 41.67 / 62.5 / 83.33 / 100).
-        cumulativeSharesPct: ctx.cumulativeShares.map((s) => round(s * 100, 2)),
+        dayNames: [...WEEK_DAY_NAMES],
+        // Blended cumulative expected share by end of each of the seven days, %. The strip is a
+        // single row across all KPIs, so it shows the blend; each KPI's own curve drives its card.
+        cumulativeSharesPct: ctx.blendedShares.map((s) => round(s * 100, 2)),
         fraction: round(ctx.fraction, 4),
         expectedPct: round(ctx.fraction * 100, 1),
         nowLabel: ctx.nowLabel,
-        latestWorkingDay: ctx.latestWorkingDay,
+        latestDay: ctx.latestDay,
         pending: ctx.currentWeekPending,
       },
       dataAsOfLagsWeek: ctx.currentWeekPending,
@@ -431,8 +437,9 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
     const core = await chaseCore(config);
     const { ctx } = core;
     const days = ctx.weekDays;
-    // The pace line is the WEIGHTED cumulative expected share (Fri = 80% of a Mon–Thu day).
-    const paceLine = ctx.cumulativeShares.map((s) => Math.round(s * 100));
+    // The pace line spans all seven days now (Sat..Fri). Blended, because this chart carries every
+    // KPI for an office on one axis; the per-KPI curves drive the per-KPI numbers below.
+    const paceLine = ctx.blendedShares.map((s) => Math.round(s * 100));
 
     const officeDailyTargets = getOfficeDailyTargets();
     const offices = officeAggregates(core)
@@ -441,7 +448,7 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
         const hasTargets = KPI_KEYS.some((k) => targets[k] > 0);
         const kpis = KPI_KEYS.map((k) => {
           const weekly = targets[k] * 5;
-          const pace = computePace(weekly, o.mtd[k], ctx.fraction);
+          const pace = computePace(weekly, o.mtd[k], ctx.fractionByKpi[k]);
           return {
             key: k,
             label: KPI_LABELS[k],
@@ -821,6 +828,23 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const partialLast = weekFraction < 1;
     const li = partialLast ? weekStarts.length - 2 : weekStarts.length - 1;
     const lastIdx = weekStarts.length - 1;
+
+    // Snapshot the in-progress week's RAW actual-so-far before the extrapolation below overwrites it.
+    // Kyle, 2026-08-04, looking at the board on Tuesday the 4th: "I still think this page is
+    // updating? Still showing week to 31 Jul?" It was right — these tiles report the last COMPLETE
+    // Sat–Fri week, which on the 4th is 25–31 Jul — but a headline up to six days old reads as a
+    // frozen screen, and he has now queried it twice. So each tile also carries where the CURRENT
+    // week has got to. The complete week stays the headline comparison: it is the only one whose
+    // delta, quarter-average and prior-week numbers compare like with like, and swapping a
+    // part-week in as "latest" would recreate the exact mismatch he raised on 28 Jul.
+    const rawCurrentWeek: Record<string, number | null> = {
+      applications: appsW[lastIdx] ?? null,
+      referrals: refsW[lastIdx] ?? null,
+      leads: leadsW[lastIdx] ?? null,
+      written: combW[lastIdx] ?? null,
+      "case-size": avgCaseW[lastIdx] ?? null,
+    };
+
     if (partialLast && weekFraction > 0) {
       // Volume/count series: scale the partial week up to a like-for-like full-week estimate.
       // Ratio series (avg case size, referral rate) are untouched — extrapolating both the
@@ -902,6 +926,17 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
         weekTo: w.to,
         priorWeekLabel: li > 0 ? weeks[li - 1] : null,
         provisional: WRITTEN_DATE_KEYED.has(key) && shiftDays(w.to, INPUT_LAG_SETTLE_DAYS) > asOf,
+        // Where the week IN PROGRESS has got to, so a Tuesday viewer can see the board is live.
+        // Null when the last bucket is itself complete (there is no partial week to report).
+        current: partialLast
+          ? {
+              weekLabel: weeks[lastIdx],
+              weekFrom: weekStarts[lastIdx],
+              weekTo: shiftDays(weekStarts[lastIdx], 6),
+              throughDay: asOf,
+              soFar: rawCurrentWeek[key] != null ? round(rawCurrentWeek[key] as number, 1) : null,
+            }
+          : null,
         delta: latest != null && prior != null ? round(latest - prior, 1) : null,
         deltaPct: latest != null && prior != null ? pctDelta(latest, prior) : null,
         vsQuarterPct: latest != null && qa ? round(((latest - qa) / qa) * 100, 1) : null,
@@ -1001,7 +1036,7 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
     const core = await chaseCore(config);
     // Source events from the latest WORKING day (a weekend anchor has almost no activity). The
     // lake reloads 5× daily, so this is honestly "latest activity", not live-now.
-    const asOf = core.ctx.latestWorkingDay;
+    const asOf = core.ctx.latestDay;
     const [apps, leads, refs, sales] = await Promise.all([
       q<tickerQ.ApplicationEvent>(config, tickerQ.applicationEvents(asOf, 15)),
       q<tickerQ.LeadEvent>(config, tickerQ.leadEvents(asOf, 12)),

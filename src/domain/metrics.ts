@@ -128,18 +128,22 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     key: "sales",
     label: "Protection Sales",
     definition: "A protection policy written, following on from an opportunity.",
-    calculation: "Count of protection cases by the date the case was written.",
-    source: "protectioncase.WrittenDate, COUNT(*)",
-    reconcilesTo: "Protection Report (usp_GetInsuranceProductReport)",
+    calculation:
+      "Count of protection cases by their Application Date — which the platform labels 'Date " +
+      "Submitted' — counting cases that have reached submission or beyond.",
+    source: "protectioncase.ApplicationDate, WorkflowStatusId in 60/65/70/105/120, COUNT(*)",
+    reconcilesTo: "Total Written Report, insurance leg (usp_GetInsuranceProductReport)",
     owner: "Kyle Van Der Net",
     frequency: "Daily",
-    status: "open",
+    status: "agreed",
     note:
-      "Three competing definitions exist inside the platform itself: the Protection report counts " +
-      "statuses 60/65/70; the Total Written Report's insurance leg counts only 65 (20 in July vs our " +
-      "52). Kyle has asked for the Written Report basis, but only 22 of 227 commission-bearing " +
-      "protection cases carry that status — applying it literally would remove ~£403k of protection " +
-      "commission. Being checked case-by-case with Kyle before anything changes.",
+      "Now on Kyle's own basis and reconciled: Sat 25–31 Jul gives £68,951 of protection commission " +
+      "against the c.£69K he quoted. It previously keyed on WrittenDate, which gave £48,969 — the " +
+      "difference is cases Capricorn counts as submitted that carry no written date yet. Correcting " +
+      "an earlier error of ours: we had warned that adopting this basis would remove ~£400k of " +
+      "protection commission. It does not. That warning came from reading a sparsely-populated " +
+      "workflow date column as though it were the case status; by status, 220 of 248 recent cases " +
+      "qualify, not 22 of 227.",
   },
   {
     key: "offers",
@@ -164,9 +168,9 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
       "Written business, as commission. Mortgage commission plus protection commission. Client fees are " +
       "NOT included, because Capricorn's Total Written Report is a commission report.",
     calculation:
-      "Mortgage: net (or product) commission on cases reaching 'Pre-offer Processing' in the week. " +
-      "Protection: product commission on protection cases written in the week. Summed, excluding fees.",
-    source: "mortgagecase.NetCommission/ProductCommission + protectioncase.ProductCommission",
+      "Mortgage: product commission on cases reaching 'Pre-offer Processing' in the week. " +
+      "Protection: product commission on cases submitted in the week. Summed, excluding fees.",
+    source: "mortgagecase.ProductCommission + protectioncase.ProductCommission",
     reconcilesTo: "Total Written Report (usp_GetTotalProductReport)",
     owner: "Kyle Van Der Net",
     frequency: "Weekly (Sat–Fri), reported for the last COMPLETE week",
@@ -183,15 +187,21 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     definition:
       "An estimate of what the period earned: written commission PLUS client fees. Deliberately a wider " +
       "measure than Weekly Written, and over a different window — this week to date, not last week.",
-    calculation: "Mortgage commission + client fees on business written in the window shown on the tile.",
-    source: "mortgagecase.NetCommission/ProductCommission + ClientFeeAmount",
-    reconcilesTo: null,
+    calculation:
+      "Commission + client fees on business written in the window shown on the tile. COMMISSION is " +
+      "the procuration fee the lender or provider pays Capricorn. FEES means the CLIENT fee — the " +
+      "advice/arrangement fee charged to the client — and nothing else: solicitor fees and " +
+      "miscellaneous fees are recorded separately on the case and are NOT included here.",
+    source: "mortgagecase.ProductCommission + mortgagecase.ClientFeeAmount",
+    reconcilesTo: "Platform 'Total Fees Due' = ProductCommission + ClientFee (usp_GetInsuranceProductReport)",
     owner: "Kyle Van Der Net",
     frequency: "Daily (week to date)",
     status: "indicative",
     note:
-      "The commission and fee parts are shown separately on the tile so the gap to Weekly Written is " +
-      "explicit. This is why the two screens legitimately show different numbers.",
+      "Kyle asked directly what the fees are (2026-08-04): they are client fees. The commission and " +
+      "fee parts are shown separately on the tile so the gap to Weekly Written is explicit — Weekly " +
+      "Written is commission only, because Capricorn's Total Written Report is a commission report. " +
+      "That is why the two screens legitimately show different numbers.",
   },
   {
     key: "total-lending",

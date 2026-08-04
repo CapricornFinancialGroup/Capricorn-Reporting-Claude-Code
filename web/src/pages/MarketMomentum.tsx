@@ -11,11 +11,13 @@ import type { MarketMomentumPayload, MomentumKpi } from "../types.js";
 import type { Mode } from "../api.js";
 import { Load, type PageProps } from "./common.js";
 
+function fmtOne(k: MomentumKpi, v: number | null): string {
+  if (v == null) return "—";
+  return k.fmt === "gbpk" || k.fmt === "gbp" ? gbpCompact(v) : num(Math.round(v));
+}
+
 function fmtValue(k: MomentumKpi): string {
-  if (k.latest == null) return "—";
-  if (k.fmt === "gbpk") return gbpCompact(k.latest);
-  if (k.fmt === "gbp") return gbpCompact(k.latest);
-  return num(Math.round(k.latest));
+  return fmtOne(k, k.latest);
 }
 
 function fmtDelta(k: MomentumKpi): { text: string; cls: string } {
@@ -48,13 +50,26 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               return (
                 <div className="card mom-kpi" key={k.key}>
                   <div className="mom-kpi-label">{k.label} <MetricInfo metricKey={k.key} mode={mode} /></div>
+                  {/* "Last full week", not "Week to 31 Jul". On Tue 4 Aug the latter read as a
+                      stuck screen — Kyle asked twice whether the page was still updating. Saying
+                      which week it IS, and showing the current one underneath, answers that on the
+                      tile instead of by email. */}
                   <div className="mom-kpi-window">
-                    Week to {shortDate(k.weekTo)}
+                    Last full week · {windowLabel(k)}
                     {k.provisional && <span className="mom-kpi-prov" title="Cases are entered ~6 days after the date they were written, so this week is still filling.">provisional</span>}
                   </div>
                   <div className="mom-kpi-value">{fmtValue(k)}</div>
                   <div className={`mom-kpi-delta ${d.cls}`}>{d.text}</div>
-                  <div className="mom-kpi-vs">{windowLabel(k)} vs {k.priorWeekLabel ? "prior week" : "—"}</div>
+                  <div className="mom-kpi-vs">vs {k.priorWeekLabel ?? "—"}</div>
+                  {k.current && (
+                    <div
+                      className="mom-kpi-current"
+                      title="The week now in progress, through the last complete day. Shown for context — the headline above is the last full week, because only a full week can be compared with the one before it."
+                    >
+                      {k.current.weekLabel} so far <b>{fmtOne(k, k.current.soFar)}</b>
+                      <span className="mom-kpi-current-sub"> · to {shortDate(k.current.throughDay)}</span>
+                    </div>
+                  )}
                 </div>
               );
             })}
