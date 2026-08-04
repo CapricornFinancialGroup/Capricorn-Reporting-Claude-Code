@@ -100,7 +100,9 @@ its header comments once the repo is on its permanent GitHub home.
 - **Change targets / office mapping**: edit `src/domain/targets.ts` / `offices.ts`, redeploy (a PR
   is the audit trail) — or, since 2026-07-08, an authorized admin can upload a new weekly targets
   workbook directly from the dashboard's "Targets" tab (see below) without a code change at all.
-- **Data freshness**: the lakehouse rebuilds ~03:15 UTC daily (after the ~23:00 UTC Gold load);
+- **Data freshness**: the lakehouse reloads FIVE times a day, ~07:50 / 11:10 / 14:15 / 17:10 /
+  20:10 UTC (verified against MAX(_etl_modified) on 2026-08-04 — the previous "~03:15 daily" note
+  was wrong and had propagated onto the board as "overnight refresh");
   every screen stamps `Data as of <date>`. If the stamp is stale ≥2 days, the upstream
   `LoadGoldCapricornShare` notebook (Smartr Fabric, PBI 90576) is the place to look.
 - **Env var reference**: see `.env.example` — all app settings are set by the Bicep; `PACING_MODE`

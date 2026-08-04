@@ -30,6 +30,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 day={k.day}
                 weeklyTarget={k.weeklyTarget}
                 wtd={k.wtd}
+                today={data.today ? { count: data.today.counts[k.key] ?? 0, loadedAt: data.today.loadedAt } : null}
                 metricKey={k.key}
                 mode={mode}
               />

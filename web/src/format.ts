@@ -69,6 +69,15 @@ export function shortDate(iso: string | null | undefined): string {
   return d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+/** ISO timestamp → "11:14" in the viewer's own timezone. Stamps a figure with the load that
+ *  produced it: the share reloads 5× daily, so "how old is this?" is a real question on the wall. */
+export function clockTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Status → display text the strawman uses on pills. */
 export function statusLabel(status: string): string {
   switch (status) {

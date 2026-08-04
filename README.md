@@ -25,7 +25,7 @@ navy header, Inter, colour only for meaning — *"Formula One mission control de
                                 │ mssql pool, azure-active-directory-default
                                 │ (system-assigned MI in prod, az-cli credential locally)
                      Fabric SQL endpoint — lakehouse GAGold_Capricorn
-                     (workspace GlobalAnalyticsShare, rebuilt nightly ~03:15 UTC)
+                     (workspace GlobalAnalyticsShare, reloaded 5× daily (~07:50, 11:10, 14:15, 17:10, 20:10 UTC — verified 2026-08-04))
 ```
 
 - **Pacing model** ([src/services/reporting/pacing.ts](src/services/reporting/pacing.ts)): the lake

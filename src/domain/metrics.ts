@@ -51,13 +51,19 @@ export interface MetricDefinition {
 export const DATA_CADENCE = {
   /** Plain-English answer to "is this live?" — asked three times between 2026-07-28 and 08-03. */
   summary:
-    "Not live. The Growth OS reads a warehouse copy of Smartr365 that rebuilds overnight, so figures " +
-    "are complete to the end of the previous day. Business written at 3pm today appears tomorrow morning.",
-  /** Why the board deliberately stops at yesterday rather than showing a part-loaded today. */
+    "Not real-time, but not nightly either. The data share reloads FIVE times a day — around 07:50, " +
+    "11:10, 14:15, 17:10 and 20:10 — so business written at 3pm reaches the board at the 17:10 load, " +
+    "about two hours later. The header shows the exact time of the last load.",
+  /** Why the chase measures through the last COMPLETE day even though today is partly loaded. */
   asOfRule:
-    "Screens report the latest COMPLETE day. Today is never complete in an overnight feed, so it is " +
-    "excluded — a part-loaded day previously made the board read 1 lead and 0 applications, both critical.",
-  refresh: "Overnight (data), 60 seconds (screen poll)",
+    "Target comparisons are measured through the last COMPLETE day. Today is only partly loaded until " +
+    "its final load of the evening, and treating a part-loaded day as finished previously made the " +
+    "board read 1 lead and 0 applications — both flagged critical — while reporting the firm a full " +
+    "day of target further behind than it was. Today is not hidden, though: each KPI card carries a " +
+    "separate \"Today so far\" count, stamped with the load that produced it. It has no target beside " +
+    "it on purpose — a part-day measured against a whole-day target would drift behind all morning " +
+    "and recover by evening.",
+  refresh: "5× daily (≈07:50, 11:10, 14:15, 17:10, 20:10), screens poll every 60s",
 } as const;
 
 export const METRIC_DEFINITIONS: MetricDefinition[] = [

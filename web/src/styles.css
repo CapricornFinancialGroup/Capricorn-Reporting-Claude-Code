@@ -89,9 +89,10 @@ button { font: inherit; }
 .gos-header-right { width: 320px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 .gos-date { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.6); letter-spacing: 0.05em; }
 
-/* "Data as at" replaces the old pulsing red LIVE badge. The board reads a warehouse copy rebuilt
-   overnight; calling that "Live" next to today's date is what made Kyle ask three times whether the
-   figures were live (Conor 2026-08-04: every screen must state its refresh frequency and data date). */
+/* "Data as at" replaces the old pulsing red LIVE badge. The board reads a warehouse copy that
+   reloads 5× daily; calling that "Live" next to today's date is what made Kyle ask three times
+   whether the figures were live (Conor 2026-08-04: every screen must state its refresh frequency
+   and data date). */
 .gos-asat { text-align: right; line-height: 1.25; }
 .gos-asat-value {
   font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.03em;
@@ -212,6 +213,15 @@ button { font: inherit; }
 .kpi-stat { display: flex; flex-direction: column; gap: 1px; }
 .kpi-stat-label { font-size: 8.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary); opacity: 0.7; }
 .kpi-stat-value { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Card footer: the part-day "today so far" count on the left, the complete-day status pill on the
+   right. The hairline above it is doing real work — it is the visual boundary between "today, still
+   running" and every figure above, which measures complete days and drives the pace. Deliberately
+   understated (no colour, no status): it must never read as another target comparison. */
+.kpi-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 2px; padding-top: 5px; border-top: 1px solid var(--track-bg); }
+.kpi-today { font-size: 10px; font-weight: 600; color: var(--text-secondary); letter-spacing: 0.02em; white-space: nowrap; }
+.kpi-today b { font-size: 13px; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; margin-left: 2px; }
+.kpi-today-age { opacity: 0.6; font-variant-numeric: tabular-nums; }
 
 .progress-wrap { margin-top: 2px; }
 .progress-labels { display: flex; justify-content: space-between; font-size: 9px; color: var(--text-secondary); margin-bottom: 4px; }

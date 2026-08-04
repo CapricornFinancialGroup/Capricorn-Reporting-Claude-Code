@@ -28,7 +28,8 @@ export interface Config {
     cycleSeconds: number;
     /** Business timezone for the day clock (handles BST automatically via Intl). */
     timeZone: string;
-    /** Pacing model: "mtd" (month-to-date, day-grained — the honest default for a nightly lake). */
+    /** Pacing model: "mtd" (month-to-date, day-grained — the lake is day-grained even though it
+     *  reloads 5× daily, so the chase stays at day resolution). */
     pacingMode: "mtd" | "drip";
     /** Server-side dataset cache TTL (seconds). */
     cacheTtlSeconds: number;

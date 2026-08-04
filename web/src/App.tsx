@@ -47,7 +47,7 @@ export function App({ mode }: { mode: Mode }) {
   const pageCompareFilters = filterable && compareFilters?.from && compareFilters?.to ? compareFilters : null;
   return (
     <div className="dash-shell">
-      <GosHeader title={page.label} freshness={{ dataAsOf: meta.dataAsOf, targetsProvenance: meta.targetsProvenance }} />
+      <GosHeader title={page.label} freshness={{ dataAsOf: meta.dataAsOf, lastRefreshAt: meta.lastRefreshAt, targetsProvenance: meta.targetsProvenance }} />
       <nav className="dash-nav">
         {visiblePages.map((p) => (
           <button

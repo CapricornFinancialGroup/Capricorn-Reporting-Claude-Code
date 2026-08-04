@@ -27,6 +27,10 @@ export interface Meta {
    *  server-side regardless of what the nav shows. */
   isTargetsAdmin: boolean;
   dataAsOf: string;
+  /** ISO wall-clock of the lake's last load. The share reloads 5× daily (~07:50/11:10/14:15/17:10/
+   *  20:10), NOT overnight — the header shows this so "is it live?" is answerable at a glance. */
+  lastRefreshAt: string | null;
+  refreshCadence: string;
   refreshSeconds: number;
   cycleSeconds: number;
   pacingMode: "mtd" | "drip";
@@ -68,6 +72,9 @@ export interface DailyRunChasePayload {
   dataAsOf: string;
   /** Total mortgage value written this chase week (SUM(MortgageValue)) — not commission revenue. */
   totalWritten: number;
+  /** TODAY's part-day counts, held apart from the chase so pace maths stays on complete days.
+   *  Null at weekends. `loadedAt` is the load that produced them — the share reloads 5× daily. */
+  today: { date: string; loadedAt: string | null; counts: Record<KpiKey, number> } | null;
   week: {
     start: string;
     end: string;

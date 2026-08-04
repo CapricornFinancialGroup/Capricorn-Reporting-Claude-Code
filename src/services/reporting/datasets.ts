@@ -4,7 +4,7 @@
 //
 // Chase model (Conor's weekly principles, 2026-07-06): the run chase is WEEK-TO-DATE vs weekly
 // targets with weighted days (Mon–Thu 20.83% each, Fri 16.67%), measured through the latest
-// complete day in the nightly lake ("data as of"). The week is Capricorn's own Sat–Fri reporting
+// complete day loaded ("data as of" — the lake reloads 5× daily). The week is Capricorn's own Sat–Fri reporting
 // week (`docs/data-dictionary.md`), rolling each Saturday. Funnel volumes remain month-to-date.
 // The pacing seam (pacing.ts) is the single plug-point for a future intraday or drip feed and for
 // the live Team-Targets source when Capricorn provides one.
@@ -28,7 +28,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, isWorkingDay, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
@@ -64,7 +64,7 @@ function isoDay(v: unknown): string {
 
 /** Latest COMPLETE day in the lake.
  *
- *  MAX(LeadDate) alone is wrong: leads are created live, so a few dated today ride into the overnight
+ *  MAX(LeadDate) alone is wrong: leads are created live, so a few dated today ride into an early
  *  build and pull "data as of" a day ahead of every other fact — which then makes the whole run chase
  *  pace against a day it has no data for. `completeThrough` caps it at yesterday. See its docstring
  *  for the 2026-07-30 case that exposed this. */
@@ -77,6 +77,58 @@ async function dataAsOf(config: Config): Promise<string> {
     const v = rows[0]?.maxDay;
     if (!v) throw new Error("Lake returned no MAX(LeadDate) — is GAGold_Capricorn loaded?");
     return completeThrough(isoDay(v), tzToday(new Date(), config.reporting.timeZone));
+  });
+}
+
+/** When the lake was actually last loaded — MAX(_etl_modified), the ETL's own watermark.
+ *
+ *  The share is NOT a nightly build, despite what the README claimed until 2026-08-04. It loads FIVE
+ *  times a day, ~07:50 / 11:10 / 14:15 / 17:10 / 20:10 UTC (verified: 5 distinct load stamps on each
+ *  of 1, 2 and 3 Aug 2026). So business written at 3pm reaches the board at the 17:10 load, roughly two
+ *  hours later — not the next morning. Surfaced so the header can state the truth instead of a cadence
+ *  nobody had checked. */
+async function lastRefreshAt(config: Config): Promise<string | null> {
+  return cached("last-refresh-at", 60_000, async () => {
+    const rows = await q<{ at: unknown }>(config, {
+      text: `SELECT MAX(_etl_modified) AS at FROM dbo.mortgagecase;`,
+      params: [],
+    });
+    const v = rows[0]?.at;
+    return v instanceof Date ? v.toISOString() : v ? String(v) : null;
+  });
+}
+
+/** Today's PARTIAL counts, and when they were loaded. */
+export interface TodaySoFar {
+  /** Business date these counts cover (YYYY-MM-DD) — always today, never the chase's dataAsOf. */
+  date: string;
+  /** The load that produced them, so the number carries its own age. */
+  loadedAt: string | null;
+  counts: Record<KpiKey, number>;
+}
+
+/**
+ * "Today so far" — deliberately OUTSIDE the chase maths.
+ *
+ * Kyle's and Conor's question is a 3pm one: what has happened today? The lake reloads 5× daily, so we
+ * can answer it — but the chase itself must keep measuring through COMPLETE days. Folding today's
+ * part-day into `wtd` is exactly the 2026-07-30 failure in reverse: the actual would carry ~4 hours of
+ * a day whose target counts a full one, so every KPI would drift "behind" as the morning wore on and
+ * quietly recover by evening. So this is a SEPARATE query over [today, today] and a separate figure on
+ * the card; `chaseCore` and every wtd/pace/projection number it feeds are untouched by it.
+ *
+ * Null at weekends — see `isWorkingDay`.
+ */
+async function todaySoFar(config: Config): Promise<TodaySoFar | null> {
+  return cached("today-so-far", 60_000, async () => {
+    const today = tzToday(new Date(), config.reporting.timeZone);
+    if (!isWorkingDay(today)) return null;
+    const [rows, loadedAt] = await Promise.all([
+      loadPerKpi<DailyCount>(config, (k) => kpiDaily(k, today, today)),
+      lastRefreshAt(config),
+    ]);
+    const counts = Object.fromEntries(KPI_KEYS.map((k) => [k, sum(rows[k].map((r) => r.n))])) as Record<KpiKey, number>;
+    return { date: today, loadedAt, counts };
   });
 }
 
@@ -241,7 +293,7 @@ function officeStatus(pct: number | null): ChaseStatus {
 // ---------------------------------------------------------------------------
 
 export async function meta(config: Config) {
-  const asOf = await dataAsOf(config);
+  const [asOf, refreshedAt] = await Promise.all([dataAsOf(config), lastRefreshAt(config)]);
   const daily = getDailyTargets();
   const weekly = Object.fromEntries(KPI_KEYS.map((k) => [k, daily[k] * 5])) as KpiTargets;
   return {
@@ -255,6 +307,10 @@ export async function meta(config: Config) {
     },
     targetsProvenance: getTargetsProvenance(),
     dataAsOf: asOf,
+    /** Wall-clock of the lake's last load (ISO, UTC) — the honest freshness stamp. */
+    lastRefreshAt: refreshedAt,
+    /** Human cadence for the header. Not "overnight": see lastRefreshAt's docstring. */
+    refreshCadence: DATA_CADENCE.refresh,
     refreshSeconds: config.reporting.refreshSeconds,
     cycleSeconds: config.reporting.cycleSeconds,
     pacingMode: config.reporting.pacingMode,
@@ -275,7 +331,10 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     // Total LENDING (Conor 2026-07-07, item 5): total mortgage/loan value written this chase week —
     // the same WrittenDate column the Mortgages Written KPI uses, so date semantics line up. NOT
     // commission (that's Momentum's "Weekly Written" and the League's "Est. Revenue").
-    const writtenRows = await q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(ctx.windowStart, ctx.dataAsOf));
+    const [writtenRows, today] = await Promise.all([
+      q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(ctx.windowStart, ctx.dataAsOf)),
+      todaySoFar(config),
+    ]);
     const totalWritten = Math.round(sum(writtenRows.map((r) => r.totalValue ?? 0)));
 
     const dailyTargets = getDailyTargets();
@@ -342,6 +401,8 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     return {
       dataAsOf: ctx.dataAsOf,
       totalWritten,
+      // Intraday context, NOT part of the chase — see `todaySoFar`. Null at weekends.
+      today,
       week: {
         start: ctx.windowStart,
         end: ctx.weekDays[4],
@@ -939,7 +1000,7 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
   return cached("ds-live-feed", ttl(config), async () => {
     const core = await chaseCore(config);
     // Source events from the latest WORKING day (a weekend anchor has almost no activity). The
-    // lake is a nightly build, so this is honestly "latest activity", not live-now.
+    // lake reloads 5× daily, so this is honestly "latest activity", not live-now.
     const asOf = core.ctx.latestWorkingDay;
     const [apps, leads, refs, sales] = await Promise.all([
       q<tickerQ.ApplicationEvent>(config, tickerQ.applicationEvents(asOf, 15)),

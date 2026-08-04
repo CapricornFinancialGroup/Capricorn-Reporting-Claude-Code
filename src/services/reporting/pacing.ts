@@ -2,9 +2,10 @@
 //
 //   • weeklyPacing (the run chase, per Conor's 2026-07-06 principles): Capricorn's own Sat–Fri
 //     reporting week (`docs/data-dictionary.md`) containing today (business tz), chased against
-//     the weekly target with WEIGHTED working days (Fri = 80% of a Mon–Thu day). The lake is a
-//     nightly build, so early in the week the current week may hold little/no data yet — that's
-//     expected; it fills as the nightly loads catch up.
+//     the weekly target with WEIGHTED working days (Fri = 80% of a Mon–Thu day). The lake reloads
+//     5× daily but the chase deliberately measures through COMPLETE days only (`completeThrough`),
+//     so early in the week the current week may hold little data yet — that's expected. Today's
+//     partial figure is surfaced SEPARATELY (see `todaySoFar` in datasets.ts), never folded in.
 //     `fraction` (expected-by-now) is measured through the latest current-week day that HAS data,
 //     so it stays comparable to the actual. The headline day counter uses `latestWorkingDay` — the
 //     most recent working day with data anywhere (falls back to last week early-Monday) so the
@@ -47,10 +48,10 @@ export function weekElapsedFraction(iso: string): number {
 }
 
 /**
- * The latest day the nightly lake can honestly claim to hold COMPLETE data for.
+ * The latest day the lake can honestly claim to hold COMPLETE data for.
  *
  * `MAX(LeadDate)` is NOT that day. Leads are created live in the platform, so a handful dated today
- * land in the overnight build and drag the whole board's "data as of" a day forward while every other
+ * land in an early load and drag the whole board's "data as of" a day forward while every other
  * fact still stops at yesterday. Observed 2026-07-30: MAX(LeadDate) = 30 Jul with **1 lead**, while
  * MAX(WrittenDate) and MAX(status-70) were both 29 Jul.
  *
@@ -60,12 +61,21 @@ export function weekElapsedFraction(iso: string): number {
  * ("−56"), both KPIs flagged CRITICAL with the headline day showing 1 lead and 0 applications at
  * 11:19. That is what Kyle saw on 2026-07-30.
  *
- * The lake is rebuilt overnight, so TODAY is never a complete day — cap at yesterday. Kept pure and
+ * Today is not a COMPLETE day until its final load of the evening, so cap at yesterday for target
+ * comparisons. NOTE the lake reloads 5× daily, so today IS partly available — see the note below on
+ * showing it separately rather than folding it into the chase. Kept pure and
  * separate from the query so the rule is unit-testable.
  */
 export function completeThrough(maxLeadDate: string, today: string): string {
   const yesterday = shiftDays(today, -1);
   return maxLeadDate < yesterday ? maxLeadDate : yesterday;
+}
+
+/** Mon–Fri. Gates the "today so far" figure: a wall board reading "Today so far: 0" on a Saturday
+ *  is noise, not information — nobody is writing business, so there is nothing to be behind on. */
+export function isWorkingDay(iso: string): boolean {
+  const d = dow(iso);
+  return d !== 0 && d !== 6;
 }
 
 /** The most recent working day (Mon–Fri) on or before `iso`. */
@@ -91,7 +101,8 @@ export interface WeeklyPacingContext extends PacingContext {
   latestWorkingDay: string;
   /** DAY_WEIGHTS index (0..4) of latestWorkingDay within ITS week — picks that day's target share. */
   latestWorkingDayIndex: number;
-  /** True when the current week has no loaded data yet (e.g. Monday before the overnight load) —
+  /** True when the current week has no loaded data yet (e.g. Monday, whose only complete day so far
+   *  is last Friday — the chase measures through complete days) —
    *  the day counter is then showing last week's last working day. */
   currentWeekPending: boolean;
   /** Earliest day the dataset layer must load to cover both the current week and the day counter. */

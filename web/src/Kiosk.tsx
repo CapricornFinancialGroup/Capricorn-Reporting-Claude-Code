@@ -94,7 +94,7 @@ export function Kiosk({ mode }: { mode: Mode }) {
       <div className="kiosk-canvas" style={{ transform: `scale(${scale})` }}>
         <GosHeader
           title={page.label}
-          freshness={{ dataAsOf: meta.dataAsOf, targetsProvenance: meta.targetsProvenance }}
+          freshness={{ dataAsOf: meta.dataAsOf, lastRefreshAt: meta.lastRefreshAt, targetsProvenance: meta.targetsProvenance }}
           right={rotates ? (
             <div className="kiosk-dots">
               {ROTATION.map((p, i) => <span key={p.id} className={`dot ${i === index ? "dot-on" : ""}`} />)}

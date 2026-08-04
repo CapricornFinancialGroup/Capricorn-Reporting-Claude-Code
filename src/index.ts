@@ -1,5 +1,5 @@
 // Production entrypoint. App Service runs `node dist/index.js` (see Bicep appCommandLine).
-// No cron jobs: the lake is rebuilt upstream (nightly) and every dataset is computed on read
+// No cron jobs: the lake is reloaded upstream (5× daily) and every dataset is computed on read
 // (with a short server-side cache), so the app is a pure read-through HTTP server.
 
 import { loadConfig } from "./config.js";

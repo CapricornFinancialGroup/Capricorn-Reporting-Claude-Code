@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS } from "../../domain/targets.js";
-import { completeThrough, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
+import { completeThrough, isWorkingDay, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
 describe("weekly weights (Conor's principles)", () => {
   it("Mon–Thu carry 20.83% each, Friday 16.67% (80% of a Mon–Thu day)", () => {
@@ -90,9 +90,9 @@ describe("mtdPacing (month-window screens)", () => {
 // Regression: the 2026-07-30 incident. One lead dated "today" pulled MAX(LeadDate) forward, so the
 // board paced Wednesday's data against Thursday's expectation and reported the firm a full day of
 // target further behind than it was — leads 351 vs an expected 527, applications 40 vs 96, both
-// CRITICAL, headline day showing 1 lead at 11:19. The lake is a nightly build: today is never
-// complete.
-describe("completeThrough — today is never a complete day in a nightly lake", () => {
+// CRITICAL, headline day showing 1 lead at 11:19. The share reloads 5× daily, so today IS partly
+// present — which is exactly why the cap is needed: partly present is not complete.
+describe("completeThrough — today is never a complete day, however many times the lake reloads", () => {
   it("caps a MAX(LeadDate) that has run ahead to today", () => {
     // Thu 30 Jul held exactly 1 lead; every other fact stopped at Wed 29 Jul.
     expect(completeThrough("2026-07-30", "2026-07-30")).toBe("2026-07-29");
@@ -118,5 +118,30 @@ describe("completeThrough — today is never a complete day in a nightly lake", 
     expect(Math.round(ctx.fraction * 10000) / 100).toBeCloseTo(62.5, 1);
     // 115 apps/wk × 62.5% = 71.9 expected, not the 95.8 that produced "−56".
     expect(Math.round(115 * ctx.fraction)).toBe(72);
+  });
+
+  // The "today so far" figure exists BECAUSE of the cap, and must never undo it: today is always
+  // strictly after dataAsOf, so the separate [today, today] query can't overlap the chase window's
+  // loaded rows. If this ever failed, today's part-day would be double-counted into wtd.
+  it("always leaves today itself outside the chase's data window", () => {
+    for (const today of ["2026-08-03", "2026-08-04", "2026-08-07", "2026-08-08"]) {
+      for (const maxLeadDate of ["2026-07-20", "2026-08-03", "2026-08-04", "2026-08-31"]) {
+        expect(completeThrough(maxLeadDate, today) < today).toBe(true);
+      }
+    }
+  });
+});
+
+describe("isWorkingDay — gates the 'today so far' figure", () => {
+  it("is true Mon–Fri", () => {
+    // Mon 3 Aug 2026 → Fri 7 Aug 2026.
+    for (const d of ["2026-08-03", "2026-08-04", "2026-08-05", "2026-08-06", "2026-08-07"]) {
+      expect(isWorkingDay(d), d).toBe(true);
+    }
+  });
+
+  it("is false at the weekend, so the wall never shows a red-looking 'Today so far: 0' on a Saturday", () => {
+    expect(isWorkingDay("2026-08-08")).toBe(false); // Sat
+    expect(isWorkingDay("2026-08-09")).toBe(false); // Sun
   });
 });

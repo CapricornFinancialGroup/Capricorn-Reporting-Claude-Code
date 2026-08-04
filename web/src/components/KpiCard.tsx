@@ -1,18 +1,24 @@
 // Screen-1 KPI card. Per Conor's 2026-07-06 feedback, the HEADLINE is day-referenced: the latest
 // working day's actual vs that day's target, with a day ahead/behind. Week-to-date sits underneath
 // as context (the cumulative trend chart lives on the card below this one).
+//
+// Everything above the footer measures COMPLETE days. The "Today so far" footer is the one part-day
+// number on the card, and it is fenced off on purpose: it feeds no target, no gap and no status pill.
+// That separation is the whole point — see `todaySoFar` in src/services/reporting/datasets.ts.
 
 import type { Mode } from "../api.js";
 import { MetricInfo } from "./MetricInfo.js";
 import type { DayView } from "../types.js";
-import { num, shortDate, signed, statusLabel } from "../format.js";
+import { clockTime, num, shortDate, signed, statusLabel } from "../format.js";
 import { StatusPill } from "./StatusPill.js";
 
-export function KpiCard({ name, day, weeklyTarget, wtd, metricKey, mode }: {
+export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }: {
   name: string;
   day: DayView;
   weeklyTarget: number;
   wtd: number;
+  /** Today's part-day count + the load that produced it. Omitted at weekends and before meta loads. */
+  today?: { count: number; loadedAt: string | null } | null;
   /** Key into the metric dictionary — renders the clickable definition (Conor 2026-08-04). */
   metricKey?: string;
   mode?: Mode;
@@ -53,7 +59,16 @@ export function KpiCard({ name, day, weeklyTarget, wtd, metricKey, mode }: {
           <div className="progress-bar-fill" style={{ width: `${pctOfDay}%` }} />
         </div>
       </div>
-      <div style={{ alignSelf: "flex-end", marginTop: 2 }}>
+      <div className="kpi-footer">
+        {today && (
+          <span
+            className="kpi-today"
+            title="Today is still in progress, so it is NOT in the figures above — those measure complete days only. This is a running count from the most recent data load."
+          >
+            Today so far <b>{num(today.count)}</b>
+            {today.loadedAt && <span className="kpi-today-age"> · {clockTime(today.loadedAt)}</span>}
+          </span>
+        )}
         <StatusPill status={day.status} label={`${statusLabel(day.status)}${day.status === "ahead" || day.status === "behind" ? ` ${signed(day.gap)}` : ""}`} />
       </div>
     </div>

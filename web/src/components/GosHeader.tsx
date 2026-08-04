@@ -1,7 +1,8 @@
 // The navy Growth OS header: brand · page title + wall clock · WHICH DATA IS ON SCREEN.
 //
 // The right-hand block used to show today's date and a pulsing red "Live" badge. Both were untrue:
-// the Growth OS reads a warehouse copy rebuilt overnight, so the figures are a complete day behind.
+// the Growth OS reads a warehouse copy that reloads 5× daily, so the figures are never real-time and
+// target comparisons run through the last complete day.
 // Showing today's date next to yesterday's numbers, under the word "Live", is why Kyle asked three
 // times whether the board was live (2026-07-28 → 08-03) and why a Monday view of Sunday's data read
 // as broken. Per Conor's 2026-08-04 note — "every screen should clearly show its refresh frequency
@@ -11,12 +12,15 @@
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import capricornLogo from "../assets/logos/capricorn.svg";
+import { clockTime } from "../format.js";
 import type { TargetsProvenance } from "../types.js";
 
 /** What the header says about the data on screen. */
 export interface Freshness {
   /** Latest COMPLETE day the figures cover (YYYY-MM-DD). */
   dataAsOf: string;
+  /** ISO time of the lake's last load — the share reloads 5× daily, so this moves through the day. */
+  lastRefreshAt?: string | null;
   /** Where the targets come from — a placeholder is called out, not hidden (Conor 2026-08-04). */
   targetsProvenance?: TargetsProvenance;
 }
@@ -56,9 +60,13 @@ export function GosHeader({ title, right, freshness }: {
         <div className="gos-clock" title="Current time — not the data date">{time}</div>
       </div>
       <div className="gos-header-right">
-        <div className="gos-asat">
+        <div className="gos-asat" title="Target comparisons measure through the last complete day; the data itself reloads 5× daily.">
           <div className="gos-asat-value">Data as at {freshness ? asAtLabel(freshness.dataAsOf) : "—"}</div>
-          <div className="gos-asat-cadence">Overnight refresh · not live</div>
+          <div className="gos-asat-cadence">
+            {freshness?.lastRefreshAt
+              ? `Loaded ${clockTime(freshness.lastRefreshAt)} · refreshes 5× daily`
+              : "Refreshes 5× daily · not real-time"}
+          </div>
         </div>
         {/* Targets are config, and until Capricorn uploads their own they are OUR placeholders. A
             "vs target" that nobody can trace is exactly what generates the emails Conor wants to
