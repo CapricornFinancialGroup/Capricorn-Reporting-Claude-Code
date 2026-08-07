@@ -31,7 +31,7 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
                 label: "Est. Revenue *",
                 value: gbpCompact(data.totals.revenue),
                 cls: "",
-                sub: `commission ${gbpCompact(data.totals.commission)} + fees ${gbpCompact(data.totals.clientFees)}`,
+                sub: `mortgage ${gbpCompact(data.totals.mortgageWritten)} + protection ${gbpCompact(data.totals.protectionWritten)} + client fees ${gbpCompact(data.totals.clientFees)}`,
                 mk: "revenue",
               },
               { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue", sub: null, mk: "attach-rate" },
@@ -138,10 +138,13 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
           </div>
 
           <div className="placeholder-note">
-            * Est. revenue = written commission <em>plus client fees</em>, for the dates shown above — a wider measure
-            than Market Momentum's "Weekly Written", which is commission only and reports the last complete week.
-            Both are indicative: the lake does not currently reconcile to Capricorn's Total Written report
-            (open with Kyle, 2026-07-28). Conversion = referrals ÷ mortgages written.
+            * Est. revenue is three things added together, for the dates shown above: <em>mortgage commission</em>
+            (the procuration fee the lender pays) + <em>protection commission</em> + <em>client fees</em>, which
+            means the advice/arrangement fee charged to the client — not solicitor or miscellaneous fees, which are
+            recorded separately and excluded. The two commission figures are the same pair as Capricorn's Total
+            Written Report, so they compare directly; the client fee is the deliberate extra that makes this wider
+            than Market Momentum's "Weekly Written" (commission only, last complete week).
+            Conversion = protection opportunities ÷ mortgages written.
           </div>
         </div>
       )}

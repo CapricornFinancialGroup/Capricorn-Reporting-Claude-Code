@@ -78,6 +78,16 @@ export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
                       })}
                     />
                   </div>
+                  {/* Unassigned isn't a place — it's advisers we have no office on file for. Naming
+                      them makes the row actionable: Capricorn read the list and tell us where each
+                      one belongs. Kyle asked "what the 19 unassigned related to?" (2026-08-06). */}
+                  {o.members && o.members.length > 0 && (
+                    <div className="office-members" title="These advisers have no office recorded in the dashboard's mapping, so their business lands here instead of in their real office. Send us the office for each and they move.">
+                      No office on file:{" "}
+                      {o.members.slice(0, 6).map((m) => `${m.name} (${m.leads})`).join(", ")}
+                      {o.members.length > 6 && ` +${o.members.length - 6} more`}
+                    </div>
+                  )}
                 </div>
               );
             })}

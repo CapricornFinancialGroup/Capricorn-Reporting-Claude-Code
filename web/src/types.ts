@@ -138,6 +138,9 @@ export interface OfficeRunChasePayload {
     status: ChaseStatus;
     chart: { days: string[]; actualPct: Array<number | null>; targetPct: number[] };
     rank: number | null;
+    /** Present on "Unassigned" only: the advisers with no office on file, busiest first. Naming them
+     *  makes the row self-explaining instead of a mystery number (Kyle 2026-08-06). */
+    members?: Array<{ name: string; leads: number }>;
   }>;
   champion: string | null;
 }
@@ -151,7 +154,13 @@ export interface AdviserLeaguePayload {
     /** Commission + client fees — deliberately wider than Momentum's "Weekly Written" (commission
      *  only). Both parts are returned so the difference is explicit. */
     revenue: number;
+    /** Mortgage + protection commission. */
     commission: number;
+    /** Procuration fee on mortgage cases written in the window. */
+    mortgageWritten: number;
+    /** Commission on protection cases submitted in the window. */
+    protectionWritten: number;
+    /** The CLIENT fee — advice/arrangement fee charged to the client. Not solicitor or misc fees. */
     clientFees: number;
     avgConversion: number | null;
   };

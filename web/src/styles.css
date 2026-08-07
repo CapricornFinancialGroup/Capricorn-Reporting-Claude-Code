@@ -505,3 +505,10 @@ button { font: inherit; }
   font-size: 10px; font-weight: 600; letter-spacing: 0.04em; color: var(--text-secondary);
   display: inline-flex; align-items: center; gap: 4px;
 }
+
+/* "Unassigned" is not an office — it is advisers with no office in our mapping. The card lists them
+   so the number explains itself; a bare "19" just generates the email asking what it is. */
+.office-members {
+  margin-top: 4px; padding-top: 5px; border-top: 1px dashed var(--track-bg);
+  font-size: 9.5px; line-height: 1.35; color: var(--text-secondary);
+}

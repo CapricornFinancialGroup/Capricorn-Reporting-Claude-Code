@@ -248,6 +248,11 @@ interface OfficeCums {
   latest: KpiTargets;
   /** Cumulative-by-working-day per KPI (aligned to the chase week). */
   series: Record<KpiKey, Array<number | null>>;
+  /** Advisers contributing to this office this week, busiest first — populated for UNASSIGNED only.
+   *  "What are the 19 unassigned?" is a question the board should answer on its own face rather than
+   *  by email (Kyle, 2026-08-06). Unassigned means we have no office on file for that adviser, so
+   *  naming them turns a mystery number into a one-line fix Capricorn can hand back. */
+  members?: Array<{ name: string; leads: number }>;
 }
 
 function emptyKpiRecord(): KpiTargets {
@@ -268,7 +273,19 @@ function officeAggregates(core: ChaseCore): OfficeCums[] {
       latest[k] = sum(mine.filter((r) => isoDay(r.d) === core.ctx.latestDay).map((r) => r.n));
       series[k] = cumulativeSeries(dailyMine, days, core.ctx.dataAsOf);
     }
-    return { office: name, color, mtd, latest, series };
+    let members: Array<{ name: string; leads: number }> | undefined;
+    if (name === UNASSIGNED) {
+      const byAdviser = new Map<string, number>();
+      for (const r of weekRows(core.byAdviser.leads, core.ctx)) {
+        if (officeOf(r.username) !== UNASSIGNED) continue;
+        const who = r.fullName?.trim() || r.username?.trim() || "(no adviser on case)";
+        byAdviser.set(who, (byAdviser.get(who) ?? 0) + r.n);
+      }
+      members = [...byAdviser.entries()]
+        .map(([n, leads]) => ({ name: n, leads }))
+        .sort((a, b) => b.leads - a.leads);
+    }
+    return { office: name, color, mtd, latest, series, members };
   });
 }
 
@@ -480,6 +497,9 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
           pct,
           status: officeStatus(pct),
           chart: { days, actualPct: pctSeries, targetPct: paceLine },
+          // Unassigned only: who is in it. Turns "what are the 19 unassigned?" into a list Capricorn
+          // can act on, instead of an email (Kyle 2026-08-06).
+          members: o.members,
         };
       })
       .filter((o) => o.hasTargets || o.active);
@@ -503,7 +523,7 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
       week: {
         nowLabel: ctx.nowLabel,
         start: ctx.windowStart,
-        end: ctx.weekDays[4],
+        end: ctx.windowEnd,
         expectedPct: Math.round(ctx.fraction * 100),
         pending: ctx.currentWeekPending,
       },
@@ -527,11 +547,12 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
   const from = f.from ?? weekStartOf(today);
   return cached(`ds-adviser-league:${from}:${to}`, ttl(config), async () => {
     const prev = previousPeriod({ from, to });
-    const [appsRows, refRows, salesRows, revRows, prevApps, prevRefs] = await Promise.all([
+    const [appsRows, refRows, salesRows, revRows, protRows, prevApps, prevRefs] = await Promise.all([
       q<AdviserDailyCount>(config, kpiDailyByAdviser("applications", from, to)),
       q<AdviserDailyCount>(config, kpiDailyByAdviser("referrals", from, to)),
       q<AdviserDailyCount>(config, kpiDailyByAdviser("sales", from, to)),
       q<AdviserRevenue>(config, revenueByAdviser(from, to)),
+      q<momentumQ.ProtectionWrittenDaily>(config, momentumQ.protectionWrittenDaily(from, to)),
       q<AdviserDailyCount>(config, kpiDailyByAdviser("applications", prev.from, prev.to)),
       q<AdviserDailyCount>(config, kpiDailyByAdviser("referrals", prev.from, prev.to)),
     ]);
@@ -591,11 +612,25 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
       row.trendDir = second > first * 1.15 ? "up" : second < first * 0.85 ? "down" : "flat";
     }
 
-    // Est. Revenue = written commission + client fees, deliberately WIDER than Momentum's "Weekly
-    // Written" (commission only). Both parts are returned so the difference is visible rather than
-    // looking like two screens disagreeing (Kyle 2026-07-28).
-    const commission = sum(revRows.map((r) => r.commission ?? 0));
+    // Est. Revenue, itemised into its three real parts. Kyle asked twice what sat behind it
+    // ("haven't been given an answer on what Commission £146.6K + Fees £18.6K relates to? What
+    // Fees?", 2026-08-06) and then "doesn't appear to have Mortgage and Protection Written split
+    // out….can this be done". Both are the same underlying complaint: a total with no visible
+    // composition. So the parts are returned separately and the tile shows them.
+    //
+    //   mortgageWritten   — procuration fee on mortgage cases written in the window
+    //   protectionWritten — commission on protection cases submitted in the window (was MISSING
+    //                       entirely from this tile, which is why it wouldn't split)
+    //   clientFees        — the advice/arrangement fee charged to the CLIENT. Not solicitor fees,
+    //                       not miscellaneous fees; those are separate columns and excluded.
+    //
+    // Mortgage + protection commission is the same pair Capricorn's Total Written Report shows side
+    // by side, so the two are directly comparable. Client fees are the deliberate extra on top —
+    // that is what makes this WIDER than Momentum's "Weekly Written", which is commission only.
+    const mortgageWritten = sum(revRows.map((r) => r.commission ?? 0));
+    const protectionWritten = sum(protRows.map((r) => r.commission ?? 0));
     const clientFees = sum(revRows.map((r) => r.clientFees ?? 0));
+    const commission = mortgageWritten + protectionWritten;
     const revenue = commission + clientFees;
     const totalApps = sum([...byName.values()].map((r) => r.apps));
     const totalRefs = sum([...byName.values()].map((r) => r.refs));
@@ -660,6 +695,8 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
         sales: totalSales,
         revenue: Math.round(revenue),
         commission: Math.round(commission),
+        mortgageWritten: Math.round(mortgageWritten),
+        protectionWritten: Math.round(protectionWritten),
         clientFees: Math.round(clientFees),
         avgConversion: round(divide(totalRefs, totalApps), 3),
       },

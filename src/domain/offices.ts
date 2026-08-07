@@ -136,10 +136,25 @@ export const ADVISER_OFFICE: Record<string, string> = {
   "priti@capricornfinancialmortgages.co.uk": "Mayfair",
   "rina.sen@capricornfinancialmortgages.co.uk": "Mayfair",
   "virginia.lee@capricornfinancialmortgages.co.uk": "Mayfair",
+  // Newmarket came in from Shire Finance, and the mapping still keyed on their OLD shirefinance.co.uk
+  // logins. Every one of those was retired when they moved onto Capricorn addresses, so from the
+  // board's point of view the entire office had no advisers — which is why Newmarket read 0 leads,
+  // 0 apps, 0 refs, 0 sales while Heather Reed alone was writing 6 applications a week (Kyle,
+  // 2026-08-06: "how does NewMarket have not activity?"). Her business was landing in Unassigned.
+  //
+  // Matched on full name against the retired accounts (verified in dbo.useraccount 2026-08-07):
+  //   charlie@shirefinance.co.uk  → Charlie Crisp      → charlie.crisp@capricornfinancialmortgages.co.uk
+  //   heather@shirefinance.co.uk  → Heather Reed       → heather.reed@capricornfinancialmortgages.co.uk
+  //   jonathan@shirefinance.co.uk → Jonathan Darrell   → jonathan.darrell@capricornfinancialmortgages.co.uk
+  // gary@shirefinance.co.uk has no current Capricorn account — presumed a leaver, so no replacement
+  // entry. The old logins are KEPT so historical cases written under them still map to Newmarket.
   "charlie@shirefinance.co.uk": "Newmarket",
   "gary@shirefinance.co.uk": "Newmarket",
   "heather@shirefinance.co.uk": "Newmarket",
   "jonathan@shirefinance.co.uk": "Newmarket",
+  "charlie.crisp@capricornfinancialmortgages.co.uk": "Newmarket",
+  "heather.reed@capricornfinancialmortgages.co.uk": "Newmarket",
+  "jonathan.darrell@capricornfinancialmortgages.co.uk": "Newmarket",
   "sarah@capricornint.co.uk": "Shanghai",
   "sam.lee@capricornfinancial.co.uk": "Singapore",
   "sam.lee@capricornfinancialmortgages.co.uk": "Singapore",
