@@ -29,7 +29,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, isTradingDay, mtdPacing, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, isTradingDay, mtdPacing, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
@@ -275,11 +275,15 @@ function officeAggregates(core: ChaseCore): OfficeCums[] {
     }
     let members: Array<{ name: string; leads: number }> | undefined;
     if (name === UNASSIGNED) {
+      // Across ALL KPIs: an unmapped adviser who wrote business this week but sourced no leads still
+      // has to be named, or the card reads "8 applications" above an empty list.
       const byAdviser = new Map<string, number>();
-      for (const r of weekRows(core.byAdviser.leads, core.ctx)) {
-        if (officeOf(r.username) !== UNASSIGNED) continue;
-        const who = r.fullName?.trim() || r.username?.trim() || "(no adviser on case)";
-        byAdviser.set(who, (byAdviser.get(who) ?? 0) + r.n);
+      for (const k of KPI_KEYS) {
+        for (const r of weekRows(core.byAdviser[k], core.ctx)) {
+          if (officeOf(r.username) !== UNASSIGNED) continue;
+          const who = r.fullName?.trim() || r.username?.trim() || "(no adviser on case)";
+          byAdviser.set(who, (byAdviser.get(who) ?? 0) + r.n);
+        }
       }
       members = [...byAdviser.entries()]
         .map(([n, leads]) => ({ name: n, leads }))
@@ -866,21 +870,55 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const li = partialLast ? weekStarts.length - 2 : weekStarts.length - 1;
     const lastIdx = weekStarts.length - 1;
 
-    // Snapshot the in-progress week's RAW actual-so-far before the extrapolation below overwrites it.
-    // Kyle, 2026-08-04, looking at the board on Tuesday the 4th: "I still think this page is
-    // updating? Still showing week to 31 Jul?" It was right — these tiles report the last COMPLETE
-    // Sat–Fri week, which on the 4th is 25–31 Jul — but a headline up to six days old reads as a
-    // frozen screen, and he has now queried it twice. So each tile also carries where the CURRENT
-    // week has got to. The complete week stays the headline comparison: it is the only one whose
-    // delta, quarter-average and prior-week numbers compare like with like, and swapping a
-    // part-week in as "latest" would recreate the exact mismatch he raised on 28 Jul.
-    const rawCurrentWeek: Record<string, number | null> = {
-      applications: appsW[lastIdx] ?? null,
-      referrals: refsW[lastIdx] ?? null,
-      leads: leadsW[lastIdx] ?? null,
-      written: combW[lastIdx] ?? null,
-      "case-size": avgCaseW[lastIdx] ?? null,
+    // LIKE-FOR-LIKE week-to-date buckets: each week summed only through the SAME weekday the current
+    // week has reached. Kyle, 2026-08-07: "Don't we want to compare current week to prior week? I'd
+    // have current week i.e. WK32 compared to WK31 and show the difference … so we can track if we
+    // are performing better than the prior week." He is right that the current week belongs in the
+    // headline — but a part-week against a whole week always reads as a collapse, which is the
+    // complaint he raised on 28 July in the other direction. Truncating BOTH weeks to the same day
+    // gives him the comparison he asked for and keeps it fair: Sat-Thu against Sat-Thu.
+    const throughIdx = weekDayIndex(asOf); // 0=Sat … 6=Fri
+    const ltdBucket = (rows: DailyCount[]): number[] => {
+      const out = weekStarts.map(() => 0);
+      for (const r of rows) {
+        const d = isoDay(r.d);
+        const i = weekIndex(d);
+        if (i < 0) continue;
+        if (d > shiftDays(weekStarts[i], throughIdx)) continue; // past the same point in that week
+        out[i] += r.n;
+      }
+      return out;
     };
+    const ltdMoney = (rows: Array<{ d: string; commission: number | null }>): number[] => {
+      const out = weekStarts.map(() => 0);
+      for (const r of rows) {
+        const d = isoDay(r.d);
+        const i = weekIndex(d);
+        if (i < 0) continue;
+        if (d > shiftDays(weekStarts[i], throughIdx)) continue;
+        out[i] += r.commission ?? 0;
+      }
+      return out;
+    };
+    const leadsLtd = ltdBucket(leads);
+    const appsLtd = ltdBucket(apps);
+    const refsLtd = ltdBucket(refs);
+    const writtenLtd = ltdMoney(revenue as Array<{ d: string; commission: number | null }>).map(
+      (v, i) => v + ltdMoney(protWritten as Array<{ d: string; commission: number | null }>)[i],
+    );
+    // Avg case size is a ratio, so BOTH sides get truncated to the same day and it is rebuilt from
+    // them. Without this it would be the one tile still reporting last week while the other four
+    // report this week — precisely the "screens disagree" reading we are trying to stop.
+    const valLtd = weekStarts.map(() => 0);
+    const casesLtd = weekStarts.map(() => 0);
+    for (const r of revenue) {
+      const d = isoDay(r.d);
+      const i = weekIndex(d);
+      if (i < 0 || d > shiftDays(weekStarts[i], throughIdx)) continue;
+      valLtd[i] += r.totalValue ?? 0;
+      casesLtd[i] += r.cases;
+    }
+    const avgCaseLtd = casesLtd.map((n, i) => (n > 0 ? valLtd[i] / n : 0));
 
     if (partialLast && weekFraction > 0) {
       // Volume/count series: scale the partial week up to a like-for-like full-week estimate.
@@ -948,46 +986,59 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // WrittenDate-keyed measures keep climbing for days after the week ends (INPUT_LAG_SETTLE_DAYS);
     // LeadDate/CreatedDate-keyed ones (leads, referrals) land same-day and are settled on close.
     const WRITTEN_DATE_KEYED = new Set(["applications", "written", "case-size"]);
-    const kpi = (key: string, label: string, series: Array<number | null>, fmt: "int" | "gbp" | "gbpk") => {
-      const latest = series[li] ?? null;
-      const prior = series[li - 1] ?? null;
+    // `ltd` = the like-for-like week-to-date series for this measure (null for ratio measures, where
+    // truncating numerator and denominator by the same days changes nothing worth showing).
+    const kpi = (
+      key: string,
+      label: string,
+      series: Array<number | null>,
+      fmt: "int" | "gbp" | "gbpk",
+      ltd?: number[],
+    ) => {
       const qa = quarterAvg(series);
-      const w = windowOf(li);
+      // HEADLINE = the current week to date; COMPARISON = the prior week to the same weekday.
+      // Falls back to whole-week-vs-whole-week when the last bucket is already complete (Friday
+      // evening onwards) or when the measure has no like-for-like series.
+      const useLtd = partialLast && ltd != null;
+      const headIdx = useLtd ? lastIdx : li;
+      const latest = useLtd ? ltd[lastIdx] : (series[li] ?? null);
+      const prior = useLtd ? (ltd[lastIdx - 1] ?? null) : (series[li - 1] ?? null);
+      const w = windowOf(headIdx);
       return {
         key,
         label,
         fmt,
         latest,
-        weekLabel: weeks[li],
+        weekLabel: weeks[headIdx],
         weekFrom: w.from,
         weekTo: w.to,
-        priorWeekLabel: li > 0 ? weeks[li - 1] : null,
+        /** True when `latest` is a part-week measured against the prior week's SAME days. */
+        likeForLike: useLtd,
+        /** Last day included in both sides of the comparison. */
+        throughDay: useLtd ? asOf : w.to,
+        priorWeekLabel: headIdx > 0 ? weeks[headIdx - 1] : null,
         provisional: WRITTEN_DATE_KEYED.has(key) && shiftDays(w.to, INPUT_LAG_SETTLE_DAYS) > asOf,
-        // Where the week IN PROGRESS has got to, so a Tuesday viewer can see the board is live.
-        // Null when the last bucket is itself complete (there is no partial week to report).
-        current: partialLast
-          ? {
-              weekLabel: weeks[lastIdx],
-              weekFrom: weekStarts[lastIdx],
-              weekTo: shiftDays(weekStarts[lastIdx], 6),
-              throughDay: asOf,
-              soFar: rawCurrentWeek[key] != null ? round(rawCurrentWeek[key] as number, 1) : null,
-            }
+        // The last COMPLETE week, kept alongside so a full-week number is always available — it is
+        // the only one comparable with the quarter average.
+        lastFullWeek: partialLast
+          ? { weekLabel: weeks[li], weekFrom: windowOf(li).from, weekTo: windowOf(li).to, value: series[li] ?? null }
           : null,
         delta: latest != null && prior != null ? round(latest - prior, 1) : null,
         deltaPct: latest != null && prior != null ? pctDelta(latest, prior) : null,
-        vsQuarterPct: latest != null && qa ? round(((latest - qa) / qa) * 100, 1) : null,
+        // Quarter average is a WHOLE-week measure, so it stays anchored to the last complete week —
+        // comparing four days against a 13-week average of full weeks would always read as behind.
+        vsQuarterPct: series[li] != null && qa ? round((((series[li] as number) - qa) / qa) * 100, 1) : null,
       };
     };
 
     const kpis = [
       // "Mortgages Written", not "Applications": this counts mortgagecase rows by WrittenDate, i.e.
       // business written, not applications submitted (Kyle read it as the latter, 2026-07-28).
-      kpi("applications", "Mortgages Written", appsW, "int"),
-      kpi("referrals", "Protection Opportunities", refsW, "int"),
-      kpi("written", "Weekly Written", combW, "gbpk"),
-      kpi("leads", "Lead Volume", leadsW, "int"),
-      kpi("case-size", "Avg Case Size", avgCaseW, "gbpk"),
+      kpi("applications", "Mortgages Written", appsW, "int", appsLtd),
+      kpi("referrals", "Protection Opportunities", refsW, "int", refsLtd),
+      kpi("written", "Weekly Written", combW, "gbpk", writtenLtd),
+      kpi("leads", "Lead Volume", leadsW, "int", leadsLtd),
+      kpi("case-size", "Avg Case Size", avgCaseW, "gbpk", avgCaseLtd),
     ];
 
     // Verdict bar: majority of headline series improving vs the quarter average?

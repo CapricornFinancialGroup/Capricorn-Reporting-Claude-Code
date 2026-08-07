@@ -50,24 +50,25 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               return (
                 <div className="card mom-kpi" key={k.key}>
                   <div className="mom-kpi-label">{k.label} <MetricInfo metricKey={k.key} mode={mode} /></div>
-                  {/* "Last full week", not "Week to 31 Jul". On Tue 4 Aug the latter read as a
-                      stuck screen — Kyle asked twice whether the page was still updating. Saying
-                      which week it IS, and showing the current one underneath, answers that on the
-                      tile instead of by email. */}
+                  {/* The CURRENT week leads, compared with the prior week to the same weekday —
+                      Kyle, 2026-08-07: "I'd have current week i.e. WK32 compared to WK31 … so we can
+                      track if we are performing better than the prior week." Both sides are
+                      truncated to the same day so a Tuesday isn't measured against a full Friday. */}
                   <div className="mom-kpi-window">
-                    Last full week · {windowLabel(k)}
+                    {k.likeForLike ? `${k.weekLabel} to ${shortDate(k.throughDay)}` : `${k.weekLabel} · ${windowLabel(k)}`}
                     {k.provisional && <span className="mom-kpi-prov" title="Cases are entered ~6 days after the date they were written, so this week is still filling.">provisional</span>}
                   </div>
                   <div className="mom-kpi-value">{fmtValue(k)}</div>
                   <div className={`mom-kpi-delta ${d.cls}`}>{d.text}</div>
-                  <div className="mom-kpi-vs">vs {k.priorWeekLabel ?? "—"}</div>
-                  {k.current && (
+                  <div className="mom-kpi-vs" title={k.likeForLike ? "Same days of the prior week, so the comparison is like for like." : "Prior complete week."}>
+                    vs {k.priorWeekLabel ?? "—"}{k.likeForLike ? " (same days)" : ""}
+                  </div>
+                  {k.lastFullWeek && (
                     <div
                       className="mom-kpi-current"
-                      title="The week now in progress, through the last complete day. Shown for context — the headline above is the last full week, because only a full week can be compared with the one before it."
+                      title="The last week that has fully closed. Kept here because it is the only figure comparable with the 13-week quarter average shown on the chart."
                     >
-                      {k.current.weekLabel} so far <b>{fmtOne(k, k.current.soFar)}</b>
-                      <span className="mom-kpi-current-sub"> · to {shortDate(k.current.throughDay)}</span>
+                      Last full week {k.lastFullWeek.weekLabel} <b>{fmtOne(k, k.lastFullWeek.value)}</b>
                     </div>
                   )}
                 </div>

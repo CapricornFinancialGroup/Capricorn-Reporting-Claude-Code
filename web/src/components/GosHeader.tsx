@@ -42,11 +42,14 @@ function useClock(): string {
   return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
-export function GosHeader({ title, right, freshness }: {
+export function GosHeader({ title, right, freshness, onTargetsClick }: {
   title: string;
   right?: ReactNode;
   /** Omitted only before meta loads — the stamp then reads "—" rather than guessing a date. */
   freshness?: Freshness;
+  /** Dashboard only: jump to the Targets tab. Kyle clicked the placeholder pill expecting it to take
+   *  him somewhere and nothing happened (2026-08-07) — a warning that names a fix should offer it. */
+  onTargetsClick?: () => void;
 }) {
   const time = useClock();
   const placeholderTargets = freshness?.targetsProvenance?.source === "placeholder";
@@ -71,11 +74,20 @@ export function GosHeader({ title, right, freshness }: {
         {/* Targets are config, and until Capricorn uploads their own they are OUR placeholders. A
             "vs target" that nobody can trace is exactly what generates the emails Conor wants to
             stop, so the board says so on its face rather than burying it on the Targets page. */}
-        {placeholderTargets && (
+        {placeholderTargets && (onTargetsClick ? (
+          <button
+            type="button"
+            className="gos-warn-pill gos-warn-pill-btn"
+            onClick={onTargetsClick}
+            title="No target file has been uploaded — every target shown is a placeholder derived from trailing averages, not Capricorn's own. Click to open the Targets tab and upload the weekly workbook."
+          >
+            Targets: placeholder <span aria-hidden="true">→</span>
+          </button>
+        ) : (
           <div className="gos-warn-pill" title="No target file has been uploaded — targets shown are placeholders derived from trailing averages, not Capricorn's own targets.">
             Targets: placeholder
           </div>
-        )}
+        ))}
         {right}
       </div>
     </header>

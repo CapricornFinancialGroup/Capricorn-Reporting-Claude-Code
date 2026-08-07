@@ -219,18 +219,14 @@ export interface MomentumKpi {
   delta: number | null;
   deltaPct: number | null;
   vsQuarterPct: number | null;
-  /** Where the week IN PROGRESS has got to. The headline above is the last COMPLETE week — that is
-   *  the only window whose delta and quarter-average compare like with like — but a headline up to
-   *  six days old reads as a frozen screen (Kyle, 2026-08-04: "Still showing week to 31 Jul?").
-   *  Null when the last bucket is already complete. */
-  current: {
-    weekLabel: string;
-    weekFrom: string;
-    weekTo: string;
-    /** Last complete day included in `soFar`. */
-    throughDay: string;
-    soFar: number | null;
-  } | null;
+  /** True when `latest` is the CURRENT week to date and `delta` compares it with the prior week
+   *  truncated to the same weekday — the comparison Kyle asked for on 2026-08-07, made fair. */
+  likeForLike: boolean;
+  /** Last day included on BOTH sides of the comparison. */
+  throughDay: string;
+  /** The last COMPLETE week, kept alongside so a whole-week figure is always on hand. Null once the
+   *  current week has itself closed. */
+  lastFullWeek: { weekLabel: string; weekFrom: string; weekTo: string; value: number | null } | null;
 }
 
 export interface MarketMomentumPayload {

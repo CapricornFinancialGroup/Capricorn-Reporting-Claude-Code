@@ -512,3 +512,9 @@ button { font: inherit; }
   margin-top: 4px; padding-top: 5px; border-top: 1px dashed var(--track-bg);
   font-size: 9.5px; line-height: 1.35; color: var(--text-secondary);
 }
+
+/* The placeholder warning is also the fix: it opens the Targets tab. Kyle clicked it expecting
+   exactly that and nothing happened (2026-08-07). Admins only — for everyone else it stays a
+   plain, non-clickable statement of fact rather than a dead end. */
+.gos-warn-pill-btn { cursor: pointer; font-family: inherit; }
+.gos-warn-pill-btn:hover { background: rgba(217, 119, 6, 0.55); }

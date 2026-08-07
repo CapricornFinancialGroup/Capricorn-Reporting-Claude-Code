@@ -78,6 +78,14 @@ export function clockTime(iso: string | null | undefined): string {
   return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+/** ISO date → "Sat" / "Mon". Used on the chase charts: the week is seven days now, and seven
+ *  "1 Aug"-style labels will not fit a quarter-width card. Unambiguous because the card header
+ *  already names the week. */
+export function weekdayShort(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", { weekday: "short", timeZone: "UTC" });
+}
+
 /** Status → display text the strawman uses on pills. */
 export function statusLabel(status: string): string {
   switch (status) {

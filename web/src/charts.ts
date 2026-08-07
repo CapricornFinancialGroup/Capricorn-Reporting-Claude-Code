@@ -10,7 +10,7 @@
 // immediately, not redraw itself on a loop.
 
 import type { EChartsOption } from "echarts";
-import { shortDate } from "./format.js";
+import { weekdayShort } from "./format.js";
 
 const AXIS_TEXT = "#64748B";
 export const NAVY = "#0E2040";
@@ -47,13 +47,15 @@ export function paceChart(opts: {
   for (let i = 0; i < opts.actual.length; i++) if (opts.actual[i] != null) nowIdx = i;
   return {
     animation: false,
-    grid: { left: 44, right: 14, top: 22, bottom: 26 },
+    grid: { left: 44, right: 14, top: 22, bottom: 26, containLabel: true },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",
       boundaryGap: false,
-      data: opts.days.map(shortDate),
-      axisLabel: { color: AXIS_TEXT, fontSize: 9, interval: Math.max(0, Math.floor(opts.days.length / 8)) },
+      data: opts.days.map(weekdayShort),
+      // Weekday, not date: the chase week became SEVEN days on 2026-08-04 and seven "1 Aug"-style
+      // labels collide in a quarter-width card. The card header already names the week.
+      axisLabel: { color: AXIS_TEXT, fontSize: 9, interval: 0, hideOverlap: true },
       axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
     },
     yAxis: {
@@ -89,7 +91,8 @@ export function paceChart(opts: {
                 silent: true,
                 lineStyle: { color: "rgba(100,116,139,0.35)", type: "dashed", width: 1 },
                 label: { formatter: "NOW", color: AXIS_TEXT, fontSize: 8, position: "insideEndTop" },
-                data: [{ xAxis: shortDate(opts.days[nowIdx]) }],
+                // Must use the same formatter as the axis data above, or the marker matches nothing.
+                data: [{ xAxis: weekdayShort(opts.days[nowIdx]) }],
               }
             : undefined,
       },
@@ -116,13 +119,13 @@ export function pctPaceChart(opts: {
 }): EChartsOption {
   return {
     animation: false,
-    grid: { left: 34, right: 8, top: 8, bottom: 20 },
+    grid: { left: 34, right: 8, top: 8, bottom: 20, containLabel: true },
     tooltip: { trigger: "axis", valueFormatter: (v) => `${v}%` },
     xAxis: {
       type: "category",
       boundaryGap: false,
-      data: opts.days.map(shortDate),
-      axisLabel: { color: AXIS_TEXT, fontSize: 8, interval: Math.max(0, Math.floor(opts.days.length / 5)) },
+      data: opts.days.map(weekdayShort),
+      axisLabel: { color: AXIS_TEXT, fontSize: 8, interval: 0, hideOverlap: true },
       axisLine: { lineStyle: { color: "rgba(0,0,0,0.08)" } },
     },
     yAxis: {
@@ -172,7 +175,7 @@ export function momentumChart(opts: {
       : null;
   return {
     animation: false,
-    grid: { left: 44, right: 14, top: 18, bottom: 24 },
+    grid: { left: 44, right: 14, top: 18, bottom: 24, containLabel: true },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",
@@ -250,7 +253,7 @@ export function momentumForecastChart(opts: {
   const forecastValue = forecastIdx >= 0 ? opts.forecast[forecastIdx] : null;
   return {
     animation: false,
-    grid: { left: 44, right: 14, top: 18, bottom: 24 },
+    grid: { left: 44, right: 14, top: 18, bottom: 24, containLabel: true },
     tooltip: { trigger: "axis" },
     xAxis: {
       type: "category",

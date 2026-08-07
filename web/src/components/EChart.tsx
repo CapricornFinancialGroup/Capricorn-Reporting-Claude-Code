@@ -58,5 +58,9 @@ export function EChart({ option, height = 300, onClick }: Props) {
     if (onClick) c.on("click", onClick as (params: unknown) => void);
   }, [onClick]);
 
-  return <div ref={el} style={{ width: "100%", height }} />;
+  // `height` is a PREFERRED height, not a fixed one. It used to be fixed, so on a shorter viewport
+  // the canvas overflowed its card and the x-axis labels rendered on top of whatever sat below —
+  // "the graphs appear to be overlapping … looks very messy" (Kyle 2026-08-07). Flexing down inside
+  // the card keeps the chart within its own bounds at any wall height.
+  return <div ref={el} style={{ width: "100%", height, minHeight: 0, flex: "1 1 auto", overflow: "hidden" }} />;
 }

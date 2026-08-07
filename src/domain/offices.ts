@@ -160,9 +160,18 @@ export const ADVISER_OFFICE: Record<string, string> = {
   "sam.lee@capricornfinancialmortgages.co.uk": "Singapore",
   "samuel@capricornint.co.uk": "Singapore",
   "shirlene@koh.co.uk": "Singapore",
-  // berkan.aksit@capricornint.co.uk and gizem@capricorncommercial.co.uk were mapped to "Türkiye"
-  // (Datarails export) — Conor confirmed 2026-07-07 there is no Turkey office. Left unmapped
-  // (→ UNASSIGNED, visible on the leaderboards) pending their real office from Capricorn.
+  // Ruled by Kyle 2026-08-07, from the Unassigned list the board surfaced. He also confirmed Gary
+  // has left Newmarket and that its three advisers are Heather, Jonathan and Charlie (mapped above).
+  // Kyle gives a team alongside each office ("Mayfair (Team Manny)"); teams are not a dimension the
+  // board carries yet, so they are recorded here as the provenance of the ruling, not as data.
+  "harvey.laming@capricornfinancialmortgages.co.uk": "Mayfair", // Team Manny
+  "shahida.rashid@capricornfinancialmortgages.co.uk": "Mayfair", // Team Alex
+  "nathan.hookway@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Jordan
+  "philip.ndegwa@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Tony
+  // Both were on a "Türkiye" office in the Datarails export; Conor confirmed 2026-07-07 that no such
+  // office exists, and Kyle placed them in Hammersmith (Team Sam) on that basis 2026-08-07.
+  "berkan.aksit@capricornint.co.uk": "Hammersmith", // Team Sam
+  "gizem@capricorncommercial.co.uk": "Hammersmith", // Team Sam
 };
 
 /** Resolve an adviser's office; unmapped advisers group under UNASSIGNED. */
