@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS, KPI_KEYS } from "../../domain/targets.js";
-import { completeThrough, isTradingDay, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
+import { completeThrough, isTradingDay, isWeekendOnlyWeek, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
 // The week is Sat..Fri, so index 0 = Sat, 1 = Sun, 2 = Mon ... 6 = Fri.
 const [SAT, MON, TUE, WED, THU, FRI] = [0, 2, 3, 4, 5, 6];
@@ -209,5 +209,31 @@ describe("isTradingDay - gates the 'today so far' figure", () => {
 
   it("excludes only Sunday, which runs 0-10 leads", () => {
     expect(isTradingDay("2026-08-09")).toBe(false); // Sun
+  });
+});
+
+// The 2026-08-10 report: "I don't think this is refreshing 5 times a day as the below figures are
+// completely off? Appears this has gotten worse?" Market Momentum was leading with W33 to Sun 9 Aug
+// — 1 mortgage written, 43 leads, −92.9% — because the Sat–Fri week had only its weekend so far.
+// Nothing was stale and nothing was miscounted; a weekend was being presented as a week.
+describe("isWeekendOnlyWeek", () => {
+  it("holds the headline back on Saturday and Sunday", () => {
+    expect(isWeekendOnlyWeek("2026-08-08"), "Sat 8 Aug — the week is one day old").toBe(true);
+    expect(isWeekendOnlyWeek("2026-08-09"), "Sun 9 Aug — the exact day Kyle screenshotted").toBe(true);
+  });
+
+  it("releases it once Monday is complete", () => {
+    expect(isWeekendOnlyWeek("2026-08-10"), "Mon 10 Aug complete — a trading day is in").toBe(false);
+    expect(isWeekendOnlyWeek("2026-08-14"), "Fri 14 Aug — the week is done").toBe(false);
+  });
+
+  it("is false on every weekday of the week", () => {
+    for (const d of ["2026-08-10", "2026-08-11", "2026-08-12", "2026-08-13", "2026-08-14"]) {
+      expect(isWeekendOnlyWeek(d), d).toBe(false);
+    }
+  });
+
+  it("holds on the FOLLOWING Saturday too — each new week starts the guard again", () => {
+    expect(isWeekendOnlyWeek("2026-08-15")).toBe(true);
   });
 });

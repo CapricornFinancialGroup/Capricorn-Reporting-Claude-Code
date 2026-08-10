@@ -28,10 +28,14 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
               { label: "Protection Opportunities", value: num(data.totals.referrals), cls: "", sub: null, mk: "referrals" },
               { label: "Total Protection Sales", value: num(data.totals.sales), cls: "val-green", sub: null, mk: "sales" },
               {
-                label: "Est. Revenue *",
+                // Commission ONLY. Client fees are stated beneath as a separate figure, never added
+                // in — Capricorn's Total Written Report is a commission report and does not capture
+                // the client fee (Kyle, 2026-08-10), so folding it in guaranteed a gap on every
+                // comparison he made.
+                label: "Written Commission",
                 value: gbpCompact(data.totals.revenue),
                 cls: "",
-                sub: `mortgage ${gbpCompact(data.totals.mortgageWritten)} + protection ${gbpCompact(data.totals.protectionWritten)} + client fees ${gbpCompact(data.totals.clientFees)}`,
+                sub: `mortgage ${gbpCompact(data.totals.mortgageWritten)} + protection ${gbpCompact(data.totals.protectionWritten)} · client fees ${gbpCompact(data.totals.clientFees)} shown separately, NOT included`,
                 mk: "revenue",
               },
               { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue", sub: null, mk: "attach-rate" },
@@ -138,12 +142,12 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
           </div>
 
           <div className="placeholder-note">
-            * Est. revenue is three things added together, for the dates shown above: <em>mortgage commission</em>
-            (the procuration fee the lender pays) + <em>protection commission</em> + <em>client fees</em>, which
-            means the advice/arrangement fee charged to the client — not solicitor or miscellaneous fees, which are
-            recorded separately and excluded. The two commission figures are the same pair as Capricorn's Total
-            Written Report, so they compare directly; the client fee is the deliberate extra that makes this wider
-            than Market Momentum's "Weekly Written" (commission only, last complete week).
+            * Written commission, for the dates shown above, is <em>mortgage commission</em> (the procuration fee
+            the lender pays) + <em>protection commission</em> — the same pair as Capricorn's Total Written Report,
+            so it compares directly. <strong>Client fees are not included.</strong> The client fee is the
+            advice/arrangement fee the adviser enters on the case (not solicitor or miscellaneous fees, which are
+            recorded separately); it is shown beside the total because it is real income, but Capricorn's written
+            report does not capture it, so adding it in would put this permanently above their figure.
             Conversion = protection opportunities ÷ mortgages written.
           </div>
         </div>

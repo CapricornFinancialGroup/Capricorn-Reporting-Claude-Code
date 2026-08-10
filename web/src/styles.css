@@ -614,3 +614,18 @@ button { font: inherit; }
    known gap, whereas a figure moving after the fact means something already reported was wrong. */
 .gos-warn-pill-alert { background: rgba(220, 38, 38, 0.75); }
 .gos-warn-pill-btn.gos-warn-pill-alert:hover { background: rgba(220, 38, 38, 0.9); }
+
+/* Funnel Health runs MONTH TO DATE while the run-chase and Momentum screens run the current week.
+   Both are right; the difference read as broken data because the period was only ever printed in
+   8pt grey inside a card title (Kyle, 2026-08-10: "Health Funnel is completely disconnected to the
+   other screens"). A screen whose window differs from its neighbours has to say so at full size. */
+.funnel-window {
+  display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;
+  padding: 7px 12px; border-radius: 4px;
+  background: var(--amber-bg); border-left: 4px solid var(--amber);
+}
+.funnel-window-period {
+  font-size: 14px; font-weight: 800; letter-spacing: 0.02em; color: var(--text-primary);
+  white-space: nowrap;
+}
+.funnel-window-note { font-size: 11px; line-height: 1.4; color: var(--text-primary); flex: 1 1 340px; }

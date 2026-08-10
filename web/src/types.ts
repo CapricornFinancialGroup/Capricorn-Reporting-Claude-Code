@@ -229,12 +229,17 @@ export interface MomentumKpi {
   /** The last COMPLETE week, kept alongside so a whole-week figure is always on hand. Null once the
    *  current week has itself closed. */
   lastFullWeek: { weekLabel: string; weekFrom: string; weekTo: string; value: number | null } | null;
+  /** Set only Sat–Mon, while the current week holds nothing but weekend days and is therefore NOT
+   *  the headline: its figure so far, shown small underneath. */
+  currentWeekSoFar: { weekLabel: string; value: number | null; throughDay: string } | null;
 }
 
 export interface MarketMomentumPayload {
   dataAsOf: string;
   weeks: string[];
   partialLastWeek: boolean;
+  /** True Sat–Mon: the current week is weekend-only, so tiles lead with the last complete week. */
+  currentWeekTooEarly: boolean;
   series: {
     applications: number[];
     referrals: number[];
@@ -348,6 +353,8 @@ export interface ReconciliationPayload {
   lakeLoadedAt: string | null;
   snapshotsEnabled: boolean;
   week: { start: string; end: string; label: string; settleThrough: string; provisional: boolean };
+  /** OrganisationKey Capricorn reconciles against (CFM) — that row leads the table. */
+  reconcilesToEntity: number;
   weeks: Array<{
     start: string;
     end: string;

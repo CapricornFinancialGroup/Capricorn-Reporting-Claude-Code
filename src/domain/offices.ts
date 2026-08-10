@@ -172,6 +172,14 @@ export const ADVISER_OFFICE: Record<string, string> = {
   // office exists, and Kyle placed them in Hammersmith (Team Sam) on that basis 2026-08-07.
   "berkan.aksit@capricornint.co.uk": "Hammersmith", // Team Sam
   "gizem@capricorncommercial.co.uk": "Hammersmith", // Team Sam
+  // Ruled by Kyle 2026-08-10, closing out the remaining Unassigned advisers the board named. Michael
+  // Ngoka is the one that mattered: 78 protection cases and £13,948 on Kyle's own Written Report,
+  // invisible as an office until the Unassigned card was widened past leads.
+  "michael.ngoka@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Tim, protection adviser
+  "tyron@capricornfinancialmortgages.co.uk": "Hammersmith",
+  "patricia.mcnicholas@capricorncommercial.co.uk": "Hammersmith",
+  "arandeep.purewal@capricornfinancialmortgages.co.uk": "Mayfair", // Team Manny
+  "emelia@capricornint.co.uk": "Singapore",
 };
 
 /** Resolve an adviser's office; unmapped advisers group under UNASSIGNED. */

@@ -90,6 +90,25 @@ export function isTradingDay(iso: string): boolean {
   return dow(iso) !== 0; // 0 = Sunday
 }
 
+/**
+ * Is the reporting week containing `asOf` still nothing but weekend?
+ *
+ * The week runs Sat–Fri and `asOf` is the last COMPLETE day, so from Saturday morning until
+ * Tuesday's load the current week holds only Sat (+Sun) — roughly 6% of a week's business and not
+ * one weekday. Market Momentum leads with the current week (Kyle asked for that on 2026-08-07), and
+ * for three days in every seven that headline was a weekend: W33 showed 1 mortgage written and
+ * −92.9% against W32's same two days. Kyle read the whole board as broken — "I don't think this is
+ * refreshing 5 times a day as the below figures are completely off" (2026-08-10). Every number was
+ * right; leading with them was not.
+ *
+ * True ⇒ the last COMPLETE week keeps the headline and the current week is shown underneath at its
+ * real size. False from the Monday-complete load onward, which is when the comparison starts to
+ * carry a trading day and means something.
+ */
+export function isWeekendOnlyWeek(asOf: string): boolean {
+  return weekDayIndex(asOf) < 2; // 0 = Sat, 1 = Sun, 2 = Mon
+}
+
 function shortLabel(iso: string): string {
   const [, m, d] = iso.split("-").map(Number);
   const monthName = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][m - 1];

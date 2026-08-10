@@ -1,0 +1,33 @@
+{
+  "weekStart": "2026-07-25",
+  "weekEnd": "2026-07-31",
+  "observations": [
+    {
+      "observedAt": "2026-08-10T09:21:22.237Z",
+      "lakeLoadedAt": "2026-08-10T07:36:38.899Z",
+      "group": {
+        "mortgageCommission": 413540.51,
+        "mortgageCases": 222,
+        "protectionCommission": 64341.82,
+        "protectionCases": 28,
+        "clientFees": 42198
+      },
+      "byOrg": {
+        "411": {
+          "mortgageCommission": 31981.43,
+          "mortgageCases": 9,
+          "protectionCommission": 0,
+          "protectionCases": 0,
+          "clientFees": 8000
+        },
+        "486": {
+          "mortgageCommission": 381559.08,
+          "mortgageCases": 213,
+          "protectionCommission": 64341.82,
+          "protectionCases": 28,
+          "clientFees": 34198
+        }
+      }
+    }
+  ]
+}

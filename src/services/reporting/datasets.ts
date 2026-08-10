@@ -37,7 +37,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, isTradingDay, mtdPacing, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, isTradingDay, isWeekendOnlyWeek, mtdPacing, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
@@ -670,7 +670,14 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
     const protectionWritten = sum(protRows.map((r) => r.commission ?? 0));
     const clientFees = sum(revRows.map((r) => r.clientFees ?? 0));
     const commission = mortgageWritten + protectionWritten;
-    const revenue = commission + clientFees;
+    // CLIENT FEES ARE NOT PART OF THIS TOTAL. Kyle, 2026-08-10: "Please can we completely separate
+    // the Client Fee – as our written report does not capture the client fee." Until now the tile
+    // read commission + fees, which is a wider measure than anything Capricorn reports and therefore
+    // could never tie to their Total Written Report — it guaranteed a gap on every comparison. Fees
+    // are still carried and still shown, as their own figure beside the total, because they are real
+    // income and the 37%-of-cases-with-no-fee finding depends on them being visible. They are simply
+    // no longer added in.
+    const revenue = commission;
     const totalApps = sum([...byName.values()].map((r) => r.apps));
     const totalRefs = sum([...byName.values()].map((r) => r.refs));
     const totalSales = sum([...byName.values()].map((r) => r.sales));
@@ -913,6 +920,21 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // complaint he raised on 28 July in the other direction. Truncating BOTH weeks to the same day
     // gives him the comparison he asked for and keeps it fair: Sat-Thu against Sat-Thu.
     const throughIdx = weekDayIndex(asOf); // 0=Sat … 6=Fri
+    // …BUT NOT WHEN THE "CURRENT WEEK" IS ONLY A WEEKEND.
+    //
+    // Kyle, 2026-08-10: "I don't think this is refreshing 5 times a day as the below figures are
+    // completely off? Appears this has gotten worse?" The board was showing W33 to Sun 9 Aug — one
+    // mortgage written, 43 leads, £1.4k — against W32's same two days, and reporting −92.9%. Every
+    // figure was correct. The problem is that the reporting week starts on Saturday and `dataAsOf`
+    // is the last COMPLETE day, so from Saturday morning until Tuesday's load the "current week" is
+    // Sat+Sun: about 6% of a week's business, and none of it a weekday. Leading with that reads as a
+    // collapse, three days out of every seven.
+    //
+    // So the current week only takes the headline once at least Monday is in (index 2). Before that
+    // the last COMPLETE week leads, exactly as it did before — the comparison Kyle asked for is
+    // preserved, it just doesn't get to shout a weekend at him. `currentWeekTooEarly` is returned so
+    // the tile can say why rather than silently reverting. See isWeekendOnlyWeek for the full note.
+    const currentWeekTooEarly = isWeekendOnlyWeek(asOf);
     const ltdBucket = (rows: DailyCount[]): number[] => {
       const out = weekStarts.map(() => 0);
       for (const r of rows) {
@@ -1034,7 +1056,7 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       // HEADLINE = the current week to date; COMPARISON = the prior week to the same weekday.
       // Falls back to whole-week-vs-whole-week when the last bucket is already complete (Friday
       // evening onwards) or when the measure has no like-for-like series.
-      const useLtd = partialLast && ltd != null;
+      const useLtd = partialLast && ltd != null && !currentWeekTooEarly;
       const headIdx = useLtd ? lastIdx : li;
       const latest = useLtd ? ltd[lastIdx] : (series[li] ?? null);
       const prior = useLtd ? (ltd[lastIdx - 1] ?? null) : (series[li - 1] ?? null);
@@ -1054,10 +1076,19 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
         priorWeekLabel: headIdx > 0 ? weeks[headIdx - 1] : null,
         provisional: WRITTEN_DATE_KEYED.has(key) && shiftDays(w.to, INPUT_LAG_SETTLE_DAYS) > asOf,
         // The last COMPLETE week, kept alongside so a full-week number is always available — it is
-        // the only one comparable with the quarter average.
-        lastFullWeek: partialLast
-          ? { weekLabel: weeks[li], weekFrom: windowOf(li).from, weekTo: windowOf(li).to, value: series[li] ?? null }
-          : null,
+        // the only one comparable with the quarter average. Suppressed when the headline IS that
+        // week (i.e. the current week is being held back), so the tile doesn't print it twice.
+        lastFullWeek:
+          partialLast && useLtd
+            ? { weekLabel: weeks[li], weekFrom: windowOf(li).from, weekTo: windowOf(li).to, value: series[li] ?? null }
+            : null,
+        /** Set only while the current week is held back for being weekend-only: its figure so far,
+         *  shown small underneath rather than as the headline. The number is still on the board —
+         *  it just isn't allowed to masquerade as a week. */
+        currentWeekSoFar:
+          currentWeekTooEarly && ltd != null
+            ? { weekLabel: weeks[lastIdx], value: ltd[lastIdx] ?? null, throughDay: asOf }
+            : null,
         delta: latest != null && prior != null ? round(latest - prior, 1) : null,
         deltaPct: latest != null && prior != null ? pctDelta(latest, prior) : null,
         // Quarter average is a WHOLE-week measure, so it stays anchored to the last complete week —
@@ -1121,6 +1152,9 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       dataAsOf: asOf,
       weeks,
       partialLastWeek: partialLast,
+      /** True Sat–Mon, when the current week holds only weekend days: the tiles lead with the last
+       *  complete week and show the current one underneath. See `currentWeekTooEarly` above. */
+      currentWeekTooEarly,
       series: {
         applications: appsW,
         referrals: refsW,
@@ -1336,6 +1370,16 @@ export async function reconciliation(config: Config, f: ReportFilters) {
           };
         })
         .reverse(),
+      /** The entity Capricorn actually reconciles against. Kyle, 2026-08-10: "at the moment I am
+       *  not even looking at Group (yet) — we are still trying to get CFM to align which it is
+       *  not." So CFM is marked as the basis here and the screen leads with it.
+       *
+       *  The BOARD is deliberately NOT switched to CFM-only. Checked against the lake first: Hong
+       *  Kong (144 mortgage cases in 90 days) and Shanghai (3) sit entirely under Consultancy (411),
+       *  so a CFM-only board would show both offices as zero — the identical failure to Newmarket's
+       *  retired logins, which took a fortnight to spot. Reconciliation is a scope question; the
+       *  operational screens are not. */
+      reconcilesToEntity: 486,
       /** What the board reports for this week right now, group and per entity. */
       live: observation
         ? {

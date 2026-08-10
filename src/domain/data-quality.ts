@@ -132,6 +132,41 @@ export const PROTECTION_WRITTEN_DATE = "ApplicationDate";
 export const PROTECTION_WRITTEN_STATUSES = ["60", "65", "70", "105", "120"] as const;
 
 /**
+ * PER-ADVISER PROTECTION CREDIT — the 60/40 split, and exactly what is missing.
+ *
+ * Kyle has asked three times how his Written Report can credit a protection adviser when we say we
+ * cannot ("it should be visible as it is on our written report. Please Investigate", 2026-08-10).
+ * Traced through the platform source, and he is right — the recipient IS recorded, just not in our
+ * copy. `usp_GetFinancialProductReport` (Occfinance.Database) resolves it in two passes:
+ *
+ *   1. the originating adviser's row nets the split off:
+ *        AdviserCommission  = F.commission - SC.Commission
+ *        SplitCommBrokerId  = SC.ToAdviserId      ← the recipient, named
+ *   2. a SECOND row is emitted for the recipient themselves:
+ *        INNER JOIN dbo.tblSplitCommission SC ON SC.ToAdviserId = uSC.userid
+ *        AdviserCommission = SC.Commission
+ *
+ * Pass 2 is why Michael Ngoka appears on Kyle's Total Written Report with £13,948 of protection
+ * commission while not being the primary adviser on those cases.
+ *
+ * ⚠ CORRECTING MY OWN CORRECTION. On 2026-08-10 I told Kyle the recipient field "is empty on all of
+ * them". That was wrong, and it walked back an earlier statement that had been RIGHT. The chain:
+ *   - `dbo.tblSplitCommission` (FinanceId, ToAdviserId, Commission) holds the split and its
+ *     recipient. It is NOT in the Gold share — that is the whole of PBI 91379, correctly specified.
+ *   - `protectioncase.SplitCommission` in our feed is a derived copy of the AMOUNT only.
+ *   - `protectioncase.SplitAdviserUserAccountKey` is NULL on every split case, and
+ *     `ReferringAdviserUserAccountKey` carries a firm-level sentinel (the negated OrganisationKey,
+ *     e.g. -486) on 23 of 24 — so neither is the recipient, and neither is what the platform uses.
+ *   - Therefore "the referral field is only populated on 1 in 5 cases" is TRUE but IRRELEVANT to the
+ *     split: the platform never reads it for this. Do not cite it as the blocker again.
+ *
+ * The ask is one column: `tblSplitCommission.ToAdviserId` (with FinanceId and Commission) in the
+ * share. Until then per-adviser protection on the Adviser League cannot match the Written Report,
+ * and firm totals are unaffected.
+ */
+export const SPLIT_RECIPIENT_SOURCE = "dbo.tblSplitCommission.ToAdviserId (NOT in the Gold share — PBI 91379)" as const;
+
+/**
  * The column that means "a mortgage offer was issued", matching the platform's own reports.
  *
  * The platform treats reaching status **100** as offer-issued — `GetConversionRateForInsuranceReferrals`

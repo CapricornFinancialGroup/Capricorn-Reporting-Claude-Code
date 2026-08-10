@@ -174,22 +174,41 @@ export function Reconciliation({ filters, mode, refreshMs }: PageProps) {
               <tbody>
                 {data.live && (
                   <>
-                    <tr className="rec-row-group">
+                    {/* The entity Kyle actually reconciles against leads the table — he is not
+                        looking at group yet (2026-08-10). The group row stays, because the rest of
+                        the board reports it and hiding that is how you get two figures and an
+                        email. */}
+                    {data.live.byOrg
+                      .filter((o) => o.key === data.reconcilesToEntity)
+                      .map((o) => (
+                        <tr key={o.key} className="rec-row-group">
+                          <td>
+                            <div className="rec-row-name">{o.name}</div>
+                            <div className="rec-row-note">
+                              Compare your Total Written Report with this row
+                            </div>
+                          </td>
+                          {o.figures ? <Figures f={o.figures} /> : <td className="rec-dim" colSpan={6}>—</td>}
+                        </tr>
+                      ))}
+                    <tr>
                       <td>
                         <div className="rec-row-name">Capricorn group</div>
                         <div className="rec-row-note">Both entities — what every other screen shows</div>
                       </td>
                       <Figures f={data.live.group} />
                     </tr>
-                    {data.live.byOrg.map((o) => (
-                      <tr key={o.key}>
-                        <td>
-                          <div className="rec-row-name">{o.name}</div>
-                          <div className="rec-row-note">A Total Written Report run inside this entity shows this row</div>
-                        </td>
-                        {o.figures ? <Figures f={o.figures} /> : <td className="rec-dim" colSpan={6}>—</td>}
-                      </tr>
-                    ))}
+                    {data.live.byOrg
+                      .filter((o) => o.key !== data.reconcilesToEntity)
+                      .map((o) => (
+                        <tr key={o.key}>
+                          <td>
+                            <div className="rec-row-name">{o.name}</div>
+                            <div className="rec-row-note">The difference between the two rows above</div>
+                          </td>
+                          {o.figures ? <Figures f={o.figures} /> : <td className="rec-dim" colSpan={6}>—</td>}
+                        </tr>
+                      ))}
                   </>
                 )}
               </tbody>

@@ -71,6 +71,18 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
                       Last full week {k.lastFullWeek.weekLabel} <b>{fmtOne(k, k.lastFullWeek.value)}</b>
                     </div>
                   )}
+                  {/* Sat–Mon the new week holds only weekend days, so it does not get the headline —
+                      one mortgage and 43 leads read as a 93% collapse and had Kyle reporting the
+                      board as broken (2026-08-10). It still gets shown, just at its true size. */}
+                  {k.currentWeekSoFar && (
+                    <div
+                      className="mom-kpi-current"
+                      title="The new week has only the weekend so far, which is about 6% of a week's business. The headline stays on the last complete week until Monday's figures are in, so a weekend isn't mistaken for a collapse."
+                    >
+                      {k.currentWeekSoFar.weekLabel} so far <b>{fmtOne(k, k.currentWeekSoFar.value)}</b>{" "}
+                      <span className="mom-kpi-current-sub">weekend only</span>
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -188,25 +188,31 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
   },
   {
     key: "revenue",
-    label: "Est. Revenue",
+    label: "Written Commission",
     definition:
-      "An estimate of what the period earned: written commission PLUS client fees. Deliberately a wider " +
-      "measure than Weekly Written, and over a different window — this week to date, not last week.",
+      "Commission written in the period: mortgage plus protection. The same pair Capricorn's Total " +
+      "Written Report shows, over a different window — this week to date, not last week. Client fees " +
+      "are NOT included.",
     calculation:
-      "Commission + client fees on business written in the window shown on the tile. COMMISSION is " +
-      "the procuration fee the lender or provider pays Capricorn. FEES means the CLIENT fee — the " +
-      "advice/arrangement fee charged to the client — and nothing else: solicitor fees and " +
-      "miscellaneous fees are recorded separately on the case and are NOT included here.",
-    source: "mortgagecase.ProductCommission + mortgagecase.ClientFeeAmount",
+      "Mortgage commission + protection commission on business written in the window shown on the " +
+      "tile. COMMISSION is the procuration fee the lender or provider pays Capricorn. The CLIENT fee " +
+      "— the advice/arrangement fee the adviser enters on the case — is shown beside the total but " +
+      "is not added to it. Solicitor and miscellaneous fees are recorded separately and excluded " +
+      "entirely.",
+    source: "mortgagecase.ProductCommission + protectioncase.ProductCommission (ClientFeeAmount shown separately)",
     reconcilesTo: "Platform 'Total Fees Due' = ProductCommission + ClientFee (usp_GetInsuranceProductReport)",
     owner: "Kyle Van Der Net",
     frequency: "Daily (week to date)",
     status: "indicative",
     note:
-      "Kyle asked directly what the fees are (2026-08-04): they are client fees. The commission and " +
-      "fee parts are shown separately on the tile so the gap to Weekly Written is explicit — Weekly " +
-      "Written is commission only, because Capricorn's Total Written Report is a commission report. " +
-      "That is why the two screens legitimately show different numbers.",
+      "Called \"Est. Revenue\" and computed as commission + client fees until 2026-08-10, when Kyle " +
+      "ruled: \"Please can we completely separate the Client Fee – as our written report does not " +
+      "capture the client fee.\" Adding the fee in made this wider than anything Capricorn reports, " +
+      "so it could never tie to their Total Written Report — it guaranteed a gap on every comparison. " +
+      "The fee is still shown, beside the total rather than inside it. It is an adviser-entered field: " +
+      "£300 on 626 cases and £200 on 326 over 90 days (his purchase/remortgage policy, being followed), " +
+      "but 710 of 1,925 written cases — 37% — carry no fee at all, which is a control question for " +
+      "Capricorn rather than a reporting one.",
   },
   {
     key: "total-lending",

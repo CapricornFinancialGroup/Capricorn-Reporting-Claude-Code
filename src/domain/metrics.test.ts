@@ -56,10 +56,21 @@ describe("metric dictionary", () => {
     }
   });
 
-  it("states what a fee IS wherever a metric adds fees to commission", () => {
+  it("states what a fee IS wherever a metric mentions fees", () => {
     // Kyle, 2026-08-04: "Could you advise what Commission is + Fees? What are the fees referring to?"
-    // A tile that adds two things together has to name both, or it generates that email again.
+    // A tile that shows two things has to name both, or it generates that email again.
     const revenue = metricDefinition("revenue");
     expect(revenue?.calculation.toLowerCase()).toContain("client fee");
+  });
+
+  it("does NOT claim written commission includes client fees", () => {
+    // Kyle, 2026-08-10: "Please can we completely separate the Client Fee – as our written report
+    // does not capture the client fee." The tile stopped adding it; if this dictionary entry still
+    // said it did, the ⓘ panel would contradict the number beside it — which is the precise failure
+    // the dictionary exists to prevent.
+    const revenue = metricDefinition("revenue");
+    expect(revenue?.definition.toLowerCase()).toContain("not included");
+    expect(revenue?.calculation.toLowerCase()).toContain("not added");
+    expect(revenue?.source).not.toContain("+ mortgagecase.ClientFeeAmount");
   });
 });

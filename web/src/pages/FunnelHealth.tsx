@@ -7,7 +7,7 @@ import { applicationsReferralsGapChart, funnelStagesChart } from "../charts.js";
 import { CompareStrip } from "../components/CompareStrip.js";
 import { EChart } from "../components/EChart.js";
 import { MetricInfo } from "../components/MetricInfo.js";
-import { num, shortDate } from "../format.js";
+import { longDate, num, shortDate } from "../format.js";
 import type { FunnelHealthPayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
@@ -21,6 +21,26 @@ export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageP
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
+          {/* THIS SCREEN COVERS A DIFFERENT PERIOD FROM THE OTHERS, AND THAT HAS TO BE UNMISSABLE.
+              Kyle, 2026-08-10: "This screens data cannot be correct? Please investigate. Health
+              Funnel is completely disconnected to the other screens." It showed 722 leads while
+              Market Momentum showed 43 — because the funnel runs month to date and the run-chase
+              screens run the current week. Both were right. The period WAS printed, in eight-point
+              grey inside the card title, which is the same as not printing it: this is the "a full
+              week read as three days" failure of 28 July repeating on a screen I hadn't re-checked.
+              A funnel needs the longer window (offers lag written business by weeks), so the window
+              stays and the label gets loud instead. */}
+          <div className="funnel-window">
+            <span className="funnel-window-period">
+              {longDate(data.window.from)} – {longDate(data.window.to)}
+            </span>
+            <span className="funnel-window-note">
+              Month to date — deliberately a longer window than the run-chase and Momentum screens,
+              which show the current week. Offers arrive weeks after the business is written, so a
+              one-week funnel would show a collapse that isn't there. These figures will not match
+              the weekly screens and are not meant to.
+            </span>
+          </div>
           <div className="card">
             <div className="card-title">
               <span>Sales Pipeline — where is revenue getting stuck? <span className="card-sub">gross stage volumes {shortDate(data.window.from)} – {shortDate(data.window.to)} · % = share of period leads, not case-by-case conversion</span></span>
