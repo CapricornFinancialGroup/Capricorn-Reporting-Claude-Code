@@ -18,8 +18,13 @@ function pageFromHash(): string {
   return PAGES.some((p) => p.id === id) ? id : PAGES[0].id;
 }
 
+/** See the note in Kiosk.tsx. `meta` carries the freshness stamp, the targets-placeholder flag and
+ *  the changed-week alert; fetching it once per page load froze all three on any tab left open —
+ *  which on the wall surface means permanently. A minute is plenty and the server caches it. */
+const META_REFRESH_MS = 60_000;
+
 export function App({ mode }: { mode: Mode }) {
-  const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, 0);
+  const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, META_REFRESH_MS);
   const [pageId, setPageId] = useState(pageFromHash);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [compareFilters, setCompareFilters] = useState<Filters | null>(null);

@@ -31,6 +31,25 @@ function selectedRotation(): PageDef[] {
 
 const ROTATION = selectedRotation();
 
+/**
+ * How often to re-fetch `meta`. NOT zero — that was the bug.
+ *
+ * Every screen polls its own data every 60s, but `meta` was loaded once when the browser opened the
+ * page and never again. On an office TV that is never reloaded, that froze the four things the
+ * HEADER exists to tell you, permanently:
+ *
+ *   • "Data as at Mon 4 Aug"     — stuck on whatever it said the day the TV was switched on, while
+ *                                  the figures underneath it moved on. The header contradicting its
+ *                                  own screen is the exact complaint this whole thread opened with.
+ *   • "Loaded 07:36"             — same.
+ *   • "Targets: placeholder"     — would survive a successful upload until someone rebooted the TV.
+ *   • "N weeks changed"          — the closed-week alert could never appear at all.
+ *
+ * Cheap to poll: dataAsOf and the revised-week count are cached 5 minutes server-side, the load
+ * stamp 60 seconds, so this costs at most one small query a minute across every TV in the business.
+ */
+const META_REFRESH_MS = 60_000;
+
 /** Scale the fixed 1920×1080 canvas to the viewport (strawman technique). */
 function useCanvasScale(): number {
   const [scale, setScale] = useState(() => Math.min(window.innerWidth / 1920, window.innerHeight / 1080));
@@ -47,11 +66,15 @@ function useCanvasScale(): number {
 const IMMINENT_SECONDS = 5;
 
 export function Kiosk({ mode }: { mode: Mode }) {
-  const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, 0);
+  const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, META_REFRESH_MS);
   const [index, setIndex] = useState(0);
   const scale = useCanvasScale();
   const cycleMs = (meta?.cycleSeconds ?? 20) * 1000;
   const rotates = ROTATION.length > 1; // a single pinned screen never rotates
+  // Whether meta has arrived — NOT the meta object itself. The rotation effect below keys on this:
+  // now that meta re-fetches every minute it is a new object each time, and depending on it would
+  // clear and restart the dwell timer on every poll, stretching or skipping a screen's turn.
+  const metaReady = meta != null;
 
   // Real per-second countdown to the next rotation (not just the CSS animation), so we can show
   // "Next: <page> in Ns" and flip the bar to amber in the last few seconds.
@@ -73,10 +96,10 @@ export function Kiosk({ mode }: { mode: Mode }) {
   }, [cycleMs, rotates]);
 
   useEffect(() => {
-    if (!meta || !rotates) return;
+    if (!metaReady || !rotates) return;
     const id = window.setInterval(() => setIndex((i) => (i + 1) % ROTATION.length), cycleMs);
     return () => window.clearInterval(id);
-  }, [meta, cycleMs, rotates]);
+  }, [metaReady, cycleMs, rotates]);
 
   if (error) {
     // The token hint only applies to the unattended kiosk surface; /wall is Easy-Auth'd.
