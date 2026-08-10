@@ -44,6 +44,17 @@ export interface Config {
      *  feature existed. */
     storageAccount: string;
   };
+
+  /** Week snapshots — the record of what each closed week has reported over time. */
+  snapshots: {
+    /** Blob storage account holding the `week-snapshots` container. Defaults to the targets account
+     *  so production needs no new App Service setting. Empty = snapshotting disabled and the
+     *  reconciliation screen shows live figures with no history, rather than failing. */
+    storageAccount: string;
+    /** How often to re-observe the closed weeks, minutes. The lake reloads 5× daily, so anything
+     *  under ~2h is just polling unchanged data; 30 min keeps the detection tight without cost. */
+    intervalMinutes: number;
+  };
 }
 
 function optional(value: string | undefined, fallback: string): string {
@@ -81,6 +92,12 @@ export function loadConfig(): Config {
         .map((e) => e.trim().toLowerCase())
         .filter(Boolean),
       storageAccount: process.env.TARGETS_STORAGE_ACCOUNT?.trim() || "",
+    },
+
+    snapshots: {
+      storageAccount:
+        process.env.SNAPSHOTS_STORAGE_ACCOUNT?.trim() || process.env.TARGETS_STORAGE_ACCOUNT?.trim() || "",
+      intervalMinutes: parseInt(optional(process.env.SNAPSHOTS_INTERVAL_MINUTES, "30"), 10),
     },
   };
 }

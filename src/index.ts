@@ -1,12 +1,15 @@
 // Production entrypoint. App Service runs `node dist/index.js` (see Bicep appCommandLine).
-// No cron jobs: the lake is reloaded upstream (5× daily) and every dataset is computed on read
-// (with a short server-side cache), so the app is a pure read-through HTTP server.
+// Datasets are computed on read (with a short server-side cache) — the app is a read-through HTTP
+// server over the lake. The one background job is the week-snapshot observer, which has to run on a
+// timer rather than on read: it exists to catch a closed week's figures moving while nobody is
+// watching. See services/snapshots/history.ts for what that failure looked like.
 
 import { loadConfig } from "./config.js";
 import { buildApp } from "./server/app.js";
 import { logger } from "./services/logger.js";
 import { hydrateFromStorage } from "./services/targets/blob.js";
 import { activateTargets } from "./services/targets/store.js";
+import { startSnapshotScheduler } from "./services/snapshots/scheduler.js";
 
 /** Best-effort load of the last-uploaded weekly targets. Storage unconfigured (local dev) or
  *  unreachable both fall back to the domain/targets.ts placeholders — never blocks startup, never
@@ -33,8 +36,11 @@ async function main(): Promise<void> {
   await app.listen({ port: config.port, host: "0.0.0.0" });
   logger.info("Capricorn Growth OS listening", { port: config.port, env: config.nodeEnv });
 
+  const snapshots = startSnapshotScheduler(config);
+
   const shutdown = async (signal: string): Promise<void> => {
     logger.info("Shutting down", { signal });
+    snapshots.stop();
     await app.close();
     process.exit(0);
   };

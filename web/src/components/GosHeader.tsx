@@ -23,6 +23,8 @@ export interface Freshness {
   lastRefreshAt?: string | null;
   /** Where the targets come from — a placeholder is called out, not hidden (Conor 2026-08-04). */
   targetsProvenance?: TargetsProvenance;
+  /** Closed weeks whose figures have moved in a way late data entry doesn't explain. */
+  revisedWeeks?: number;
 }
 
 function asAtLabel(iso: string): string {
@@ -42,7 +44,7 @@ function useClock(): string {
   return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
-export function GosHeader({ title, right, freshness, onTargetsClick }: {
+export function GosHeader({ title, right, freshness, onTargetsClick, onRevisionsClick }: {
   title: string;
   right?: ReactNode;
   /** Omitted only before meta loads — the stamp then reads "—" rather than guessing a date. */
@@ -50,9 +52,12 @@ export function GosHeader({ title, right, freshness, onTargetsClick }: {
   /** Dashboard only: jump to the Targets tab. Kyle clicked the placeholder pill expecting it to take
    *  him somewhere and nothing happened (2026-08-07) — a warning that names a fix should offer it. */
   onTargetsClick?: () => void;
+  /** Dashboard only: jump to Reconciliation, where the movement is itemised. */
+  onRevisionsClick?: () => void;
 }) {
   const time = useClock();
   const placeholderTargets = freshness?.targetsProvenance?.source === "placeholder";
+  const revised = freshness?.revisedWeeks ?? 0;
   return (
     <header className="gos-header">
       <div className="gos-brand">
@@ -71,6 +76,29 @@ export function GosHeader({ title, right, freshness, onTargetsClick }: {
               : "Refreshes 5× daily · not real-time"}
           </div>
         </div>
+        {/* A CLOSED week has changed its figures. This has to be visible from wherever a number is
+            read, not only on the audit screen: Sat 25-31 Jul reported £68,951 of protection on 4 Aug
+            and £64,341.82 on 10 Aug, and the six days in between were spent telling Capricorn's CFO
+            the first figure matched his report exactly. Nothing on any screen said otherwise. */}
+        {revised > 0 && (
+          onRevisionsClick ? (
+            <button
+              type="button"
+              className="gos-warn-pill gos-warn-pill-alert gos-warn-pill-btn"
+              onClick={onRevisionsClick}
+              title="A week that had already closed is reporting different figures than when it was first recorded. Click to see which week, by how much, and whether business was added or removed."
+            >
+              {revised} week{revised === 1 ? "" : "s"} changed <span aria-hidden="true">→</span>
+            </button>
+          ) : (
+            <div
+              className="gos-warn-pill gos-warn-pill-alert"
+              title="A week that had already closed is reporting different figures than when it was first recorded."
+            >
+              {revised} week{revised === 1 ? "" : "s"} changed
+            </div>
+          )
+        )}
         {/* Targets are config, and until Capricorn uploads their own they are OUR placeholders. A
             "vs target" that nobody can trace is exactly what generates the emails Conor wants to
             stop, so the board says so on its face rather than burying it on the Targets page. */}

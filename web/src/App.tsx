@@ -49,8 +49,9 @@ export function App({ mode }: { mode: Mode }) {
     <div className="dash-shell">
       <GosHeader
         title={page.label}
-        freshness={{ dataAsOf: meta.dataAsOf, lastRefreshAt: meta.lastRefreshAt, targetsProvenance: meta.targetsProvenance }}
+        freshness={{ dataAsOf: meta.dataAsOf, lastRefreshAt: meta.lastRefreshAt, targetsProvenance: meta.targetsProvenance, revisedWeeks: meta.revisedWeeks }}
         onTargetsClick={meta.isTargetsAdmin ? () => { window.location.hash = "targets"; setPageId("targets"); } : undefined}
+        onRevisionsClick={() => { window.location.hash = "reconciliation"; setPageId("reconciliation"); }}
       />
       <nav className="dash-nav">
         {visiblePages.map((p) => (

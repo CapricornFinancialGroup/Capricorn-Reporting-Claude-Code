@@ -40,7 +40,9 @@ export const MIGRATION_EXCLUSIONS: MigrationExclusion[] = [
  * `WrittenDate`, which the platform backdates. MORTGAGE_WRITTEN_DATE (below) is a workflow
  * status-change date, recorded when the status actually moves, so it should be materially more
  * stable — but that has NOT been observed across snapshots yet. Keeping the flag is the cautious
- * choice; confirm over a fortnight of daily snapshots and drop or shorten it if the drift is small.
+ * choice. `services/snapshots/` is now recording exactly this: once a fortnight of history has
+ * accumulated, read the settle curve off the Reconciliation screen and shorten this if the drift is
+ * small. Do NOT shorten it on judgement again — that is what this constant already is.
  *
  * 14 days ≈ the point the distribution above has substantially settled (~70% within 7 days). It is
  * a judgement call on Capricorn's behalf, not a measured threshold — revisit with Kyle.
@@ -83,8 +85,8 @@ export const MORTGAGE_WRITTEN_DATE = "WorkflowStatusPreOfferProcessingDate";
  * Protection written keys on `protectioncase.ApplicationDate` — which the platform itself labels
  * "Date Submitted" (`usp_GetInsuranceProductReport`, `[DateSubmitted] = FinanceInsurance.ApplicationDate`).
  *
- * This reconciles to Capricorn exactly. Kyle, 2026-08-04: "as of last week we wrote c.£69K of
- * protection business… something doesn't seem right." He was right. Sat 25–31 Jul 2026:
+ * This is Capricorn's basis. Kyle, 2026-08-04: "as of last week we wrote c.£69K of protection
+ * business… something doesn't seem right." He was right. Sat 25–31 Jul 2026, measured 2026-08-04:
  *
  *   basis                                    cases   commission
  *   WrittenDate (what the board used)           24     £48,969
@@ -94,6 +96,17 @@ export const MORTGAGE_WRITTEN_DATE = "WorkflowStatusPreOfferProcessingDate";
  * Switching basis moves NO case between weeks: ApplicationDate equals WrittenDate on all 248 cases
  * where WrittenDate is set. It only ADDS the cases that have been submitted but carry no WrittenDate
  * yet — which is precisely the business Capricorn counts and we were dropping.
+ *
+ * ⚠ THAT £68,951 IS A MEASUREMENT, NOT A CONSTANT — and it has since moved. Re-run on 2026-08-10,
+ * same query, same week, no code change: 28 cases, £64,341.82. Every surviving row in the week has
+ * `_etl_modified` ≤ 31 Jul, so nothing was revised — two written-status cases worth £4,609.18 left
+ * the share entirely (deleted upstream, or dropped by the ETL; the Gold layer cannot tell which).
+ *
+ * The lesson is not about protection. It is that a closed week's figure is not stable, that
+ * `MAX(_etl_modified)` cannot detect a row that VANISHES, and that quoting any single-week number to
+ * Capricorn without re-running it that day is how we ended up asserting an exact match that had
+ * stopped being true six days earlier. `services/snapshots/` now records every closed week's value
+ * on a timer and flags movement input lag doesn't explain; the Reconciliation screen shows it.
  *
  * ⚠ THE MISTAKE THIS CORRECTS, so it isn't repeated. Until 2026-08-04 the note here claimed status 65
  * was "populated for only 50 of 246 recent protection cases (20%)", and on that basis I warned Kyle
@@ -111,8 +124,10 @@ export const PROTECTION_WRITTEN_DATE = "ApplicationDate";
  * so a case now sitting at Completed still counts, from the day it was submitted. `WorkflowStatusId`
  * in the lake is the CURRENT status only, so the set is widened to everything at or beyond
  * submission — 105 Terms Offered and 120 Completed included — to avoid dropping cases that have
- * simply moved on. For Sat 25–31 Jul this is identical to the strict 60/65/70 set (30 cases,
- * £68,951); the widening only ever protects completed business.
+ * simply moved on. For Sat 25–31 Jul this is identical to the strict 60/65/70 set — verified on both
+ * 2026-08-04 (30 cases, £68,951) and again on 2026-08-10 (28 cases, £64,341.82), i.e. the widening
+ * held identical across the very revision that moved the total. It only ever protects completed
+ * business.
  */
 export const PROTECTION_WRITTEN_STATUSES = ["60", "65", "70", "105", "120"] as const;
 

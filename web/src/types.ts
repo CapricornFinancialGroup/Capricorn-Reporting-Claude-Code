@@ -31,6 +31,8 @@ export interface Meta {
    *  20:10), NOT overnight — the header shows this so "is it live?" is answerable at a glance. */
   lastRefreshAt: string | null;
   refreshCadence: string;
+  /** Closed weeks whose figures have moved unexpectedly — drives the header warning everywhere. */
+  revisedWeeks: number;
   refreshSeconds: number;
   cycleSeconds: number;
   pacingMode: "mtd" | "drip";
@@ -301,4 +303,73 @@ export interface MetricDefinition {
 export interface DefinitionsPayload {
   cadence: { summary: string; asOfRule: string; refresh: string };
   metrics: MetricDefinition[];
+}
+
+// --- Screen 6: Reconciliation -------------------------------------------------
+
+export interface WeekFigures {
+  mortgageCommission: number;
+  mortgageCases: number;
+  protectionCommission: number;
+  protectionCases: number;
+  clientFees: number;
+}
+
+export type RevisionSeverity = "none" | "settling" | "revised" | "reduced";
+
+export interface WeekObservation {
+  observedAt: string;
+  lakeLoadedAt: string | null;
+  group: WeekFigures;
+}
+
+export interface WeekRevision {
+  weekStart: string;
+  weekEnd: string;
+  severity: RevisionSeverity;
+  first: WeekObservation;
+  latest: WeekObservation;
+  deltas: WeekFigures;
+  changes: number;
+  observedFrom: string;
+  lastChangedAt: string | null;
+  changedAfterSettle: boolean;
+  settleThrough: string;
+}
+
+export interface BasisNote {
+  label: string;
+  rule: string;
+  source: string | null;
+}
+
+export interface ReconciliationPayload {
+  dataAsOf: string;
+  lakeLoadedAt: string | null;
+  snapshotsEnabled: boolean;
+  week: { start: string; end: string; label: string; settleThrough: string; provisional: boolean };
+  weeks: Array<{
+    start: string;
+    end: string;
+    label: string;
+    severity: RevisionSeverity;
+    changes: number;
+    observed: boolean;
+  }>;
+  live: {
+    observedAt: string;
+    group: WeekFigures;
+    byOrg: Array<{ key: number; name: string; shortName: string; figures: WeekFigures | null }>;
+  } | null;
+  revision: WeekRevision | null;
+  history: WeekObservation[];
+  alerts: Array<{
+    weekStart: string;
+    weekEnd: string;
+    label: string;
+    severity: RevisionSeverity;
+    deltas: WeekFigures;
+    lastChangedAt: string | null;
+  }>;
+  basis: { mortgage: BasisNote; protection: BasisNote; clientFees: BasisNote; scope: BasisNote };
 }

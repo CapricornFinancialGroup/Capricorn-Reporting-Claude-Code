@@ -54,10 +54,12 @@ export interface ProtectionWrittenDaily {
  *  Momentum's insurance actual was hardcoded to £0 until 2026-07-29, so "Weekly Written" was
  *  mortgage-only while Capricorn's own Total Written report is mortgage + protection.
  *
- *  Now on Capricorn's own basis and RECONCILED: ApplicationDate, cases at or beyond submission, which
- *  gives £68,951 for Sat 25-31 Jul against the c.£69K Kyle quoted. The old WrittenDate basis gave
- *  £48,969 and drove my wrong "£400k would disappear" warning — see PROTECTION_WRITTEN_DATE in
- *  domain/data-quality.ts for what that error actually was. */
+ *  Now on Capricorn's own basis: ApplicationDate, cases at or beyond submission. Measured against
+ *  Kyle's c.£69K for Sat 25-31 Jul it gave £68,951 on 2026-08-04 — and £64,341.82 on 2026-08-10,
+ *  unchanged query, because two cases left the share. Treat any figure quoted here as of its
+ *  measurement date; see PROTECTION_WRITTEN_DATE in domain/data-quality.ts, and services/snapshots/
+ *  for the mechanism that now watches for it. The old WrittenDate basis gave £48,969 and drove my
+ *  wrong "£400k would disappear" warning. */
 export function protectionWrittenDaily(from: string, to: string): BuiltQuery {
   const where = combine(
     orgFilter("f"),

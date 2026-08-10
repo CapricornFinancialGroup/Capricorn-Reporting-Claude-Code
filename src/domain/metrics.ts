@@ -137,8 +137,11 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "agreed",
     note:
-      "Now on Kyle's own basis and reconciled: Sat 25–31 Jul gives £68,951 of protection commission " +
-      "against the c.£69K he quoted. It previously keyed on WrittenDate, which gave £48,969 — the " +
+      "Now on Kyle's own basis. Sat 25–31 Jul measured £68,951 of protection commission on 4 Aug, " +
+      "against the c.£69K he quoted — and £64,341.82 on 10 Aug, from the same query over the same " +
+      "closed week, because two cases left the data. A week's figure is a measurement, not a " +
+      "constant: the Reconciliation screen carries each week's full history and flags movement that " +
+      "input lag does not explain. It previously keyed on WrittenDate, which gave £48,969 — the " +
       "difference is cases Capricorn counts as submitted that carry no written date yet. Correcting " +
       "an earlier error of ours: we had warned that adopting this basis would remove ~£400k of " +
       "protection commission. It does not. That warning came from reading a sparsely-populated " +
@@ -177,9 +180,11 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     status: "indicative",
     note:
       "Mortgage reconciles: 25–27 Jul = £110,689 against Kyle's £112,083 report run mid-morning on the " +
-      "28th, with four advisers matching to the penny. Protection is the open leg — see Protection " +
-      "Sales. Client fees were silently included until 2026-07-28, which inflated this against their " +
-      "report.",
+      "28th, with four advisers matching to the penny. Client fees were silently included until " +
+      "2026-07-28, which inflated this against their report. ENTITY SCOPE is the remaining gap and it " +
+      "is not an error on either side: this figure covers the Capricorn GROUP, while a Total Written " +
+      "Report run inside Capricorn Financial Mortgages covers that entity alone. Sat 25–31 Jul is " +
+      "£413,541 group against £381,559 for CFM only. The Reconciliation screen shows both, per week.",
   },
   {
     key: "revenue",

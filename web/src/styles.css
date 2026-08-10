@@ -518,3 +518,99 @@ button { font: inherit; }
    plain, non-clickable statement of fact rather than a dead end. */
 .gos-warn-pill-btn { cursor: pointer; font-family: inherit; }
 .gos-warn-pill-btn:hover { background: rgba(217, 119, 6, 0.55); }
+
+/* --- Screen 6: Reconciliation -------------------------------------------------
+   Scope, basis and movement on one screen, so a difference against Capricorn's own report is
+   answered where it is noticed instead of by email. Dense on purpose: this is the one screen meant
+   to be read closely rather than glanced at from across an office, and it is kept off the wall
+   rotation for that reason. */
+
+.rec-alerts { display: flex; flex-direction: column; gap: 6px; }
+.rec-alert {
+  border: 1px solid var(--border); border-left-width: 4px; border-radius: 4px;
+  padding: 8px 12px; background: var(--surface);
+}
+.rec-alert.rec-reduced { border-left-color: var(--red); background: var(--red-bg); }
+.rec-alert.rec-revised { border-left-color: var(--amber); background: var(--amber-bg); }
+.rec-alert-head {
+  font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-primary);
+}
+.rec-alert-body { font-size: 11.5px; line-height: 1.45; color: var(--text-primary); margin-top: 2px; }
+.rec-alert-deltas { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 4px; }
+.rec-alert-deltas span {
+  font-size: 11px; font-weight: 700; font-variant-numeric: tabular-nums;
+}
+
+.rec-weekbar { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.rec-weekbar-label {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text-secondary); margin-right: 4px;
+}
+.rec-weekbtn {
+  position: relative; padding: 3px 9px; border-radius: 4px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+  font-family: inherit; font-size: 11px; font-weight: 700; letter-spacing: 0.03em;
+}
+.rec-weekbtn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.rec-weekbtn.is-active {
+  background: var(--navy, #003D5B); border-color: var(--navy, #003D5B); color: #fff;
+}
+/* A week that lost business is flagged on the selector itself — you should not have to click each
+   week to discover which one moved. */
+.rec-weekdot {
+  position: absolute; top: -2px; right: -2px; width: 6px; height: 6px; border-radius: 50%;
+  background: var(--red); border: 1px solid var(--surface);
+}
+.rec-weekbtn.rec-revised .rec-weekdot { background: var(--amber); }
+
+.rec-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.rec-table th {
+  text-align: left; padding: 4px 8px; border-bottom: 1px solid var(--border);
+  font-size: 9.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-secondary); white-space: nowrap;
+}
+.rec-table td { padding: 6px 8px; border-bottom: 1px solid var(--track-bg); vertical-align: top; }
+.rec-table tr:last-child td { border-bottom: none; }
+.rec-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.rec-dim { color: var(--text-secondary); font-weight: 500; }
+.rec-strong { font-weight: 800; color: var(--text-primary); }
+.rec-row-group { background: rgba(17, 141, 255, 0.05); }
+.rec-row-group .rec-row-name { font-weight: 800; }
+.rec-row-name { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.rec-row-note { font-size: 9.5px; color: var(--text-secondary); line-height: 1.3; margin-top: 1px; }
+.rec-row-delta td { border-top: 1px solid var(--border); font-weight: 700; }
+
+.rec-verdict { border-radius: 4px; padding: 7px 10px; margin-bottom: 8px; }
+.rec-verdict.rec-none { background: var(--green-bg); }
+.rec-verdict.rec-settling { background: var(--track-bg); }
+.rec-verdict.rec-revised { background: var(--amber-bg); }
+.rec-verdict.rec-reduced { background: var(--red-bg); }
+.rec-verdict-label {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--text-primary);
+}
+.rec-verdict-blurb { font-size: 11px; line-height: 1.45; color: var(--text-primary); margin-top: 2px; }
+
+.rec-basis { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.rec-basis-item dt {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--text-secondary);
+}
+.rec-basis-item dd { margin: 2px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--text-primary); }
+.rec-source {
+  display: block; margin-top: 3px; font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text-secondary);
+  word-break: break-word;
+}
+
+.rec-foot {
+  margin: 8px 0 0; padding-top: 7px; border-top: 1px solid var(--border);
+  font-size: 10.5px; line-height: 1.45; color: var(--text-secondary);
+}
+.rec-empty { font-size: 11.5px; line-height: 1.5; color: var(--text-secondary); margin: 0; }
+
+/* A closed week has changed. Red rather than the targets pill's amber: a placeholder target is a
+   known gap, whereas a figure moving after the fact means something already reported was wrong. */
+.gos-warn-pill-alert { background: rgba(220, 38, 38, 0.75); }
+.gos-warn-pill-btn.gos-warn-pill-alert:hover { background: rgba(220, 38, 38, 0.9); }

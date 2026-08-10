@@ -10,9 +10,17 @@
 // the live Team-Targets source when Capricorn provides one.
 
 import type { Config } from "../../config.js";
-import { INPUT_LAG_SETTLE_DAYS } from "../../domain/data-quality.js";
+import {
+  INPUT_LAG_SETTLE_DAYS,
+  MORTGAGE_WRITTEN_DATE,
+  PROTECTION_WRITTEN_DATE,
+  PROTECTION_WRITTEN_STATUSES,
+} from "../../domain/data-quality.js";
+import { ORGANISATIONS } from "../../domain/firm.js";
 import { DATA_CADENCE, METRIC_DEFINITIONS } from "../../domain/metrics.js";
 import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
+import { needsExplaining, settleThrough } from "../snapshots/history.js";
+import { closedWeekStarts, loadRevisions, observeWeeks } from "../snapshots/recorder.js";
 import {
   dayTarget,
   KPI_KEYS,
@@ -88,7 +96,7 @@ async function dataAsOf(config: Config): Promise<string> {
  *  of 1, 2 and 3 Aug 2026). So business written at 3pm reaches the board at the 17:10 load, roughly two
  *  hours later — not the next morning. Surfaced so the header can state the truth instead of a cadence
  *  nobody had checked. */
-async function lastRefreshAt(config: Config): Promise<string | null> {
+export async function lastRefreshAt(config: Config): Promise<string | null> {
   return cached("last-refresh-at", 60_000, async () => {
     const rows = await q<{ at: unknown }>(config, {
       text: `SELECT MAX(_etl_modified) AS at FROM dbo.mortgagecase;`,
@@ -314,8 +322,33 @@ function officeStatus(pct: number | null): ChaseStatus {
 // meta
 // ---------------------------------------------------------------------------
 
+/** Closed weeks whose figures have moved in a way input lag doesn't explain.
+ *
+ *  Carried on `meta` so the flag reaches EVERY screen, not just Reconciliation. The whole failure
+ *  this addresses is that a figure changed underneath a number someone had already acted on — a
+ *  warning that only appears on the audit screen would be seen by whoever was already suspicious,
+ *  which is the one person who doesn't need it. Cached long: the scheduler only re-observes every
+ *  30 minutes, so this cannot change faster than that. */
+async function revisedWeekCount(config: Config): Promise<number> {
+  if (!config.snapshots.storageAccount) return 0;
+  return cached("revised-week-count", 5 * 60_000, async () => {
+    try {
+      const today = tzToday(new Date(), config.reporting.timeZone);
+      const revisions = await loadRevisions(config, closedWeekStarts(today));
+      return revisions.filter((r) => needsExplaining(r)).length;
+    } catch {
+      // Never let a storage hiccup take the header — and so the board — down.
+      return 0;
+    }
+  });
+}
+
 export async function meta(config: Config) {
-  const [asOf, refreshedAt] = await Promise.all([dataAsOf(config), lastRefreshAt(config)]);
+  const [asOf, refreshedAt, revisedWeeks] = await Promise.all([
+    dataAsOf(config),
+    lastRefreshAt(config),
+    revisedWeekCount(config),
+  ]);
   const daily = getDailyTargets();
   const weekly = Object.fromEntries(KPI_KEYS.map((k) => [k, daily[k] * 5])) as KpiTargets;
   return {
@@ -333,6 +366,8 @@ export async function meta(config: Config) {
     lastRefreshAt: refreshedAt,
     /** Human cadence for the header. Not "overnight": see lastRefreshAt's docstring. */
     refreshCadence: DATA_CADENCE.refresh,
+    /** Closed weeks that have moved unexpectedly — drives the header warning on every screen. */
+    revisedWeeks,
     refreshSeconds: config.reporting.refreshSeconds,
     cycleSeconds: config.reporting.cycleSeconds,
     pacingMode: config.reporting.pacingMode,
@@ -1230,6 +1265,137 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
 }
 
 // ---------------------------------------------------------------------------
+// Screen 6 — Reconciliation
+// ---------------------------------------------------------------------------
+
+/**
+ * The screen that is meant to end the email thread.
+ *
+ * Three separate arguments with Capricorn's CFO ran for a fortnight, and none of them was about a
+ * number being wrong:
+ *
+ *   1. SCOPE. Their Total Written Report runs inside one regulated entity; the board reports the
+ *      group. £384,402 vs £413,541 for Sat 25-31 Jul — a £32k "discrepancy" that was two correct
+ *      answers to different questions. So both are shown, always, side by side.
+ *   2. BASIS. Which date column, which statuses. Answered by email four times. Now printed on the
+ *      screen next to the figure it produces.
+ *   3. MOVEMENT. A closed week reported £68,951 on 4 Aug and £64,341.82 on 10 Aug. Nobody could see
+ *      that had happened, including us. Now the week carries its own history.
+ *
+ * Live figures come from the SAME function the snapshot recorder uses (`observeWeeks`), not a
+ * parallel implementation — if this screen and the stored history ever disagreed about what the
+ * board says today, it would be worse than having no screen at all.
+ */
+export async function reconciliation(config: Config, f: ReportFilters) {
+  const asOf = await dataAsOf(config);
+  const today = tzToday(new Date(), config.reporting.timeZone);
+  // Default to the last COMPLETE week — the one Capricorn's own report is usually run for. An
+  // explicit `from` (the dashboard date filter) selects the week containing it.
+  const selected = f.from ? weekStartOf(f.from) : shiftDays(weekStartOf(today), -7);
+  return cached(`ds-reconciliation:${selected}`, ttl(config), async () => {
+    const closed = closedWeekStarts(today);
+    const weeks = closed.includes(selected) ? closed : [...closed, selected].sort();
+    const loadedAt = await lastRefreshAt(config);
+
+    const [live, revisions] = await Promise.all([
+      observeWeeks(config, [selected], loadedAt, new Date().toISOString()),
+      loadRevisions(config, weeks),
+    ]);
+
+    const byWeek = new Map(revisions.map((r) => [r.weekStart, r]));
+    const observation = live.get(selected) ?? null;
+    const revision = byWeek.get(selected) ?? null;
+
+    const weekLabel = (w: string) => `W${isoWeekNo(shiftDays(w, 2))}`;
+    const settle = settleThrough(shiftDays(selected, 6));
+
+    return {
+      dataAsOf: asOf,
+      lakeLoadedAt: loadedAt,
+      snapshotsEnabled: Boolean(config.snapshots.storageAccount),
+      week: {
+        start: selected,
+        end: shiftDays(selected, 6),
+        label: weekLabel(selected),
+        /** Movement up to this date is ordinary input lag; after it, someone has to explain it. */
+        settleThrough: settle,
+        provisional: settle > asOf,
+      },
+      /** Every observed week, newest first — the selector, and an at-a-glance list of which ones
+       *  have moved. */
+      weeks: weeks
+        .map((w) => {
+          const r = byWeek.get(w);
+          return {
+            start: w,
+            end: shiftDays(w, 6),
+            label: weekLabel(w),
+            severity: r?.severity ?? "none",
+            changes: r?.changes ?? 0,
+            observed: r != null,
+          };
+        })
+        .reverse(),
+      /** What the board reports for this week right now, group and per entity. */
+      live: observation
+        ? {
+            observedAt: observation.observedAt,
+            group: observation.group,
+            byOrg: ORGANISATIONS.map((o) => ({
+              key: o.key,
+              name: o.name,
+              shortName: o.shortName,
+              figures: observation.byOrg[String(o.key)] ?? null,
+            })),
+          }
+        : null,
+      /** How this week has moved since first recorded — null until it has been observed twice. */
+      revision,
+      /** The full recorded history for the selected week, oldest first. */
+      history: revision
+        ? [...new Set([revision.first, revision.latest])].map((o) => ({
+            observedAt: o.observedAt,
+            lakeLoadedAt: o.lakeLoadedAt,
+            group: o.group,
+          }))
+        : [],
+      /** Weeks whose movement input lag does not explain — what the board should be shouting about. */
+      alerts: revisions.filter((r) => needsExplaining(r)).map((r) => ({
+        weekStart: r.weekStart,
+        weekEnd: r.weekEnd,
+        label: weekLabel(r.weekStart),
+        severity: r.severity,
+        deltas: r.deltas,
+        lastChangedAt: r.lastChangedAt,
+      })),
+      /** The rule behind each figure, printed rather than emailed. */
+      basis: {
+        mortgage: {
+          label: "Mortgage commission written",
+          rule: `mortgagecase.${MORTGAGE_WRITTEN_DATE} within the week, ProductCommission summed, deleted cases excluded.`,
+          source: METRIC_DEFINITIONS.find((m) => m.key === "written")?.source ?? null,
+        },
+        protection: {
+          label: "Protection commission written",
+          rule: `protectioncase.${PROTECTION_WRITTEN_DATE} (the platform's "Date Submitted") within the week, WorkflowStatusId in ${PROTECTION_WRITTEN_STATUSES.join("/")}, ProductCommission summed.`,
+          source: METRIC_DEFINITIONS.find((m) => m.key === "sales")?.source ?? null,
+        },
+        clientFees: {
+          label: "Client fees",
+          rule: "mortgagecase.ClientFeeAmount — the advice/arrangement fee the adviser enters on the case. Not solicitor or miscellaneous fees. NOT commission, and never counted as written business.",
+          source: null,
+        },
+        scope: {
+          label: "Entity scope",
+          rule: `The board reports the Capricorn group (${ORGANISATIONS.map((o) => o.name).join(" + ")}). A Total Written Report run inside one entity will show that entity's column here, not the group total.`,
+          source: null,
+        },
+      },
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
 // definitions — THE metric dictionary (Conor 2026-08-04: every KPI clickable)
 // ---------------------------------------------------------------------------
 
@@ -1251,6 +1417,7 @@ export const DATASETS = {
   "adviser-league": adviserLeague,
   "funnel-health": funnelHealth,
   "market-momentum": marketMomentum,
+  reconciliation,
   "live-feed": liveFeed,
   definitions,
 } as const;
