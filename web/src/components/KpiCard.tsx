@@ -1,10 +1,21 @@
-// Screen-1 KPI card. Per Conor's 2026-07-06 feedback, the HEADLINE is day-referenced: the latest
-// working day's actual vs that day's target, with a day ahead/behind. Week-to-date sits underneath
-// as context (the cumulative trend chart lives on the card below this one).
+// Screen-1 KPI card.
 //
-// Everything above the footer measures COMPLETE days. The "Today so far" footer is the one part-day
-// number on the card, and it is fenced off on purpose: it feeds no target, no gap and no status pill.
-// That separation is the whole point — see `todaySoFar` in src/services/reporting/datasets.ts.
+// TWO NUMBERS, AND WHICH ONE IS BIG MATTERS.
+//
+//   TODAY SO FAR — a live part-day count. Carries no target, no gap, no status pill, ever. Comparing
+//                  four hours of a day against a whole day's target is the 2026-07-30 bug that
+//                  marked Capricorn down by a full day's target every day.
+//   LAST COMPLETE DAY — the only figure that can honestly be judged against a day target, so it
+//                  keeps the gap, the progress bar and the pill.
+//
+// Until 2026-08-11 the complete day was always the headline and today sat in 9pt at the bottom. At
+// 20:24 on a Monday that put a stale, zero, weekend Sunday in the biggest type on the board, with a
+// red CRITICAL flag, while Monday's 100 leads were a footnote. Kyle read that as the board being
+// broken — "how can it be refreshing when the data stays the same" (2026-08-10) — and he was right
+// to. Every figure was correct; the layout was making the wrong one loud.
+//
+// So once today has activity it takes the headline, unjudged, and the complete day moves down to a
+// line that still carries its target, its gap and its pill. Nothing about the target maths changed.
 
 import type { Mode } from "../api.js";
 import { MetricInfo } from "./MetricInfo.js";
@@ -26,20 +37,51 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }
   const pctOfDay = day.target > 0 ? Math.min(100, (day.actual / day.target) * 100) : 0;
   const gapClass = day.gap > 0 ? "val-green" : day.gap < 0 ? "val-amber" : "val-blue";
   const wtdPct = weeklyTarget > 0 ? Math.round((wtd / weeklyTarget) * 100) : 0;
+  // Today leads only once something has actually happened. A headline "Today so far 0" at 08:00 is
+  // no more use than a stale Sunday, so before the first activity the complete day keeps the top.
+  const live = today != null && today.count > 0;
+  // The card's coloured edge follows whatever number is in the headline. A red CRITICAL border
+  // driven by Sunday, sitting above a healthy live Monday, is exactly the contradiction above.
+  const cardState = live ? "live" : day.status;
+
   return (
-    <div className={`card kpi-card ${day.status}`}>
-      <div className="kpi-name">{name} <span className="card-sub" style={{ letterSpacing: "0.04em" }}>· {shortDate(day.date)}</span>{metricKey && mode && <> <MetricInfo metricKey={metricKey} mode={mode} /></>}</div>
+    <div className={`card kpi-card ${cardState}`}>
+      <div className="kpi-name">
+        {name}{" "}
+        <span className="card-sub" style={{ letterSpacing: "0.04em" }}>
+          · {live ? "today" : shortDate(day.date)}
+        </span>
+        {metricKey && mode && <> <MetricInfo metricKey={metricKey} mode={mode} /></>}
+      </div>
       <div className="kpi-main-row">
-        <div className="kpi-current">{num(day.actual)}</div>
+        <div className="kpi-current">{num(live ? today!.count : day.actual)}</div>
         <div className="kpi-target-block">
-          <div className="kpi-target-label">Day target</div>
-          <div className="kpi-target-val">{num(day.target)}</div>
+          <div className="kpi-target-label">{live ? "As at" : "Day target"}</div>
+          <div className="kpi-target-val">
+            {live ? (today!.loadedAt ? clockTime(today!.loadedAt) : "—") : num(day.target)}
+          </div>
         </div>
       </div>
+      {/* The judged figure. When today is live this is the row that carries the target comparison,
+          clearly dated, so the two are never confused for one another. */}
+      {live && (
+        <div
+          className="kpi-lastday"
+          title="The most recent day that has FINISHED. Target comparisons use complete days only — a part-day measured against a whole day's target would read as behind all morning and recover by evening."
+        >
+          <span className="kpi-lastday-label">{shortDate(day.date)} (complete)</span>
+          <span className="kpi-lastday-val">
+            <b>{num(day.actual)}</b> vs target {num(day.target)}{" "}
+            <span className={gapClass}>{signed(day.gap)}</span>
+          </span>
+        </div>
+      )}
       <div className="kpi-stats-row">
         <div className="kpi-stat">
-          <div className="kpi-stat-label">Vs day target</div>
-          <div className={`kpi-stat-value ${gapClass}`}>{signed(day.gap)}</div>
+          <div className="kpi-stat-label">{live ? "Last full day" : "Vs day target"}</div>
+          <div className={`kpi-stat-value ${live ? "" : gapClass}`}>
+            {live ? num(day.actual) : signed(day.gap)}
+          </div>
         </div>
         <div className="kpi-stat">
           <div className="kpi-stat-label">Week to date</div>
@@ -60,7 +102,7 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }
         </div>
       </div>
       <div className="kpi-footer">
-        {today && (
+        {today && !live && (
           <span
             className="kpi-today"
             title="Today is still in progress, so it is NOT in the figures above — those measure complete days only. This is a running count from the most recent data load."
@@ -69,7 +111,15 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }
             {today.loadedAt && <span className="kpi-today-age"> · {clockTime(today.loadedAt)}</span>}
           </span>
         )}
-        <StatusPill status={day.status} label={`${statusLabel(day.status)}${day.status === "ahead" || day.status === "behind" ? ` ${signed(day.gap)}` : ""}`} />
+        {live && (
+          <span className="kpi-today" title="Today is in progress and is not judged against a target — the pill refers to the last complete day.">
+            live · updates through the day
+          </span>
+        )}
+        <StatusPill
+          status={day.status}
+          label={`${live ? `${shortDate(day.date)}: ` : ""}${statusLabel(day.status)}${day.status === "ahead" || day.status === "behind" ? ` ${signed(day.gap)}` : ""}`}
+        />
       </div>
     </div>
   );

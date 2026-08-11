@@ -35,10 +35,10 @@ export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageP
               {longDate(data.window.from)} – {longDate(data.window.to)}
             </span>
             <span className="funnel-window-note">
-              Month to date — deliberately a longer window than the run-chase and Momentum screens,
-              which show the current week. Offers arrive weeks after the business is written, so a
-              one-week funnel would show a collapse that isn't there. These figures will not match
-              the weekly screens and are not meant to.
+              This week (Sat–Fri), the same window as the Run Chase and Momentum screens. One caveat
+              worth knowing: a lender's offer arrives weeks after the business is written, so the
+              Offers stage counts offers <em>issued</em> this week — on business mostly written in
+              earlier weeks. It is not a conversion of the written figure above it.
             </span>
           </div>
           <div className="card">

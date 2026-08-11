@@ -629,3 +629,19 @@ button { font: inherit; }
   white-space: nowrap;
 }
 .funnel-window-note { font-size: 11px; line-height: 1.4; color: var(--text-primary); flex: 1 1 340px; }
+
+/* A card whose headline is TODAY (live, in progress). Blue rather than the pace colours: today
+   carries no target comparison, so it must not wear a green/amber/red edge that implies one. The
+   previous behaviour put a red CRITICAL border round a live, healthy Monday because the Sunday
+   behind it had scored zero (Kyle, 2026-08-10). */
+.kpi-card.live::before { background: var(--blue); }
+/* The last COMPLETE day, demoted to its own line but keeping its target and gap — the figure that
+   is actually judged, kept visibly apart from the live one above it. */
+.kpi-lastday {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  margin: 2px 0 4px; padding: 3px 6px; border-radius: 3px; background: var(--track-bg);
+  font-size: 10px; color: var(--text-secondary); white-space: nowrap;
+}
+.kpi-lastday-label { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.kpi-lastday-val { font-variant-numeric: tabular-nums; }
+.kpi-lastday-val b { font-size: 12px; font-weight: 800; color: var(--text-primary); }

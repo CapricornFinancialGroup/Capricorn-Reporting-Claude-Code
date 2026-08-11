@@ -37,7 +37,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, isTradingDay, isWeekendOnlyWeek, mtdPacing, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
@@ -768,8 +768,18 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
 
 export async function funnelHealth(config: Config, f: ReportFilters) {
   const lakeAsOf = await dataAsOf(config);
-  // Window: an explicit date range (dashboard filter) wins; else the current month to date.
-  const from = f.from ?? mtdPacing(lakeAsOf).windowStart;
+  // Window: an explicit date range (dashboard filter) wins; else the CURRENT WEEK — the same Sat–Fri
+  // week the run-chase and Momentum screens use.
+  //
+  // This was month-to-date until 2026-08-11, which is defensible on the merits (offers arrive weeks
+  // after the business is written, so a one-week funnel understates the offer stage) but it put 722
+  // leads next to Momentum's 43 and read as broken data. Kyle, having had it explained: "I was not
+  // aware that this was showing MTD … this is meant to be driving daily and weekly action. My gut
+  // feel is that this should be more aligned with the other screens." He is the customer and the
+  // screen is for weekly action, so it moves to the week. The offer-lag caveat is now stated on the
+  // screen instead of being silently designed around — the Offers stage will read low early in a
+  // week and that is a real property of the business, not a measurement artefact.
+  const from = f.from ?? weekStartOf(tzToday(new Date(), config.reporting.timeZone));
   const to = f.to ?? lakeAsOf;
   // Never beyond the freshest loaded day.
   const asOf = to < lakeAsOf ? to : lakeAsOf;
