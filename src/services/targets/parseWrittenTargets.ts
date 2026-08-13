@@ -8,11 +8,13 @@
 //   "Weekly Mortgage Written Targets.xlsx"  → sheet "Mortgage_Weekly_Written _Target"  (loan £)
 //   "Weekly Insurance Written Targets.xlsx" → sheet "Insurance_Weekly_Written _Ta"     (policy £)
 //
-// Values arrive as plain numbers, or "£250"-style strings contaminated with zero-width spaces — the
-// same cell-cleaning parseDatarails uses. Sheet names carry stray spaces in Capricorn's export, so
-// sheets are matched by name PREFIX rather than exact string.
+// Values arrive as plain numbers, "£250"-style strings contaminated with zero-width spaces, formula
+// cells or rich text — all handled by the shared cell.ts coercion parseDatarails also uses. Sheet
+// names carry stray spaces in Capricorn's export, so sheets are matched by name PREFIX rather than
+// exact string.
 
 import ExcelJS from "exceljs";
+import { cellToNumber } from "./cell.js";
 
 const MORTGAGE_SHEET_PREFIX = "Mortgage_Weekly_Written";
 const INSURANCE_SHEET_PREFIX = "Insurance_Weekly_Written";
@@ -24,22 +26,6 @@ export interface WrittenTargetsParseOutcome {
   softWarnings: string[];
   /** WEEKLY business-wide written targets, £. Null when parsing failed. */
   writtenWeekly: { mortgage: number; insurance: number } | null;
-}
-
-/** Same tolerant numeric coercion as parseDatarails: strip currency symbols, commas and
- *  zero-width spaces; unresolved formulas / rich-text / blanks → null (treated as "no figure"). */
-function cellToAmount(value: unknown): number | null {
-  if (typeof value === "number") return value;
-  if (typeof value === "string") {
-    const cleaned = value.replace(/[^\d.-]/g, "");
-    if (cleaned !== "" && !Number.isNaN(Number(cleaned))) return Number(cleaned);
-    return null;
-  }
-  if (value && typeof value === "object" && "richText" in value) {
-    const text = (value as { richText: Array<{ text: string }> }).richText.map((r) => r.text).join("");
-    return cellToAmount(text);
-  }
-  return null;
 }
 
 function headerRow(sheet: ExcelJS.Worksheet): string[] {
@@ -75,7 +61,7 @@ function sumWeek(
   sheet.eachRow((row, rowNumber) => {
     if (rowNumber === 1) return;
     if (!String(row.getCell(1).value ?? "").trim()) return; // blank/trailing row
-    const n = cellToAmount(row.getCell(weekCol).value);
+    const n = cellToNumber(row.getCell(weekCol).value);
     if (n != null) {
       numericCellsFound++;
       total += n;
