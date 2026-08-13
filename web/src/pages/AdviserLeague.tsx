@@ -11,6 +11,28 @@ import { Load, type PageProps } from "./common.js";
 const trendArrow = { up: "↑", flat: "→", down: "↓" } as const;
 const trendColor = { up: "#16A34A", flat: "#64748B", down: "#DC2626" } as const;
 
+/**
+ * Column headings for the per-adviser rows.
+ *
+ * These said "Apps" and "Refs" until 2026-08-11 — the two words that were deliberately RETIRED from
+ * the tiles above them, for being wrong:
+ *
+ *   "Applications" → "Mortgages Written"        (2026-07-28) it counts business written, not
+ *                                                applications submitted to a lender
+ *   "Referrals"    → "Protection Opportunities" (2026-07-30) the tile was counting PaymentShield
+ *                                                quote attempts; Capricorn records no referral event
+ *
+ * The rename never reached the league rows, so the same screen showed "Protection Opportunities" in
+ * its headline and "Refs" underneath — for the identical number. That is the "no consistency across
+ * the screens" complaint reproduced inside a single card. The short forms below are abbreviations OF
+ * the agreed names rather than survivals of the old ones, and each carries the full name on hover.
+ */
+const COLS = {
+  apps: { short: "Written", full: "Mortgages Written — business formally submitted for processing, not applications sent to a lender" },
+  refs: { short: "Opps", full: "Protection Opportunities — protection cases opened. NOT a count of referrals" },
+  sales: { short: "Sales", full: "Protection Sales — protection cases that have reached submission or beyond" },
+} as const;
+
 export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<AdviserLeaguePayload>("adviser-league", filters, mode, refreshMs);
   const { data: compareData } = usePayload<AdviserLeaguePayload>("adviser-league", compareFilters ?? null, mode, refreshMs);
@@ -55,9 +77,9 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
               compareLabel={`${shortDate(compareData.window.from)} – ${shortDate(compareData.window.to)}`}
               rows={[
                 { label: "Mortgages Written", primary: data.totals.applications, compare: compareData.totals.applications, fmt: "int" },
-                { label: "Referrals", primary: data.totals.referrals, compare: compareData.totals.referrals, fmt: "int" },
+                { label: "Protection Opportunities", primary: data.totals.referrals, compare: compareData.totals.referrals, fmt: "int" },
                 { label: "Protection Sales", primary: data.totals.sales, compare: compareData.totals.sales, fmt: "int" },
-                { label: "Est. Revenue", primary: data.totals.revenue, compare: compareData.totals.revenue, fmt: "gbp" },
+                { label: "Written Commission", primary: data.totals.revenue, compare: compareData.totals.revenue, fmt: "gbp" },
                 { label: "Avg Conversion", primary: data.totals.avgConversion, compare: compareData.totals.avgConversion, fmt: "pct" },
               ]}
             />
@@ -67,7 +89,7 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
             <div className="card">
               <div className="card-title">
                 <span className="league-panel-title green">Top Performers</span>
-                <span className="card-sub">{shortDate(data.window.from)} – {shortDate(data.window.to)} · ranked by applications</span>
+                <span className="card-sub">{shortDate(data.window.from)} – {shortDate(data.window.to)} · ranked by mortgages written</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
                 {data.top.map((a, i) => (
@@ -81,9 +103,9 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
                       </div>
                     </div>
                     <div className="league-stats">
-                      <span><span className="league-stat-label">Apps</span>{num(a.apps)}</span>
-                      <span><span className="league-stat-label">Refs</span>{num(a.refs)}</span>
-                      <span><span className="league-stat-label">Sales</span>{num(a.sales)}</span>
+                      <span title={COLS.apps.full}><span className="league-stat-label">{COLS.apps.short}</span>{num(a.apps)}</span>
+                      <span title={COLS.refs.full}><span className="league-stat-label">{COLS.refs.short}</span>{num(a.refs)}</span>
+                      <span title={COLS.sales.full}><span className="league-stat-label">{COLS.sales.short}</span>{num(a.sales)}</span>
                       <Sparkline values={a.trend} color={trendColor[a.trendDir]} width={64} height={20} />
                     </div>
                   </div>
@@ -103,11 +125,11 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
                     <span className="league-badge" style={{ background: "#1D4ED8" }}>↑</span>
                     <div>
                       <div className="league-name">{a.name}</div>
-                      <div className="league-meta">prev: {a.lastApps} apps · {a.lastRefs} refs</div>
+                      <div className="league-meta">prev: {a.lastApps} written · {a.lastRefs} opps</div>
                     </div>
                     <div className="league-stats">
-                      <span><span className="league-stat-label">Apps</span>{num(a.thisApps)}</span>
-                      <span><span className="league-stat-label">Refs</span>{num(a.thisRefs)}</span>
+                      <span title={COLS.apps.full}><span className="league-stat-label">{COLS.apps.short}</span>{num(a.thisApps)}</span>
+                      <span title={COLS.refs.full}><span className="league-stat-label">{COLS.refs.short}</span>{num(a.thisRefs)}</span>
                       <span className="val-green">{a.deltaPct != null ? `+${Math.round(a.deltaPct * 100)}%` : "—"}</span>
                     </div>
                   </div>
@@ -132,8 +154,8 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
                       </div>
                     </div>
                     <div className="league-stats">
-                      <span><span className="league-stat-label">Apps</span>{num(a.apps)}</span>
-                      <span><span className="league-stat-label">Refs</span>{num(a.refs)}</span>
+                      <span title={COLS.apps.full}><span className="league-stat-label">{COLS.apps.short}</span>{num(a.apps)}</span>
+                      <span title={COLS.refs.full}><span className="league-stat-label">{COLS.refs.short}</span>{num(a.refs)}</span>
                     </div>
                   </div>
                 ))}

@@ -381,7 +381,7 @@ export function applicationsReferralsGapChart(opts: {
     grid: { left: 44, right: 14, top: 30, bottom: 26 },
     tooltip: { trigger: "axis" },
     legend: {
-      data: ["Mortgages Written", "Referrals"],
+      data: ["Mortgages Written", "Protection Opportunities"],
       top: 0,
       right: 4,
       itemWidth: 12,
@@ -415,7 +415,7 @@ export function applicationsReferralsGapChart(opts: {
         z: 1,
       },
       {
-        name: "Referrals",
+        name: "Protection Opportunities",
         type: "line",
         data: opts.referrals,
         showSymbol: false,
