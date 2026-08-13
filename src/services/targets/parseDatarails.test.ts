@@ -256,3 +256,38 @@ describe("parseDatarailsWorkbook — adviser name collisions in the lake roster"
     expect(outcome.unmatchedAdvisers).not.toContain("Alex Smith");
   });
 });
+
+// 2026-08-13: three names in Capricorn's workbook didn't match the lake. Two were spelling — the
+// workbook shortens Arandeep Purewal to "Aran" and Rina Senpurkayastha to "Rina Sen" — and both are
+// already mapped to Mayfair, so a name join was the only thing losing them. The third is a leaver.
+describe("parseDatarailsWorkbook — workbook names that differ from the lake", () => {
+  const ROSTER_WITH_ALIASES: AdviserRosterEntry[] = [
+    ...ROSTER,
+    { username: "arandeep.purewal@capricornfinancialmortgages.co.uk", fullName: "Arandeep Purewal" },
+    { username: "rina.sen@capricornfinancialmortgages.co.uk", fullName: "Rina Senpurkayastha" },
+  ];
+
+  it("resolves the workbook's shortened names to the right office", () => {
+    const wb = buildWorkbook({
+      insuranceRows: [
+        { adviser: "Aran Purewal", value: 1 },
+        { adviser: "Rina Sen", value: 1 },
+      ],
+    });
+    const outcome = parseDatarailsWorkbook(wb, WEEK, ROSTER_WITH_ALIASES);
+    expect(outcome.offices?.["Mayfair"].sales).toBe(2);
+    expect(outcome.unmatchedAdvisers).toEqual([]);
+  });
+
+  it("stays quiet about a leaver carrying nothing", () => {
+    const wb = buildWorkbook({ insuranceRows: [{ adviser: "Noami Rehman", value: 0 }, { adviser: "Alex Smith", value: 2 }] });
+    const outcome = parseDatarailsWorkbook(wb, WEEK, ROSTER);
+    expect(outcome.unmatchedAdvisers).toEqual([]);
+  });
+
+  it("still flags a leaver who IS carrying a figure", () => {
+    const wb = buildWorkbook({ insuranceRows: [{ adviser: "Noami Rehman", value: 4 }] });
+    const outcome = parseDatarailsWorkbook(wb, WEEK, ROSTER);
+    expect(outcome.unmatchedAdvisers).toEqual(["Noami Rehman"]);
+  });
+});

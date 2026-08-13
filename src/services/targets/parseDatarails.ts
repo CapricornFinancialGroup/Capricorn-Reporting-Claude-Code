@@ -70,6 +70,32 @@ function normalizeName(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Advisers the workbook names differently from the lake's `useraccount.FullName`, which is the only
+ *  thing the two sides can be joined on. Both are Mayfair and both are already mapped in
+ *  domain/offices.ts — it was purely the spelling that lost them (Luke, 2026-08-13):
+ *
+ *    "Aran Purewal" → "Arandeep Purewal"      (arandeep.purewal@capricornfinancialmortgages.co.uk)
+ *    "Rina Sen"     → "Rina Senpurkayastha"   (rina.sen@capricornfinancialmortgages.co.uk)
+ *
+ *  Keep this SMALL and evidenced. It's a per-person override of a name join, so every entry needs a
+ *  confirmed lake account behind it — never a guess at who a name probably means. */
+const WORKBOOK_NAME_ALIASES: Record<string, string> = {
+  "aran purewal": "arandeep purewal",
+  "rina sen": "rina senpurkayastha",
+};
+
+/** Workbook rows that are deliberately NOT expected to match a current adviser, so they don't sit in
+ *  the "didn't match" warning every week crying wolf. Naomi Rehman is a leaver (Luke, 2026-08-13);
+ *  the workbook also misspells her as "Noami". A leaver still carrying a real figure IS worth
+ *  flagging, so the suppression only applies while the row is zero/blank — see sumSheetByOffice. */
+const KNOWN_LEAVERS = new Set(["noami rehman", "naomi rehman"]);
+
+/** The lake name for a workbook row, applying the alias table above. */
+function lakeName(adviserName: string): string {
+  const key = normalizeName(adviserName);
+  return WORKBOOK_NAME_ALIASES[key] ?? key;
+}
+
 /** Index the roster by adviser full name, which is all the workbook gives us to join on.
  *
  *  `dbo.useraccount` is not an adviser table — it holds every account on the platform, clients and
@@ -139,9 +165,13 @@ function sumSheetByOffice(
     const n = cellToNumber(row.getCell(weekCol).value);
     if (n != null) numericCellsFound++;
 
-    const username = rosterByName.get(normalizeName(adviserName));
+    const username = rosterByName.get(lakeName(adviserName));
     if (username === undefined) {
-      unmatched.add(adviserName);
+      // A known leaver with nothing in this week's column is expected, not a mapping gap — but one
+      // carrying a real figure means their target is being dropped, which still needs saying.
+      if (!KNOWN_LEAVERS.has(normalizeName(adviserName)) || (n != null && n !== 0)) {
+        unmatched.add(adviserName);
+      }
       return;
     }
     if (n == null) {
