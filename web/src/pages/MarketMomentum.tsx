@@ -103,7 +103,7 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
 
           <div className="row cols-3 grow">
             <Trend title="Mortgages Written" metricKey="applications" mode={mode} weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
-            <Trend title="Protection Opportunities" metricKey="referrals" mode={mode} weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
+            <Trend title="Protection Referrals" metricKey="referrals" mode={mode} weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
             <RevenueTrend
               title="Weekly Written (£k)"
               weeks={data.weeks}

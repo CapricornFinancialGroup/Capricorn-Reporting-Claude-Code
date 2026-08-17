@@ -1,5 +1,15 @@
-node_modules/
+# No trailing slash on node_modules: in a git worktree it is a SYMLINK to the main
+# checkout's copy (installing per worktree would cost a full node_modules each), and
+# "node_modules/" matches a directory but not a symlink — so the slash form left it
+# showing as untracked, one `git add -A` away from being committed.
+node_modules
 dist/
 .env
 *.tsbuildinfo
 .DS_Store
+
+# Per-machine Claude Code config, and the worktrees it creates for parallel work on
+# separate pages. Both live inside the repo, so without this a session running
+# `git add -A` would commit another session's entire working checkout.
+.claude/settings.local.json
+.claude/worktrees/

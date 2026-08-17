@@ -12,7 +12,7 @@ import { EChart } from "../components/EChart.js";
 import { KpiCard } from "../components/KpiCard.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { Ticker } from "../components/Ticker.js";
-import { gbpCompact, num, shortDate, signed } from "../format.js";
+import { num, shortDate, signed } from "../format.js";
 import type { DailyRunChasePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
@@ -22,6 +22,9 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
   // `pace` rather than `targeted` also narrows the type, so the charts below need no non-null casts
   // beyond the ones TS still can't see through the closure.
   const chased = (data?.kpis ?? []).filter((k) => k.targeted && k.pace != null);
+  // The leaderboard totals row reuses the leads KPI's own expected-by-now rather than recomputing it,
+  // so the table and the card can never disagree about what "expected" means.
+  const leadsKpi = data?.kpis.find((k) => k.key === "leads");
   return (
     <Load error={error} data={data}>
       {data && (
@@ -44,16 +47,9 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
             ))}
           </div>
 
-          {/* Total mortgage value written this chase week — not commission revenue (see Adviser
-              League's "Est. Revenue" for that). Conor 2026-07-07, item 5. */}
-          <div className="card" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 14, padding: "6px 14px" }}>
-            <span className="card-title" style={{ marginBottom: 0, whiteSpace: "nowrap" }}>
-              Total Lending <span className="card-sub">this week · mortgage loan value (not commission)</span>
-            </span>
-            <span style={{ fontSize: 20, fontWeight: 900, fontVariantNumeric: "tabular-nums" }}>
-              {gbpCompact(data.totalWritten)}
-            </span>
-          </div>
+          {/* The Total Lending bar sat here until 2026-08-17, removed on Capricorn's instruction.
+              Lending is still on the board: Momentum's Avg Case Size covers loan value and its
+              Weekly Written covers commission. */}
 
           {/* Weekly progress indicator — where the team should be by end of each day. */}
           <div className="card" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: "8px 14px" }}>
@@ -117,10 +113,22 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
             ))}
           </div>
 
+          {/* The table's window is stated in full, and it carries its own totals row. Capricorn read
+              the cards' TODAY headline (28 new clients) against these week-to-date rows (40) and
+              reported them as disagreeing — both figures were right, over different windows. Naming
+              the window and totalling the column makes the tie to each card's "Week to date" stat
+              visible instead of something you add up by eye. The window CANNOT simply be changed to
+              include today: this table judges offices against target, and part-days must not be
+              judged (see DATA_CADENCE.asOfRule). */}
           <div className="card">
             <div className="card-title">
-              <span>Office Leaderboard <span className="card-sub">— ranked by new-client leads · week to date</span></span>
-              <span className="asof">Data as of {shortDate(data.dataAsOf)} · expected {data.week.expectedPct}% of weekly target</span>
+              <span>
+                Office Leaderboard{" "}
+                <span className="card-sub">
+                  — ranked by new-client leads · week to date, {shortDate(data.week.start)} – {shortDate(data.dataAsOf)} (complete days; today not included)
+                </span>
+              </span>
+              <span className="asof">Expected {data.week.expectedPct}% of weekly target by now</span>
             </div>
             <table className="lb-table">
               <thead>
@@ -128,6 +136,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                   <th style={{ width: 44 }}>Rank</th>
                   <th>Office</th>
                   <th>New Clients</th>
+                  <th>vs Target</th>
                   <th>Existing</th>
                   <th>Written</th>
                   <th>Referrals</th>
@@ -141,6 +150,21 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                     <td className="rank-num"><span>{i + 1}</span></td>
                     <td className="office-name">{o.office}</td>
                     <td>{num(o.leads)}</td>
+                    {/* Actual vs expected-by-now on the ranked column, so "behind" carries a size.
+                        Untargeted offices show a dash, never 0% — a zero reads as total failure. */}
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {o.leadsPct == null ? (
+                        <span style={{ color: "var(--text-secondary)" }}>—</span>
+                      ) : (
+                        <>
+                          <b>{o.leadsPct}%</b>
+                          <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+                            {" "}of {num(o.leadsExpected)}
+                            {o.leadsGap != null && <> · <span className={o.leadsGap >= 0 ? "val-green" : "val-amber"}>{signed(o.leadsGap)}</span></>}
+                          </span>
+                        </>
+                      )}
+                    </td>
                     <td style={{ color: "var(--text-secondary)" }}>{num(o.existingCases)}</td>
                     <td>{num(o.applications)}</td>
                     <td>{num(o.referrals)}</td>
@@ -151,6 +175,21 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr className="lb-total">
+                  <td />
+                  <td className="office-name">All offices</td>
+                  <td><b>{num(data.leaderboardTotals.leads)}</b></td>
+                  <td style={{ color: "var(--text-secondary)", fontSize: 11 }}>
+                    {leadsKpi?.pace ? <>of {num(leadsKpi.pace.expectedByNow)} expected</> : null}
+                  </td>
+                  <td><b>{num(data.leaderboardTotals.existingCases)}</b></td>
+                  <td><b>{num(data.leaderboardTotals.applications)}</b></td>
+                  <td><b>{num(data.leaderboardTotals.referrals)}</b></td>
+                  <td><b>{num(data.leaderboardTotals.sales)}</b></td>
+                  <td style={{ textAlign: "right", color: "var(--text-secondary)", fontSize: 11 }}>= card “week to date”</td>
+                </tr>
+              </tfoot>
             </table>
             <div className="placeholder-note" style={{ marginTop: 6 }}>
               Targets are placeholder values pending Capricorn confirmation; advisers without an office mapping show as Unassigned.

@@ -86,21 +86,32 @@ button { font: inherit; }
   font-size: 22px; font-weight: 300; letter-spacing: 0.08em; color: #fff;
   font-variant-numeric: tabular-nums; min-width: 96px; text-align: center;
 }
-.gos-header-right { width: 320px; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
+/* Sits beside the clock (Capricorn 2026-08-17) so "now" and "when the data landed" read as one
+   comparison. Deliberately quieter than the clock — it is a caveat on the figures, not a headline. */
+.gos-refreshed {
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.62); font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+/* Was a fixed 320px, which the two-line timestamp plus a warning pill could not fit. `flex-shrink: 0`
+   with a MINIMUM keeps it symmetrical with .gos-brand while letting it take the width it needs. */
+.gos-header-right { min-width: 320px; flex-shrink: 0; display: flex; align-items: center; justify-content: flex-end; gap: 14px; }
 .gos-date { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.6); letter-spacing: 0.05em; }
 
 /* "Data as at" replaces the old pulsing red LIVE badge. The board reads a warehouse copy that
    reloads 5× daily; calling that "Live" next to today's date is what made Kyle ask three times
    whether the figures were live (Conor 2026-08-04: every screen must state its refresh frequency
    and data date). */
-.gos-asat { text-align: right; line-height: 1.25; }
+/* nowrap on both lines: at 320px, with the placeholder-targets pill alongside, "Data as at Sun 16
+   Aug" wrapped to two lines and pushed the cadence line out of the 48px header — the block read as
+   broken text rather than a timestamp. It only ever needs two lines, so it is pinned to two. */
+.gos-asat { text-align: right; line-height: 1.25; white-space: nowrap; }
 .gos-asat-value {
   font-size: 13px; font-weight: 700; color: #fff; letter-spacing: 0.03em;
-  font-variant-numeric: tabular-nums;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
 }
 .gos-asat-cadence {
   font-size: 10px; font-weight: 500; color: rgba(255, 255, 255, 0.55); letter-spacing: 0.06em;
-  text-transform: uppercase;
+  text-transform: uppercase; white-space: nowrap;
 }
 .gos-warn-pill {
   font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;
@@ -252,6 +263,10 @@ button { font: inherit; }
 .lb-table tbody tr:nth-child(odd) { background: #F8FAFC; }
 .lb-table tr:last-child td { border-bottom: none; }
 .lb-table tr.rank-1 { background: var(--gold-bg) !important; }
+/* Totals row: the table's own proof that it ties to the KPI cards' "Week to date" stat. Ruled off
+   above so it reads as a sum rather than another office. */
+.lb-table tfoot tr.lb-total { background: #fff; border-top: 2px solid var(--border); }
+.lb-table tfoot tr.lb-total td { border-bottom: none; padding-top: 8px; font-variant-numeric: tabular-nums; }
 .rank-num { font-size: 12px; font-weight: 800; color: var(--text-secondary); text-align: center !important; }
 .rank-1 .rank-num span {
   background: #F59E0B; color: #fff; width: 22px; height: 22px; border-radius: 50%;

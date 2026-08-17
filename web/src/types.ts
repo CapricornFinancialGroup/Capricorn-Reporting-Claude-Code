@@ -78,7 +78,6 @@ export interface DayView {
 export interface DailyRunChasePayload {
   dataAsOf: string;
   /** Total mortgage value written this chase week (SUM(MortgageValue)) — not commission revenue. */
-  totalWritten: number;
   /** TODAY's part-day counts, held apart from the chase so pace maths stays on complete days.
    *  Null at weekends. `loadedAt` is the load that produced them — the share reloads 5× daily. */
   today: { date: string; loadedAt: string | null; counts: Record<KpiKey, number> } | null;
@@ -123,10 +122,18 @@ export interface DailyRunChasePayload {
     sales: number;
     existingCases: number;
     latest: Record<KpiKey, number>;
+    /** Against-target figures for the LEADS column the table ranks on. */
+    leadsTarget: number;
+    leadsExpected: number;
+    /** Null when the office has no leads target — rendered as a dash, never 0%. */
+    leadsGap: number | null;
+    leadsPct: number | null;
     pct: number | null;
     status: ChaseStatus;
     hasTargets: boolean;
   }>;
+  /** Column totals, so the table ties to each card's "Week to date" stat on its own face. */
+  leaderboardTotals: Record<KpiKey, number>;
 }
 
 export interface OfficeRunChasePayload {

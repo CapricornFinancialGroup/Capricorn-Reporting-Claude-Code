@@ -127,11 +127,11 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode, 
             {today.loadedAt && <span className="kpi-today-age"> · {clockTime(today.loadedAt)}</span>}
           </span>
         )}
-        {live && (
-          <span className="kpi-today" title="Today is in progress and is not judged against a target — the pill refers to the last complete day.">
-            live · updates through the day
-          </span>
-        )}
+        {/* No "live · updates through the day" caption (removed on Capricorn's instruction,
+            2026-08-17). The header now carries the load time next to the clock, which says the same
+            thing once for the whole screen instead of on all five cards. The card still labels its
+            headline "· today" and keeps the dated complete-day row below, so the two figures cannot
+            be confused for one another — that distinction is what the caption was protecting. */}
         {judged ? (
           <StatusPill
             status={day.status!}

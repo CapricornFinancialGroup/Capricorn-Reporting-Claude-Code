@@ -8,6 +8,17 @@
 // as broken. Per Conor's 2026-08-04 note — "every screen should clearly show its refresh frequency
 // and a 'Data as at' timestamp" — the header now states the data date and the cadence, and the word
 // "Live" is gone. The clock stays: it is the time now, labelled as such, not a claim about the data.
+//
+// The load time sits NEXT TO THE CLOCK (Capricorn 2026-08-17): "17:41 · data refreshed at 11:50" puts
+// the two times side by side, so the gap between now and the data reads at a glance from across the
+// room instead of needing the two ends of the header compared.
+//
+// ⚠ The "N weeks changed" pill was REMOVED on Capricorn's instruction (2026-08-17). It existed for a
+// real reason: Sat 25–31 Jul reported £68,951 of protection on 4 Aug and £64,341.82 on 10 Aug, and the
+// six days in between were spent telling Capricorn's CFO the first figure matched his report exactly
+// while nothing on any screen said it had moved. The detection still runs and the Reconciliation
+// screen still itemises every revision — what is gone is the passive warning on every OTHER screen.
+// If a closed week silently moves again, nobody reading the wall learns it until they open that page.
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -23,8 +34,6 @@ export interface Freshness {
   lastRefreshAt?: string | null;
   /** Where the targets come from — a placeholder is called out, not hidden (Conor 2026-08-04). */
   targetsProvenance?: TargetsProvenance;
-  /** Closed weeks whose figures have moved in a way late data entry doesn't explain. */
-  revisedWeeks?: number;
 }
 
 function asAtLabel(iso: string): string {
@@ -44,7 +53,7 @@ function useClock(): string {
   return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
 }
 
-export function GosHeader({ title, right, freshness, onTargetsClick, onRevisionsClick }: {
+export function GosHeader({ title, right, freshness, onTargetsClick }: {
   title: string;
   right?: ReactNode;
   /** Omitted only before meta loads — the stamp then reads "—" rather than guessing a date. */
@@ -52,12 +61,9 @@ export function GosHeader({ title, right, freshness, onTargetsClick, onRevisions
   /** Dashboard only: jump to the Targets tab. Kyle clicked the placeholder pill expecting it to take
    *  him somewhere and nothing happened (2026-08-07) — a warning that names a fix should offer it. */
   onTargetsClick?: () => void;
-  /** Dashboard only: jump to Reconciliation, where the movement is itemised. */
-  onRevisionsClick?: () => void;
 }) {
   const time = useClock();
   const placeholderTargets = freshness?.targetsProvenance?.source === "placeholder";
-  const revised = freshness?.revisedWeeks ?? 0;
   return (
     <header className="gos-header">
       <div className="gos-brand">
@@ -66,39 +72,23 @@ export function GosHeader({ title, right, freshness, onTargetsClick, onRevisions
       <div className="gos-header-center">
         <div className="gos-title">{title}</div>
         <div className="gos-clock" title="Current time — not the data date">{time}</div>
+        {/* Beside the clock on purpose: the useful fact is the DISTANCE between now and the last load,
+            and that only reads as a distance when both times sit together. */}
+        {freshness?.lastRefreshAt && (
+          <div
+            className="gos-refreshed"
+            title="When the warehouse copy behind these figures was last loaded. It reloads 5× daily, so this moves through the day."
+          >
+            data refreshed at {clockTime(freshness.lastRefreshAt)}
+          </div>
+        )}
       </div>
       <div className="gos-header-right">
         <div className="gos-asat" title="Target comparisons measure through the last complete day; the data itself reloads 5× daily.">
           <div className="gos-asat-value">Data as at {freshness ? asAtLabel(freshness.dataAsOf) : "—"}</div>
-          <div className="gos-asat-cadence">
-            {freshness?.lastRefreshAt
-              ? `Loaded ${clockTime(freshness.lastRefreshAt)} · refreshes 5× daily`
-              : "Refreshes 5× daily · not real-time"}
-          </div>
+          {/* The load TIME moved next to the clock; this keeps only the cadence caveat. */}
+          <div className="gos-asat-cadence">Refreshes 5× daily · not real-time</div>
         </div>
-        {/* A CLOSED week has changed its figures. This has to be visible from wherever a number is
-            read, not only on the audit screen: Sat 25-31 Jul reported £68,951 of protection on 4 Aug
-            and £64,341.82 on 10 Aug, and the six days in between were spent telling Capricorn's CFO
-            the first figure matched his report exactly. Nothing on any screen said otherwise. */}
-        {revised > 0 && (
-          onRevisionsClick ? (
-            <button
-              type="button"
-              className="gos-warn-pill gos-warn-pill-alert gos-warn-pill-btn"
-              onClick={onRevisionsClick}
-              title="A week that had already closed is reporting different figures than when it was first recorded. Click to see which week, by how much, and whether business was added or removed."
-            >
-              {revised} week{revised === 1 ? "" : "s"} changed <span aria-hidden="true">→</span>
-            </button>
-          ) : (
-            <div
-              className="gos-warn-pill gos-warn-pill-alert"
-              title="A week that had already closed is reporting different figures than when it was first recorded."
-            >
-              {revised} week{revised === 1 ? "" : "s"} changed
-            </div>
-          )
-        )}
         {/* Targets are config, and until Capricorn uploads their own they are OUR placeholders. A
             "vs target" that nobody can trace is exactly what generates the emails Conor wants to
             stop, so the board says so on its face rather than burying it on the Targets page. */}

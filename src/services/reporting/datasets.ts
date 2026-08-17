@@ -387,14 +387,12 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     const { ctx } = core;
     const days = ctx.weekDays;
 
-    // Total LENDING (Conor 2026-07-07, item 5): total mortgage/loan value written this chase week —
-    // the same WrittenDate column the Mortgages Written KPI uses, so date semantics line up. NOT
-    // commission (that's Momentum's "Weekly Written" and the League's "Est. Revenue").
-    const [writtenRows, today] = await Promise.all([
-      q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(ctx.windowStart, ctx.dataAsOf)),
-      todaySoFar(config),
-    ]);
-    const totalWritten = Math.round(sum(writtenRows.map((r) => r.totalValue ?? 0)));
+    // The Total Lending tile was removed from this screen on Capricorn's instruction (2026-08-17), so
+    // the loan-value query that fed it is gone with it rather than left running for nobody. Lending
+    // is still reported: Momentum carries "Weekly Written" (commission) and Avg Case Size (loan
+    // value), and the League carries Est. Revenue. Restoring the tile means restoring
+    // `momentumQ.revenueDaily` over `ctx.windowStart → ctx.dataAsOf` and summing `totalValue`.
+    const today = await todaySoFar(config);
 
     const dailyTargets = getDailyTargets();
     const kpis = KPI_KEYS.map((k) => {
@@ -458,22 +456,44 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       .map((o) => {
         const targets = officeDailyTargets[o.office] ?? emptyKpiRecord();
         const pct = pctToPace(o.mtd, targets, ctx);
+        // The leaderboard carried only a status colour, which said an office was behind without
+        // saying by how much (Capricorn 2026-08-17 asked for an against-target figure). These are the
+        // LEADS leg specifically — the column the table ranks on — so the number sits under the
+        // figure it judges rather than being a blend across four KPIs like `pct`.
+        const leadsWeekly = targets.leads * 5;
+        const leadsExpected = Math.round(leadsWeekly * ctx.fractionByKpi.leads);
         return {
           office: o.office,
           color: o.color,
           ...o.mtd,
           latest: o.latest,
+          /** Weekly leads target for this office, and the share of it due by now. 0 = untargeted. */
+          leadsTarget: Math.round(leadsWeekly),
+          leadsExpected,
+          /** +ahead / −behind on leads against expected-by-now. Null when the office has no target. */
+          leadsGap: leadsWeekly > 0 ? o.mtd.leads - leadsExpected : null,
+          /** % of expected-by-now on leads. Null when untargeted — NOT 0, which reads as "failing". */
+          leadsPct: leadsExpected > 0 ? Math.round((o.mtd.leads / leadsExpected) * 100) : null,
           pct,
           status: officeStatus(pct),
-          hasTargets: KPI_KEYS.some((k) => targets[k] > 0),
+          hasTargets: TARGETED_KPI_KEYS.some((k) => targets[k] > 0),
         };
       })
       .filter((o) => o.office !== UNASSIGNED || KPI_KEYS.some((k) => (o as Record<string, unknown>)[k] as number > 0))
       .sort((a, b) => b.leads - a.leads);
 
+    // Column totals, so the board can be tied back to the KPI cards on its own face. Capricorn read
+    // the cards' TODAY headline (28 new clients) against this table's week-to-date rows (40) and
+    // reported them as disagreeing — both were right, over different windows. The table now carries
+    // its own total and states its window, so the equality with each card's "Week to date" stat is
+    // visible rather than something you have to add up by eye.
+    const leaderboardTotals = KPI_KEYS.reduce((acc, k) => {
+      acc[k] = sum(leaderboard.map((o) => (o as Record<string, unknown>)[k] as number));
+      return acc;
+    }, {} as KpiTargets);
+
     return {
       dataAsOf: ctx.dataAsOf,
-      totalWritten,
       // Intraday context, NOT part of the chase — see `todaySoFar`. Null on Sundays.
       today,
       week: {
@@ -493,6 +513,7 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       dataAsOfLagsWeek: ctx.currentWeekPending,
       kpis,
       leaderboard,
+      leaderboardTotals,
     };
   });
 }
@@ -972,7 +993,7 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
       { key: "leads", label: "New Client Leads", count: s.leads },
       { key: "applications", label: "Mortgages Written", count: s.applications },
       { key: "offers", label: "Offers", count: s.offers },
-      { key: "referrals", label: "Protection Opportunities", count: referrals },
+      { key: "referrals", label: "Protection Referrals", count: referrals },
       { key: "sales", label: "Protection Sales", count: sales },
     ];
     // Each stage's share of TOTAL LEADS in the period — deliberately NOT a stage-to-stage case
@@ -1272,7 +1293,7 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       // "Mortgages Written", not "Applications": this counts mortgagecase rows by WrittenDate, i.e.
       // business written, not applications submitted (Kyle read it as the latter, 2026-07-28).
       kpi("applications", "Mortgages Written", appsW, "int", appsLtd),
-      kpi("referrals", "Protection Opportunities", refsW, "int", refsLtd),
+      kpi("referrals", "Protection Referrals", refsW, "int", refsLtd),
       kpi("written", "Weekly Written", combW, "gbpk", writtenLtd),
       // "New Client Leads", not "Lead Volume": same series, but it now counts new clients rather than
       // every case created, and a generic label is exactly how the old wider number got compared

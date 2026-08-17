@@ -31,7 +31,7 @@ export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
           {/* One definitions strip rather than an ⓘ on all 4 KPIs × every office card — same reach,
               without 28 triggers competing with the numbers. */}
           <div className="funnel-defs" style={{ borderTop: "none", paddingTop: 0, marginTop: 0 }}>
-            {[["leads", "Leads"], ["applications", "Mortgages Written"], ["referrals", "Protection Opportunities"],
+            {[["leads", "Leads"], ["applications", "Mortgages Written"], ["referrals", "Protection Referrals"],
               ["sales", "Protection Sales"], ["pace", "% of Pace"]].map(([key, label]) => (
               <span className="funnel-def" key={key}>{label} <MetricInfo metricKey={key} mode={mode} /></span>
             ))}

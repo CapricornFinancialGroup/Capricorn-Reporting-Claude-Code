@@ -137,10 +137,11 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
   },
   {
     key: "referrals",
-    label: "Protection Opportunities",
+    label: "Protection Referrals",
     definition:
-      "A protection case opened — a protection opportunity started for a client. This is NOT a count of " +
-      "referrals: Capricorn does not record a protection referral as an event.",
+      "A protection case opened for a client. ⚠ READ THE NAME WITH CARE: despite the label, this is not " +
+      "a count of referral EVENTS — Capricorn does not record a referral as an event anywhere — it is " +
+      "protection cases created. The two are close in practice but not the same thing.",
     calculation: "Count of protection cases by the date the case was created.",
     source: "protectioncase.CreatedDate, COUNT(*)",
     reconcilesTo: null,
@@ -148,11 +149,16 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "open",
     note:
-      "Called \"Protection Referrals\" until 2026-07-30, when it was found to be counting PaymentShield " +
-      "home-insurance quote attempts and currency-exchange referrals — not protection at all. The " +
-      "platform's own referral definition (an insurance adviser assigned to the lead) resolves on 3 of " +
-      "1,839 cases, so it cannot be used either. TARGET IS NOT VALID: the 25/week was set against the " +
-      "old wrong number; opportunities run ~48/week. Awaiting Kyle's ruling on definition and target.",
+      "Naming history matters here. Until 2026-07-30 this tile read \"Protection Referrals\" over a figure " +
+      "taken from a cross-sell table that was counting PaymentShield home-insurance QUOTE attempts and " +
+      "currency-exchange referrals — not protection at all — and the wrong number went unnoticed for " +
+      "weeks because ~24/wk sat next to a 25/wk target. The source was corrected to protection cases " +
+      "opened and the tile renamed \"Protection Opportunities\" so it could not be read as a referral " +
+      "count. Capricorn asked for their own wording back on 2026-08-17, so the label is \"Protection " +
+      "Referrals\" again over the CORRECTED figure. The platform's own referral definition (an insurance " +
+      "adviser assigned to the lead) resolves on 3 of 1,839 cases and remains unusable, so a true " +
+      "referral count is still not available. TARGET IS NOT VALID: the 25/week was set against the old " +
+      "wrong number; cases opened run ~48/week. Awaiting Kyle's ruling on definition and target.",
   },
   {
     key: "sales",
@@ -275,15 +281,15 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     key: "attach-rate",
     label: "Protection Attach Rate",
     definition:
-      "What share of mortgages written also have a protection opportunity — the cross-sell measure.",
-    calculation: "Protection opportunities ÷ mortgages written in the same week, as a percentage.",
-    source: "Derived from Protection Opportunities and Mortgages Written",
+      "What share of mortgages written also have a protection case opened — the cross-sell measure.",
+    calculation: "Protection cases opened ÷ mortgages written in the same week, as a percentage.",
+    source: "Derived from Protection Referrals and Mortgages Written",
     reconcilesTo: "Referrals report — but note it divides by mortgage OFFERS, not written",
     owner: "To be confirmed — Kyle Van Der Net",
     frequency: "Weekly (Sat–Fri)",
     status: "open",
     note:
-      "Two problems, both inherited from Protection Opportunities. The numerator is the metric awaiting " +
+      "Two problems, both inherited from Protection Referrals. The numerator is the metric awaiting " +
       "Kyle's ruling, and the denominator differs from the platform's, which uses offers (115 in W30) " +
       "rather than written (174). Correcting the denominator alone would just produce a different wrong " +
       "number, so both move together once the definition is settled. The 30% target predates all of it.",

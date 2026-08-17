@@ -27,7 +27,7 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
           <div className="row" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
             {[
               { label: "Mortgages Written", value: num(data.totals.applications), cls: "val-blue", sub: null, mk: "applications" },
-              { label: "Protection Opportunities", value: num(data.totals.referrals), cls: "", sub: null, mk: "referrals" },
+              { label: "Protection Referrals", value: num(data.totals.referrals), cls: "", sub: null, mk: "referrals" },
               { label: "Total Protection Sales", value: num(data.totals.sales), cls: "val-green", sub: null, mk: "sales" },
               {
                 // Commission ONLY. Client fees are stated beneath as a separate figure, never added
@@ -57,7 +57,7 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
               compareLabel={`${shortDate(compareData.window.from)} – ${shortDate(compareData.window.to)}`}
               rows={[
                 { label: "Mortgages Written", primary: data.totals.applications, compare: compareData.totals.applications, fmt: "int" },
-                { label: "Protection Opportunities", primary: data.totals.referrals, compare: compareData.totals.referrals, fmt: "int" },
+                { label: "Protection Referrals", primary: data.totals.referrals, compare: compareData.totals.referrals, fmt: "int" },
                 { label: "Protection Sales", primary: data.totals.sales, compare: compareData.totals.sales, fmt: "int" },
                 { label: "Written Commission", primary: data.totals.revenue, compare: compareData.totals.revenue, fmt: "gbp" },
                 { label: "Avg Conversion", primary: data.totals.avgConversion, compare: compareData.totals.avgConversion, fmt: "pct" },

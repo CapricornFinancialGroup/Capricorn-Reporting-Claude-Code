@@ -32,14 +32,24 @@ export const KPI_LABELS: Record<KpiKey, string> = {
   // the platform's client-based report for a fortnight. See NEW_CLIENT_LEAD_BASIS.
   leads: "New Client Leads",
   applications: "Mortgages Written",
-  // "Opportunities", not "Referrals": this counts protection cases OPENED. Capricorn records no
-  // referral event — see PROTECTION_OPPORTUNITY_NOTE in domain/data-quality.ts.
-  referrals: "Protection Opportunities",
+  // "Protection Referrals" — Capricorn's own wording, restored on their instruction 2026-08-17.
+  //
+  // ⚠ READ PROTECTION_OPPORTUNITY_NOTE BEFORE CHANGING THIS BACK. The measure underneath is
+  // protection cases OPENED, not referrals: Capricorn records no referral event at all, and the
+  // platform's own referral field (`tblLead.InsuranceAdviser`) resolves on 3 of 1,839 written cases.
+  // The tile was renamed to "Protection Opportunities" on 2026-07-30 precisely so it could not be
+  // read as a referral count. Capricorn have asked for their term back, which is their call — but the
+  // label and the metric are not the same thing, and anyone reconciling this against a "referrals"
+  // report will be comparing different measures.
+  referrals: "Protection Referrals",
   sales: "Protection Sales",
   existingCases: "Existing Client Cases",
 };
 
-export const KPI_KEYS: KpiKey[] = ["leads", "applications", "referrals", "sales", "existingCases"];
+// ORDER IS THE ON-SCREEN ORDER of the run-chase cards. `existingCases` sits directly after `leads`
+// (Capricorn 2026-08-17): the two are the split halves of what used to be one "Leads" number, so they
+// belong side by side — reading them apart is what made the split hard to follow.
+export const KPI_KEYS: KpiKey[] = ["leads", "existingCases", "applications", "referrals", "sales"];
 
 export type KpiTargets = Record<KpiKey, number>;
 
