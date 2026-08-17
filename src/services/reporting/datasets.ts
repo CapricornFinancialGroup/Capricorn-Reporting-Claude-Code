@@ -457,23 +457,41 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         const targets = officeDailyTargets[o.office] ?? emptyKpiRecord();
         const pct = pctToPace(o.mtd, targets, ctx);
         // The leaderboard carried only a status colour, which said an office was behind without
-        // saying by how much (Capricorn 2026-08-17 asked for an against-target figure). These are the
-        // LEADS leg specifically — the column the table ranks on — so the number sits under the
-        // figure it judges rather than being a blend across four KPIs like `pct`.
-        const leadsWeekly = targets.leads * 5;
-        const leadsExpected = Math.round(leadsWeekly * ctx.fractionByKpi.leads);
+        // saying by how much (Capricorn 2026-08-17 asked for an against-target figure).
+        //
+        // It hangs off WRITTEN, and only written. It was first built against leads, which was wrong:
+        // Capricorn confirmed (2026-08-17) that written is the only measure they hold offices to a
+        // target on. The per-office leads figures in OFFICE_DAILY_TARGETS are headcount-derived
+        // placeholders, and since leads was redefined to new clients only they are ~16% high as well
+        // — judging an office against one would be inventing a verdict twice over.
+        const writtenWeekly = targets.applications * 5;
+        // Kept UNROUNDED for the percentage. Rounding the expectation first destroys the signal early
+        // in the week: on Sun 16 Aug only 3.5% of the written week is due, so Mayfair's expectation of
+        // 0.42 rounded to 0 and the office fell out of the comparison entirely.
+        const writtenExpectedRaw = writtenWeekly * ctx.fractionByKpi.applications;
+        const writtenExpected = Math.round(writtenExpectedRaw);
+        // Below one whole expected case there is no honest percentage to quote — one case landing on
+        // a Saturday against an expectation of 0.4 is not a 150% outperformance, it is one case. The
+        // office still shows its raw figures; it just gets no verdict yet. Same instinct as refusing
+        // to judge a part-day (DATA_CADENCE.asOfRule).
+        const writtenJudgeable = writtenExpectedRaw >= 1;
         return {
           office: o.office,
           color: o.color,
           ...o.mtd,
           latest: o.latest,
-          /** Weekly leads target for this office, and the share of it due by now. 0 = untargeted. */
-          leadsTarget: Math.round(leadsWeekly),
-          leadsExpected,
-          /** +ahead / −behind on leads against expected-by-now. Null when the office has no target. */
-          leadsGap: leadsWeekly > 0 ? o.mtd.leads - leadsExpected : null,
-          /** % of expected-by-now on leads. Null when untargeted — NOT 0, which reads as "failing". */
-          leadsPct: leadsExpected > 0 ? Math.round((o.mtd.leads / leadsExpected) * 100) : null,
+          /** Weekly written target for this office, and the share of it due by now. 0 = untargeted. */
+          writtenTarget: Math.round(writtenWeekly),
+          writtenExpected,
+          /** +ahead / −behind on written against expected-by-now. Null when not yet judgeable. */
+          writtenGap: writtenJudgeable ? o.mtd.applications - writtenExpected : null,
+          /**
+           * Signed % deviation from expected-by-now on written: +12 = 12% ahead of pace, −8 = 8%
+           * behind. Drives the arrow's direction and colour. Null when the office has no written
+           * target, or when less than one case is due so far — NOT 0, which would render as
+           * "exactly on pace" against a target nobody set or a bar nobody has had time to clear.
+           */
+          writtenPct: writtenJudgeable ? Math.round((o.mtd.applications / writtenExpectedRaw - 1) * 100) : null,
           pct,
           status: officeStatus(pct),
           hasTargets: TARGETED_KPI_KEYS.some((k) => targets[k] > 0),

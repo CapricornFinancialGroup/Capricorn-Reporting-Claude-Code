@@ -16,15 +16,40 @@ import { num, shortDate, signed } from "../format.js";
 import type { DailyRunChasePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
+/**
+ * Against-target read for a single figure: a coloured arrow and a percentage, sitting beside the
+ * number it judges. Capricorn asked for exactly this rather than a "vs Target" column (2026-08-17) —
+ * a column of its own read as though every measure in the table were being judged, when only written
+ * has a target.
+ *
+ * `pct` is the SIGNED deviation from expected-by-now, so the arrow carries the sign and the label
+ * shows magnitude only: ▲ 12% means 12% ahead of pace, not 12% of target. Renders nothing at all
+ * when `pct` is null — an office with no target gets no verdict, not a 0%.
+ */
+function PaceArrow({ pct, expected, actual }: { pct: number | null; expected: number; actual: number }) {
+  if (pct == null) return null;
+  const ahead = pct >= 0;
+  const verdict = pct === 0 ? "exactly on pace" : `${Math.abs(pct)}% ${ahead ? "ahead of" : "behind"} pace`;
+  return (
+    <span
+      className={`lb-pace ${ahead ? "lb-pace-up" : "lb-pace-down"}`}
+      title={`${num(actual)} written vs ${num(expected)} expected by now — ${verdict}`}
+    >
+      {ahead ? "▲" : "▼"} {Math.abs(pct)}%
+    </span>
+  );
+}
+
 export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
   // KPIs with a target, i.e. the ones a "week chase" chart can honestly be drawn for. Filtering on
   // `pace` rather than `targeted` also narrows the type, so the charts below need no non-null casts
   // beyond the ones TS still can't see through the closure.
   const chased = (data?.kpis ?? []).filter((k) => k.targeted && k.pace != null);
-  // The leaderboard totals row reuses the leads KPI's own expected-by-now rather than recomputing it,
-  // so the table and the card can never disagree about what "expected" means.
-  const leadsKpi = data?.kpis.find((k) => k.key === "leads");
+  // The leaderboard's against-target read hangs off WRITTEN — the only measure Capricorn sets office
+  // targets on — and reuses that KPI's own expected-by-now rather than recomputing it, so the table
+  // and the card can never disagree about what "expected" means.
+  const writtenKpi = data?.kpis.find((k) => k.key === "applications");
   return (
     <Load error={error} data={data}>
       {data && (
@@ -136,7 +161,6 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                   <th style={{ width: 44 }}>Rank</th>
                   <th>Office</th>
                   <th>New Clients</th>
-                  <th>vs Target</th>
                   <th>Existing</th>
                   <th>Written</th>
                   <th>Referrals</th>
@@ -150,23 +174,14 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                     <td className="rank-num"><span>{i + 1}</span></td>
                     <td className="office-name">{o.office}</td>
                     <td>{num(o.leads)}</td>
-                    {/* Actual vs expected-by-now on the ranked column, so "behind" carries a size.
-                        Untargeted offices show a dash, never 0% — a zero reads as total failure. */}
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {o.leadsPct == null ? (
-                        <span style={{ color: "var(--text-secondary)" }}>—</span>
-                      ) : (
-                        <>
-                          <b>{o.leadsPct}%</b>
-                          <span style={{ color: "var(--text-secondary)", fontSize: 11 }}>
-                            {" "}of {num(o.leadsExpected)}
-                            {o.leadsGap != null && <> · <span className={o.leadsGap >= 0 ? "val-green" : "val-amber"}>{signed(o.leadsGap)}</span></>}
-                          </span>
-                        </>
-                      )}
-                    </td>
                     <td style={{ color: "var(--text-secondary)" }}>{num(o.existingCases)}</td>
-                    <td>{num(o.applications)}</td>
+                    {/* Written carries the against-target read inline rather than in its own column,
+                        because written is the ONLY measure Capricorn sets office targets on — a
+                        separate column implied the whole table was judged. */}
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {num(o.applications)}
+                      <PaceArrow pct={o.writtenPct} expected={o.writtenExpected} actual={o.applications} />
+                    </td>
                     <td>{num(o.referrals)}</td>
                     <td>{num(o.sales)}</td>
                     <td style={{ textAlign: "right" }}>
@@ -180,11 +195,26 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                   <td />
                   <td className="office-name">All offices</td>
                   <td><b>{num(data.leaderboardTotals.leads)}</b></td>
-                  <td style={{ color: "var(--text-secondary)", fontSize: 11 }}>
-                    {leadsKpi?.pace ? <>of {num(leadsKpi.pace.expectedByNow)} expected</> : null}
-                  </td>
                   <td><b>{num(data.leaderboardTotals.existingCases)}</b></td>
-                  <td><b>{num(data.leaderboardTotals.applications)}</b></td>
+                  {/* The all-offices arrow reuses the written KPI's own expectedByNow rather than
+                      summing the per-office expectations, so the footer and the Mortgages Written
+                      card can never disagree about what "expected" means. */}
+                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                    <b>{num(data.leaderboardTotals.applications)}</b>
+                    {writtenKpi?.pace && (
+                      <PaceArrow
+                        pct={
+                          // Same "at least one case due" bar the per-office rows use, for the same
+                          // reason — see writtenJudgeable on the server.
+                          writtenKpi.pace.expectedByNow >= 1
+                            ? Math.round((data.leaderboardTotals.applications / writtenKpi.pace.expectedByNow - 1) * 100)
+                            : null
+                        }
+                        expected={writtenKpi.pace.expectedByNow}
+                        actual={data.leaderboardTotals.applications}
+                      />
+                    )}
+                  </td>
                   <td><b>{num(data.leaderboardTotals.referrals)}</b></td>
                   <td><b>{num(data.leaderboardTotals.sales)}</b></td>
                   <td style={{ textAlign: "right", color: "var(--text-secondary)", fontSize: 11 }}>= card “week to date”</td>

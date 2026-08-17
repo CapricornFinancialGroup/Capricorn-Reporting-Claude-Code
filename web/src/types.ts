@@ -122,12 +122,13 @@ export interface DailyRunChasePayload {
     sales: number;
     existingCases: number;
     latest: Record<KpiKey, number>;
-    /** Against-target figures for the LEADS column the table ranks on. */
-    leadsTarget: number;
-    leadsExpected: number;
-    /** Null when the office has no leads target — rendered as a dash, never 0%. */
-    leadsGap: number | null;
-    leadsPct: number | null;
+    /** Against-target figures for WRITTEN — the only measure Capricorn sets office targets on. */
+    writtenTarget: number;
+    writtenExpected: number;
+    /** Null when the office has no written target — the indicator is omitted, never shown as 0%. */
+    writtenGap: number | null;
+    /** Signed % deviation from expected-by-now: +12 = 12% ahead of pace, −8 = 8% behind. */
+    writtenPct: number | null;
     pct: number | null;
     status: ChaseStatus;
     hasTargets: boolean;

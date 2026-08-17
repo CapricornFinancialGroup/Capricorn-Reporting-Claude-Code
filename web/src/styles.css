@@ -267,6 +267,11 @@ button { font: inherit; }
    above so it reads as a sum rather than another office. */
 .lb-table tfoot tr.lb-total { background: #fff; border-top: 2px solid var(--border); }
 .lb-table tfoot tr.lb-total td { border-bottom: none; padding-top: 8px; font-variant-numeric: tabular-nums; }
+/* Against-target arrow, sat beside the Written figure rather than in a column of its own. Sized well
+   below the figure it annotates so it reads as a qualifier on the number, not a second number. */
+.lb-pace { margin-left: 6px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.lb-pace-up { color: var(--green); }
+.lb-pace-down { color: var(--red); }
 .rank-num { font-size: 12px; font-weight: 800; color: var(--text-secondary); text-align: center !important; }
 .rank-1 .rank-num span {
   background: #F59E0B; color: #fff; width: 22px; height: 22px; border-radius: 50%;
