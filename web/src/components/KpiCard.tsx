@@ -16,6 +16,11 @@
 //
 // So once today has activity it takes the headline, unjudged, and the complete day moves down to a
 // line that still carries its target, its gap and its pill. Nothing about the target maths changed.
+//
+// UNTARGETED KPIs (`targeted: false`, e.g. Existing Client Cases) are TRACKED, not chased: same card,
+// same figures, but no day target, no gap, no progress bar and no status pill. They must not borrow a
+// verdict — every status helper reads "expected 0, actual > 0" as AHEAD, so a target-less KPI paced
+// against zero would sit on the wall permanently green for beating nothing.
 
 import type { Mode } from "../api.js";
 import { MetricInfo } from "./MetricInfo.js";
@@ -23,26 +28,33 @@ import type { DayView } from "../types.js";
 import { clockTime, num, shortDate, signed, statusLabel } from "../format.js";
 import { StatusPill } from "./StatusPill.js";
 
-export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }: {
+export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode, targeted = true }: {
   name: string;
   day: DayView;
   weeklyTarget: number;
   wtd: number;
+  /** False = no target set for this KPI: show the counts, withhold every judgement. */
+  targeted?: boolean;
   /** Today's part-day count + the load that produced it. Omitted at weekends and before meta loads. */
   today?: { count: number; loadedAt: string | null } | null;
   /** Key into the metric dictionary — renders the clickable definition (Conor 2026-08-04). */
   metricKey?: string;
   mode?: Mode;
 }) {
-  const pctOfDay = day.target > 0 ? Math.min(100, (day.actual / day.target) * 100) : 0;
-  const gapClass = day.gap > 0 ? "val-green" : day.gap < 0 ? "val-amber" : "val-blue";
+  // Narrowed once, here, so the render below can treat "judged" as a single condition.
+  const judged = targeted && day.target != null && day.status != null;
+  const dayTarget = day.target ?? 0;
+  const dayGap = day.gap ?? 0;
+  const pctOfDay = judged && dayTarget > 0 ? Math.min(100, (day.actual / dayTarget) * 100) : 0;
+  const gapClass = dayGap > 0 ? "val-green" : dayGap < 0 ? "val-amber" : "val-blue";
   const wtdPct = weeklyTarget > 0 ? Math.round((wtd / weeklyTarget) * 100) : 0;
   // Today leads only once something has actually happened. A headline "Today so far 0" at 08:00 is
   // no more use than a stale Sunday, so before the first activity the complete day keeps the top.
   const live = today != null && today.count > 0;
   // The card's coloured edge follows whatever number is in the headline. A red CRITICAL border
   // driven by Sunday, sitting above a healthy live Monday, is exactly the contradiction above.
-  const cardState = live ? "live" : day.status;
+  // Untargeted cards take a neutral edge: the coloured border IS a verdict.
+  const cardState = live ? "live" : judged ? day.status : "tracked";
 
   return (
     <div className={`card kpi-card ${cardState}`}>
@@ -56,9 +68,9 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }
       <div className="kpi-main-row">
         <div className="kpi-current">{num(live ? today!.count : day.actual)}</div>
         <div className="kpi-target-block">
-          <div className="kpi-target-label">{live ? "As at" : "Day target"}</div>
+          <div className="kpi-target-label">{live ? "As at" : judged ? "Day target" : "Tracked"}</div>
           <div className="kpi-target-val">
-            {live ? (today!.loadedAt ? clockTime(today!.loadedAt) : "—") : num(day.target)}
+            {live ? (today!.loadedAt ? clockTime(today!.loadedAt) : "—") : judged ? num(dayTarget) : "—"}
           </div>
         </div>
       </div>
@@ -71,16 +83,16 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }
         >
           <span className="kpi-lastday-label">{shortDate(day.date)} (complete)</span>
           <span className="kpi-lastday-val">
-            <b>{num(day.actual)}</b> vs target {num(day.target)}{" "}
-            <span className={gapClass}>{signed(day.gap)}</span>
+            <b>{num(day.actual)}</b>
+            {judged && <> vs target {num(dayTarget)} <span className={gapClass}>{signed(dayGap)}</span></>}
           </span>
         </div>
       )}
       <div className="kpi-stats-row">
         <div className="kpi-stat">
-          <div className="kpi-stat-label">{live ? "Last full day" : "Vs day target"}</div>
-          <div className={`kpi-stat-value ${live ? "" : gapClass}`}>
-            {live ? num(day.actual) : signed(day.gap)}
+          <div className="kpi-stat-label">{live || !judged ? "Last full day" : "Vs day target"}</div>
+          <div className={`kpi-stat-value ${live || !judged ? "" : gapClass}`}>
+            {live || !judged ? num(day.actual) : signed(dayGap)}
           </div>
         </div>
         <div className="kpi-stat">
@@ -88,19 +100,23 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }
           <div className="kpi-stat-value">{num(wtd)}</div>
         </div>
         <div className="kpi-stat">
-          <div className="kpi-stat-label">Wk target</div>
-          <div className="kpi-stat-value" style={{ color: "rgba(30,41,59,0.45)" }}>{num(weeklyTarget)}</div>
+          <div className="kpi-stat-label">{judged ? "Wk target" : "No target set"}</div>
+          <div className="kpi-stat-value" style={{ color: "rgba(30,41,59,0.45)" }}>
+            {judged ? num(weeklyTarget) : "—"}
+          </div>
         </div>
       </div>
-      <div className="progress-wrap">
-        <div className="progress-labels">
-          <span>Day {Math.round(pctOfDay)}%</span>
-          <span>Week {wtdPct}%</span>
+      {judged && (
+        <div className="progress-wrap">
+          <div className="progress-labels">
+            <span>Day {Math.round(pctOfDay)}%</span>
+            <span>Week {wtdPct}%</span>
+          </div>
+          <div className="progress-bar-bg">
+            <div className="progress-bar-fill" style={{ width: `${pctOfDay}%` }} />
+          </div>
         </div>
-        <div className="progress-bar-bg">
-          <div className="progress-bar-fill" style={{ width: `${pctOfDay}%` }} />
-        </div>
-      </div>
+      )}
       <div className="kpi-footer">
         {today && !live && (
           <span
@@ -116,10 +132,16 @@ export function KpiCard({ name, day, weeklyTarget, wtd, today, metricKey, mode }
             live · updates through the day
           </span>
         )}
-        <StatusPill
-          status={day.status}
-          label={`${live ? `${shortDate(day.date)}: ` : ""}${statusLabel(day.status)}${day.status === "ahead" || day.status === "behind" ? ` ${signed(day.gap)}` : ""}`}
-        />
+        {judged ? (
+          <StatusPill
+            status={day.status!}
+            label={`${live ? `${shortDate(day.date)}: ` : ""}${statusLabel(day.status!)}${day.status === "ahead" || day.status === "behind" ? ` ${signed(dayGap)}` : ""}`}
+          />
+        ) : (
+          <span className="kpi-today" title="Capricorn have not set a target for this measure, so it is reported and trended but never judged ahead or behind.">
+            tracked · no target
+          </span>
+        )}
       </div>
     </div>
   );

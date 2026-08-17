@@ -150,6 +150,7 @@ button { font: inherit; }
 .screen { flex: 1; display: flex; flex-direction: column; gap: 10px; padding: 12px 18px; min-height: 0; }
 .row { display: grid; gap: 10px; min-height: 0; }
 .cols-4 { grid-template-columns: repeat(4, 1fr); }
+.cols-5 { grid-template-columns: repeat(5, 1fr); }
 .cols-3 { grid-template-columns: repeat(3, 1fr); }
 .cols-2 { grid-template-columns: repeat(2, 1fr); }
 .cols-6 { grid-template-columns: repeat(6, 1fr); }
@@ -202,6 +203,9 @@ button { font: inherit; }
 .kpi-card.on_pace::before { background: var(--blue); }
 .kpi-card.behind::before { background: var(--amber); }
 .kpi-card.critical::before { background: var(--red); }
+/* Tracked-but-untargeted: a neutral edge, because the coloured edge IS a verdict and this measure has
+   no target to be judged against (see NEW_CLIENT_LEAD_BASIS / `targeted` on the server). */
+.kpi-card.tracked::before { background: var(--border); }
 
 .kpi-name { font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--text-secondary); }
 .kpi-main-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
@@ -645,3 +649,61 @@ button { font: inherit; }
 .kpi-lastday-label { font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
 .kpi-lastday-val { font-variant-numeric: tabular-nums; }
 .kpi-lastday-val b { font-size: 12px; font-weight: 800; color: var(--text-primary); }
+
+/* ── Adviser League leaderboards ──────────────────────────────────────────────
+   Three boards that do NOT rank the same people: mortgage advisers, the same advisers credited with
+   protection sold to their clients, and the ~6 protection specialists who wrote it. The middle board
+   is the link, and the lines between it and the right-hand board are drawn PERMANENTLY — the office
+   TVs have no mouse, so anything only visible on hover is invisible where it matters most. */
+.lb-strip {
+  display: flex; align-items: baseline; gap: 0.5rem 1rem; flex-wrap: wrap;
+  padding: 5px 10px; border-radius: 4px; background: var(--surface); border: 1px solid var(--border);
+}
+.lb-strip-label {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-secondary);
+}
+.lb-strip-window { font-size: 12px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lb-strip-note { font-size: 10.5px; color: var(--text-secondary); }
+.lb-pause {
+  margin-left: auto; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 2px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+}
+.lb-pause.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+.lb-wrap { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; min-height: 0; flex: 1; }
+.lb-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; overflow: visible; color: var(--blue); }
+.lb-col { position: relative; z-index: 1; min-height: 0; }
+.lb-rows { display: flex; flex-direction: column; }
+
+.lb-row {
+  display: grid; grid-template-columns: 1.35rem 1fr auto; gap: 7px; align-items: center;
+  padding: 3px 5px; border-bottom: 1px solid var(--track-bg); cursor: default;
+  transition: background 160ms ease, opacity 160ms ease;
+}
+.lb-row:last-child { border-bottom: none; }
+.lb-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+.lb-dim { opacity: 0.3; }
+.lb-lit { background: rgba(29, 78, 216, 0.09); box-shadow: inset 3px 0 0 var(--blue); }
+.lb-rank { font-size: 11px; font-weight: 800; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
+.lb-first .lb-rank { color: #B7791F; }
+.lb-who { min-width: 0; }
+.lb-who b { display: block; font-size: 12.5px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The shorthand spells the measure out — "8 referred · 28% of clients · sold by Jack ×2". The
+   previous screen used "Apps"/"Refs" and nobody could tell what they meant. */
+.lb-detail {
+  display: block; font-size: 9.5px; line-height: 1.35; color: var(--text-secondary);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.lb-detail b { font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lb-hi { color: var(--green); font-weight: 800; }
+.lb-lo { color: var(--red); font-weight: 800; }
+.lb-value {
+  font-size: 17px; font-weight: 900; text-align: right; font-variant-numeric: tabular-nums;
+  color: var(--text-primary); line-height: 1.1; white-space: nowrap;
+}
+.lb-unit { display: block; font-size: 8.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-secondary); }
+.lb-foot {
+  margin: 4px 0 0; padding-top: 5px; border-top: 1px solid var(--track-bg);
+  font-size: 9px; line-height: 1.4; color: var(--text-secondary);
+}

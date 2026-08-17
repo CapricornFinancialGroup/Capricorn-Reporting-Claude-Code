@@ -69,20 +69,50 @@ export const DATA_CADENCE = {
 export const METRIC_DEFINITIONS: MetricDefinition[] = [
   {
     key: "leads",
-    label: "Leads",
+    label: "New Client Leads",
     definition:
-      "A new enquiry entering the pipeline — the first step before anything else. One per lead, not per product.",
-    calculation: "Count of distinct leads by the date the lead was created.",
-    source: "mortgagecase.LeadDate, COUNT(DISTINCT LeadId)",
-    reconcilesTo: "Adviser Lead Report / Daily Lead Flow",
+      "A NEW CLIENT entering the pipeline — someone Capricorn has not dealt with before. Work opened for " +
+      "a client already on the books (a remortgage, a repeat client, a second application) is not lead " +
+      "flow; it is counted separately as Existing Client Cases. One per client, not per product.",
+    calculation:
+      "Count of distinct clients whose FIRST case on the platform — across mortgage, protection and " +
+      "general insurance — falls in the window, by the date the lead was created.",
+    source: "mortgagecase.LeadDate, COUNT(DISTINCT PrimaryClientKey) where this is the client's first case",
+    reconcilesTo: "Lead Flow Report (usp_LeadsReport)",
     owner: "Kyle Van Der Net",
     frequency: "Daily",
     status: "agreed",
     note:
-      "Verified 2026-07-30: 662 against the platform's client-deduplicated 655 for the same week, under " +
-      "1% apart. The platform dedupes to unique clients, so a client with two leads counts once there " +
-      "and twice here — that is the whole of the difference. Excludes the ~4,100 leads bulk-dated " +
-      "1 Jul 2026 by the CFM migration.",
+      "Changed 2026-08-17 on Capricorn's ruling: \"a new lead is actually a new client added to the " +
+      "system\". It previously counted every case created, which is why the board read 378 for Sat 8 – " +
+      "Wed 12 Aug against 291 on the report the team ran at 17:00 on the 12th — their report dates a " +
+      "lead by when the CLIENT was created, so it never sees a lead for an existing client. On the new " +
+      "basis that week is 315 new clients plus 61 existing-client cases. Two differences to their " +
+      "report remain by design: it is scoped to the advisers whoever ran it can see (the board is " +
+      "group-wide, both entities), and it requires a live mortgage product attached. Excludes the " +
+      "~4,100 leads bulk-dated 1 Jul 2026 by the CFM migration. TARGET IS ON THE OLD BASIS: the 633/wk " +
+      "was set by headcount against the wider count and runs ~16% above this one — awaiting Kyle.",
+  },
+  {
+    key: "existingCases",
+    label: "Existing Client Cases",
+    definition:
+      "A case opened for a client Capricorn already has — remortgages above all, plus repeat clients and " +
+      "second applications. Real work, and the other half of what used to be lumped into \"Leads\", but " +
+      "not new business won.",
+    calculation:
+      "Count of mortgage cases created in the window whose client had an earlier case on the platform. " +
+      "Counts CASES, not clients: one client bringing two remortgages is two.",
+    source: "mortgagecase.LeadDate, COUNT(*) where the client's first case predates this one",
+    reconcilesTo: null,
+    owner: "To be confirmed — Kyle Van Der Net",
+    frequency: "Daily",
+    status: "open",
+    note:
+      "Added 2026-08-17 alongside the New Client Leads change, so splitting lead flow by client novelty " +
+      "does not simply hide the remortgage book. NO TARGET — Capricorn have not set one, so the tile " +
+      "shows the figure and its trend with no ahead/behind verdict attached. Ran 61 in Sat 8 – Wed 12 " +
+      "Aug and 82–250 a week across the previous quarter, the peaks tracking remortgage batches.",
   },
   {
     key: "applications",

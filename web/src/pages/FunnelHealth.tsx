@@ -66,6 +66,15 @@ export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageP
                 </span>
               ))}
             </div>
+            {/* The funnel's mouth is NEW CLIENTS (Capricorn 2026-08-17). Without this line the
+                remortgage and repeat-client book — which used to be inside the old "Leads" number —
+                would simply vanish from this screen rather than being reported separately. */}
+            <div className="placeholder-note" style={{ marginTop: 6 }}>
+              Plus <b>{num(data.existingCases)}</b> case{data.existingCases === 1 ? "" : "s"} opened for
+              existing clients (remortgages, repeat clients, second applications) in the same window —
+              real work, but not new lead flow, so outside the funnel above.
+              {" "}<MetricInfo metricKey="existingCases" mode={mode} />
+            </div>
           </div>
 
           {compareFilters && compareData && (

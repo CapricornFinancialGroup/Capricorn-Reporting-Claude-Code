@@ -1,6 +1,8 @@
 // Payload types for the datasets (mirrors src/services/reporting/datasets.ts on the server).
 
-export type KpiKey = "leads" | "applications" | "referrals" | "sales";
+// `leads` counts NEW CLIENTS, not cases (Capricorn 2026-08-17); `existingCases` is the remortgage /
+// repeat-client half that used to be folded into it. See NEW_CLIENT_LEAD_BASIS on the server.
+export type KpiKey = "leads" | "applications" | "referrals" | "sales" | "existingCases";
 export type PaceStatus = "ahead" | "on_pace" | "behind";
 export type ChaseStatus = "ahead" | "on_pace" | "behind" | "critical";
 
@@ -51,8 +53,10 @@ export interface Pace {
 export interface ChaseChart {
   days: string[];
   actual: Array<number | null>;
-  targetPace: number[];
-  projection: Array<number | null>;
+  /** Both null for an untargeted KPI: a flat zero pace line would read as a target of nothing, and a
+   *  projection only means something measured against one. */
+  targetPace: number[] | null;
+  projection: Array<number | null> | null;
 }
 
 export interface WeekProgress {
@@ -65,9 +69,10 @@ export interface WeekProgress {
 export interface DayView {
   date: string;
   actual: number;
-  target: number;
-  gap: number;
-  status: ChaseStatus;
+  /** Null for an UNTARGETED KPI (see `targeted`) — there is no target, gap or verdict to show. */
+  target: number | null;
+  gap: number | null;
+  status: ChaseStatus | null;
 }
 
 export interface DailyRunChasePayload {
@@ -98,9 +103,13 @@ export interface DailyRunChasePayload {
   kpis: Array<{
     key: KpiKey;
     label: string;
+    /** False = tracked but not chased (no target set). The card shows the figure and its trend with
+     *  NO ahead/behind verdict — without this an untargeted KPI paces against zero, which every
+     *  status helper reads as "ahead". */
+    targeted: boolean;
     weeklyTarget: number;
     wtd: number;
-    pace: Pace;
+    pace: Pace | null;
     day: DayView;
     weekProgress: WeekProgress;
     chart: ChaseChart;
@@ -112,6 +121,7 @@ export interface DailyRunChasePayload {
     applications: number;
     referrals: number;
     sales: number;
+    existingCases: number;
     latest: Record<KpiKey, number>;
     pct: number | null;
     status: ChaseStatus;
@@ -176,6 +186,7 @@ export interface AdviserLeaguePayload {
     trend: number[];
     trendDir: "up" | "flat" | "down";
   }>;
+  boards: LeagueBoards;
   improved: Array<{
     name: string;
     office: string;
@@ -195,11 +206,42 @@ export interface AdviserLeaguePayload {
   }>;
 }
 
+export interface BoardRow {
+  rank: number;
+  name: string;
+  office: string;
+  /** Headline count for this board. */
+  value: number;
+  written: number;
+  /** Protection sales introduced by this adviser's clients (derived — see referrals.ts). */
+  referred: number;
+  /** Protection sales this adviser wrote themselves. */
+  sold: number;
+  /** referred / written as a percentage; null when they wrote no mortgages. */
+  rate: number | null;
+  commission: number;
+  /** Who converted this adviser's referrals, busiest first. */
+  partners: Array<{ name: string; n: number }>;
+}
+
+export interface LeagueBoards {
+  window: { from: string; to: string; weeks: number };
+  /** How many protection sales could be tied back to an introducing adviser. */
+  attribution: { attributed: number; unattributed: number; pct: number | null };
+  written: BoardRow[];
+  referred: BoardRow[];
+  sold: BoardRow[];
+}
+
 export interface FunnelHealthPayload {
   dataAsOf: string;
   window: { from: string; to: string };
   stages: Array<{ key: string; label: string; count: number }>;
   conversions: Array<{ from: string; to: string; pct: number }>;
+  /** Cases opened in the same window for clients already on the books — remortgages above all.
+   *  NOT a funnel stage: it enters part-way along, so folding it into the leads stage would inflate
+   *  every conversion below it. Shown as context beside the funnel. */
+  existingCases: number;
   applicationsReferralsGap: { weeks: string[]; applications: number[]; referrals: number[] };
 }
 

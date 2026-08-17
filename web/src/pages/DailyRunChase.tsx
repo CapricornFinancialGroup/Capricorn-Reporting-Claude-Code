@@ -1,6 +1,10 @@
-// Screen 1 — Weekly Run Chase (Conor's principles): 4 KPI cards with the cumulative Week Progress
-// read, the weekly progress indicator strip (Mon 20.83% → Fri 100%), 4 weighted chase charts,
-// office leaderboard, live-feed ticker.
+// Screen 1 — Weekly Run Chase (Conor's principles): a KPI card per measure with the cumulative Week
+// Progress read, the weekly progress indicator strip (Mon 20.83% → Fri 100%), a weighted chase chart
+// per TARGETED measure, office leaderboard, live-feed ticker.
+//
+// Cards and charts deliberately differ in count: since 2026-08-17 there are five cards (Leads split
+// into new clients vs existing-client cases) but still four chase charts, because the fifth measure
+// has no target to chase. See NEW_CLIENT_LEAD_BASIS on the server.
 
 import { usePayload } from "../api.js";
 import { paceChart } from "../charts.js";
@@ -14,18 +18,23 @@ import { Load, type PageProps } from "./common.js";
 
 export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
+  // KPIs with a target, i.e. the ones a "week chase" chart can honestly be drawn for. Filtering on
+  // `pace` rather than `targeted` also narrows the type, so the charts below need no non-null casts
+  // beyond the ones TS still can't see through the closure.
+  const chased = (data?.kpis ?? []).filter((k) => k.targeted && k.pace != null);
   return (
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
           <Ticker mode={mode} refreshMs={refreshMs} />
 
-          <div className="row cols-4">
+          <div className={`row cols-${data.kpis.length}`}>
             {data.kpis.map((k) => (
               <KpiCard
                 key={k.key}
                 name={k.label}
                 day={k.day}
+                targeted={k.targeted}
                 weeklyTarget={k.weeklyTarget}
                 wtd={k.wtd}
                 today={data.today ? { count: data.today.counts[k.key] ?? 0, loadedAt: data.today.loadedAt } : null}
@@ -79,14 +88,17 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
             </span>
           </div>
 
+          {/* Target pacing, so TARGETED KPIs only: a "week chase" chart for a measure with no target
+              would be an actual line against an empty pace line, which reads as catastrophically
+              behind rather than as untargeted. The tracked KPI still has its card above. */}
           <div className="row cols-4 grow">
-            {data.kpis.map((k) => (
+            {chased.map((k) => (
               <div className="card" key={k.key}>
                 <div className="card-title">
                   <span>{k.label} — week chase</span>
                   <StatusPill
-                    status={k.pace.status}
-                    label={k.pace.status === "on_pace" ? "On Pace" : `${k.pace.status === "ahead" ? "Ahead" : "Behind"} ${signed(k.pace.aheadBehind)}`}
+                    status={k.pace!.status}
+                    label={k.pace!.status === "on_pace" ? "On Pace" : `${k.pace!.status === "ahead" ? "Ahead" : "Behind"} ${signed(k.pace!.aheadBehind)}`}
                   />
                 </div>
                 <div className="grow">
@@ -97,7 +109,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                       actual: k.chart.actual,
                       targetPace: k.chart.targetPace,
                       projection: k.chart.projection,
-                      behind: k.pace.status === "behind",
+                      behind: k.pace!.status === "behind",
                     })}
                   />
                 </div>
@@ -107,7 +119,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
 
           <div className="card">
             <div className="card-title">
-              <span>Office Leaderboard <span className="card-sub">— ranked by leads · week to date</span></span>
+              <span>Office Leaderboard <span className="card-sub">— ranked by new-client leads · week to date</span></span>
               <span className="asof">Data as of {shortDate(data.dataAsOf)} · expected {data.week.expectedPct}% of weekly target</span>
             </div>
             <table className="lb-table">
@@ -115,7 +127,8 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 <tr>
                   <th style={{ width: 44 }}>Rank</th>
                   <th>Office</th>
-                  <th>Leads</th>
+                  <th>New Clients</th>
+                  <th>Existing</th>
                   <th>Written</th>
                   <th>Referrals</th>
                   <th>Sales</th>
@@ -128,6 +141,7 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                     <td className="rank-num"><span>{i + 1}</span></td>
                     <td className="office-name">{o.office}</td>
                     <td>{num(o.leads)}</td>
+                    <td style={{ color: "var(--text-secondary)" }}>{num(o.existingCases)}</td>
                     <td>{num(o.applications)}</td>
                     <td>{num(o.referrals)}</td>
                     <td>{num(o.sales)}</td>

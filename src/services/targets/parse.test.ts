@@ -40,7 +40,9 @@ describe("parseTargetsWorkbook — happy path", () => {
     expect(outcome.data?.effectiveWeek).toBe(WEEK);
     expect(outcome.data?.writtenWeekly).toEqual({ mortgage: 350000, insurance: 75000 });
     expect(Object.keys(outcome.data?.offices ?? {})).toHaveLength(OFFICES.length);
-    expect(outcome.data?.offices["Hammersmith"]).toEqual({ leads: 10, applications: 2, referrals: 1, sales: 1 });
+    // existingCases is seeded to 0, not read from the sheet — it is tracked on the board but has no
+    // target, so requiring a column would reject every workbook Capricorn already has.
+    expect(outcome.data?.offices["Hammersmith"]).toEqual({ leads: 10, applications: 2, referrals: 1, sales: 1, existingCases: 0 });
   });
 });
 

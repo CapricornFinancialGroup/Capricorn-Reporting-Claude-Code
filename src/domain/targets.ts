@@ -15,28 +15,42 @@
 
 import { UNASSIGNED } from "./offices.js";
 
-export type KpiKey = "leads" | "applications" | "referrals" | "sales";
+export type KpiKey = "leads" | "applications" | "referrals" | "sales" | "existingCases";
+
+/** KPIs Capricorn have set a target for. `existingCases` is tracked but deliberately untargeted (see
+ *  NEW_CLIENT_LEAD_BASIS) — it must not drag the blended pace curve or an office's pace average
+ *  toward a target that does not exist. */
+export const TARGETED_KPI_KEYS: KpiKey[] = ["leads", "applications", "referrals", "sales"];
 
 // Display labels. `applications` reads "Mortgages Written" because that is what it counts:
 // mortgagecase rows by WrittenDate, i.e. business written, NOT applications submitted to a lender.
 // Called "Applications" it was read as the latter (Kyle 2026-07-28). The KEY stays `applications` —
 // it's the targets-upload column name and the API contract.
 export const KPI_LABELS: Record<KpiKey, string> = {
-  leads: "Leads",
+  // "New Client Leads", not "Leads": from 2026-08-17 this counts new CLIENTS, not new cases, so the
+  // label has to say which — a bare "Leads" is what let the old, wider number be compared against
+  // the platform's client-based report for a fortnight. See NEW_CLIENT_LEAD_BASIS.
+  leads: "New Client Leads",
   applications: "Mortgages Written",
   // "Opportunities", not "Referrals": this counts protection cases OPENED. Capricorn records no
   // referral event — see PROTECTION_OPPORTUNITY_NOTE in domain/data-quality.ts.
   referrals: "Protection Opportunities",
   sales: "Protection Sales",
+  existingCases: "Existing Client Cases",
 };
 
-export const KPI_KEYS: KpiKey[] = ["leads", "applications", "referrals", "sales"];
+export const KPI_KEYS: KpiKey[] = ["leads", "applications", "referrals", "sales", "existingCases"];
 
 export type KpiTargets = Record<KpiKey, number>;
 
 /** Business-wide daily targets — sum of the office targets below. Leads = 633/wk (Kyle 2026-07-14,
- *  see OFFICE_DAILY_TARGETS); referrals mirror sales (the protection pledge is both). */
-export const DAILY_TARGETS: KpiTargets = { leads: 126.6, applications: 23, referrals: 5, sales: 5 };
+ *  see OFFICE_DAILY_TARGETS); referrals mirror sales (the protection pledge is both).
+ *
+ *  ⚠ The leads figure is on the OLD basis. 633/wk was set by headcount against a count that included
+ *  remortgages and repeat clients; leads now means new clients only, which runs ~16% lower on the same
+ *  weeks. Kept unchanged rather than quietly rebased — inventing a target is Capricorn's call, not
+ *  ours — and flagged on-screen. `existingCases` is 0: untargeted by design, not an oversight. */
+export const DAILY_TARGETS: KpiTargets = { leads: 126.6, applications: 23, referrals: 5, sales: 5, existingCases: 0 };
 
 // ---------------------------------------------------------------------------
 // Weekly run chase (Conor's principles, 2026-07-06 email)
@@ -71,6 +85,10 @@ const WEEKEND_SHARES: Record<KpiKey, [number, number]> = {
   applications: [0.015, 0.020],
   referrals: [0.020, 0.000],
   sales: [0.035, 0.000],
+  // New enquiries arrive at the weekend; remortgage and repeat work is opened by advisers on weekdays.
+  // Observed Sat 8 – Fri 14 Aug: 2 of 111 existing-client cases fell on the Saturday, 0 on the Sunday.
+  // Only shapes the day curve, which nothing paces against while this KPI has no target.
+  existingCases: [0.020, 0.000],
 };
 
 /** Conor's weekday shape — Mon–Thu equal, Fri 80% of a Mon–Thu day. */
@@ -102,10 +120,11 @@ export const CUMULATIVE_WEEK_SHARES: Record<KpiKey, number[]> = Object.fromEntri
 ) as Record<KpiKey, number[]>;
 
 /** KPI-agnostic curve, for the few places that pace a mixed or unspecified measure (Momentum's
- *  partial-week extrapolation, the League's most-improved). The straight mean of the four KPI
- *  curves — never used where the KPI is known, because then the KPI's own curve is more honest. */
+ *  partial-week extrapolation, the League's most-improved). The straight mean of the TARGETED KPI
+ *  curves — never used where the KPI is known, because then the KPI's own curve is more honest.
+ *  Untargeted KPIs are excluded so adding one cannot silently shift everything paced by this. */
 export const BLENDED_CUMULATIVE_SHARES: number[] = WEEK_DAY_NAMES.map((_, i) =>
-  KPI_KEYS.reduce((sum, k) => sum + CUMULATIVE_WEEK_SHARES[k][i], 0) / KPI_KEYS.length,
+  TARGETED_KPI_KEYS.reduce((sum, k) => sum + CUMULATIVE_WEEK_SHARES[k][i], 0) / TARGETED_KPI_KEYS.length,
 );
 
 /** Weekly target for a KPI (business-wide). Team-Targets feed plugs in here. */
@@ -142,14 +161,14 @@ export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
 // No Türkiye row (Conor confirmed 2026-07-07 there's no Turkey office — its 2 advisers are
 // UNASSIGNED pending a real mapping). Unassigned carries none by design.
 export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
-  Hammersmith: { leads: 98, applications: 18, referrals: 4, sales: 4 },
-  Mayfair: { leads: 10.6, applications: 2.4, referrals: 0.4, sales: 0.4 },
-  Newmarket: { leads: 7.2, applications: 0.6, referrals: 0.2, sales: 0.2 },
-  "Hong Kong": { leads: 3.6, applications: 0.6, referrals: 0.2, sales: 0.2 },
-  Singapore: { leads: 5.4, applications: 0.8, referrals: 0.2, sales: 0.2 },
-  Shanghai: { leads: 1.8, applications: 0.2, referrals: 0.2, sales: 0.2 },
-  Dubai: { leads: 0, applications: 0.2, referrals: 0.2, sales: 0.2 },
-  [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0 },
+  Hammersmith: { leads: 98, applications: 18, referrals: 4, sales: 4, existingCases: 0 },
+  Mayfair: { leads: 10.6, applications: 2.4, referrals: 0.4, sales: 0.4, existingCases: 0 },
+  Newmarket: { leads: 7.2, applications: 0.6, referrals: 0.2, sales: 0.2, existingCases: 0 },
+  "Hong Kong": { leads: 3.6, applications: 0.6, referrals: 0.2, sales: 0.2, existingCases: 0 },
+  Singapore: { leads: 5.4, applications: 0.8, referrals: 0.2, sales: 0.2, existingCases: 0 },
+  Shanghai: { leads: 1.8, applications: 0.2, referrals: 0.2, sales: 0.2, existingCases: 0 },
+  Dubai: { leads: 0, applications: 0.2, referrals: 0.2, sales: 0.2, existingCases: 0 },
+  [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0, existingCases: 0 },
 };
 
 /** Weekly WRITTEN targets, £. Kyle 2026-07-14 confirmed "Revenue" = written business, split

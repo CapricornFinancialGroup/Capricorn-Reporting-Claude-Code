@@ -214,3 +214,63 @@ export const MORTGAGE_OFFER_DATE = "WorkflowStatusPostOfferProcessingDate";
  * target — a real gap the old referral number was masking.
  */
 export const PROTECTION_OPPORTUNITY_NOTE = "protectioncase.CreatedDate — see docstring" as const;
+
+/**
+ * WHAT COUNTS AS A LEAD — a NEW CLIENT, not a new case (Capricorn, 2026-08-17).
+ *
+ * Their ruling, prompted by the board reading 378 leads for Sat 8 – Wed 12 Aug against 291 on the
+ * in-platform report the team ran at 17:00 on the 12th: "a new lead is actually a new client added to
+ * the system". Cases opened against a client already on the books — remortgages above all — are real
+ * work and still tracked, but they are not lead flow. Hence two KPIs: `leads` (new clients) and
+ * `existingCases` (cases against existing clients).
+ *
+ * WHY WE DO NOT KEY ON THE PLATFORM'S OWN FIELD. Their report is `usp_LeadsReport` →
+ * `usp_GetLeadsByUserId_LeadFlow` (Occfinance.Database), and that SP's header states its basis
+ * outright: *"Date filtering is on `tblClient.AddDate` [rather than `tblLead.Created`]"*. So it dates
+ * a lead by when the CLIENT record was created, which is exactly Capricorn's definition — any lead
+ * for a pre-existing client has no AddDate in the window and never appears. Two further filters
+ * narrow it again: the lead must have a live product of the requested FinanceTypeId
+ * (`EXISTS tblfinance … IsDeleted = 0 AND IsExternalProduct = 0`), and results are scoped to the
+ * brokers visible to whoever ran it (`#UserFilterIds` INNER JOINed on `tblLead.Adviser`) — which is
+ * why their figure is also entity-scoped where the board is group-wide. It dedupes to one row per
+ * client (`DENSE_RANK() … rn = 1`); we match that with COUNT(DISTINCT PrimaryClientKey).
+ *
+ * ⚠ `tblClient.AddDate` REACHES US UNUSABLE, which is why the basis below is derived instead.
+ * In the share it is `client.AddedToSystemDate`, and measured 2026-08-17:
+ *
+ *   225,246 client rows       bulk-loaded 22 Apr 2026, populated, latest value 21 Apr 2026
+ *   128,850 client rows       arrived 8 Jul 2026 onward — AddedToSystemDate NULL on every one
+ *   of Sat 8 – Wed 12's leads: 335 clients NULL, 43 populated and all 43 predating the window
+ *
+ * So the literal field cannot date a single recent lead. Getting it populated on incremental loads is
+ * the ask that would let us key on it exactly; until then this is the faithful equivalent.
+ *
+ * THE BASIS: a client is NEW on the date of their FIRST EVER case, across mortgage, protection and
+ * general insurance (Capricorn's ruling on the ambiguous case: a client who arrived via protection is
+ * not a new lead when they later take a mortgage). History runs to 2009 in `mortgagecase`, so
+ * first-appearance is well-founded rather than an artifact of how far back the share goes.
+ *
+ * Client identity is `mortgagecase.PrimaryClientKey`, verified 2026-08-17: never NULL across all
+ * 270,001 live Capricorn mortgage cases, agreeing with `mortgagecaseclient` on all 386 rows of the
+ * reference week, and resolving 100% into `dbo.client`. The bridge tables supply the key for
+ * protection and GI, which carry no direct column.
+ *
+ * Reference figures on this basis (measured 2026-08-17, migration batch excluded):
+ *
+ *   window                        cases   new clients   existing-client cases
+ *   Sat  8 – Wed 12 Aug             377           315                      61
+ *   Sat  8 – Fri 14 Aug (full)      575           463                     111
+ *   Sat  1 – Fri  7 Aug             676           531                     145
+ *   Sat 25 – Fri 31 Jul             538           456                      82
+ *
+ * The two legs partition the case count exactly — new-client CASES plus existing-client cases equals
+ * the total; the published new-client figure is then deduped to clients, so it can sit one or two
+ * below its own leg (315 clients from 316 cases in the reference week).
+ *
+ * ⚠ THE LEADS TARGET IS NOW ON THE WRONG BASIS. 633/week was set by headcount (Kyle 2026-07-14,
+ * ~10 leads/adviser/wk) against the OLD, wider count. On the new definition the same week reads ~16%
+ * lower, so every screen will show the firm further behind a target that was never set against this
+ * measure. Awaiting Kyle's ruling; flagged on-screen until then. `existingCases` ships with NO target
+ * for the same reason — Capricorn have not set one.
+ */
+export const NEW_CLIENT_LEAD_BASIS = "first case across mortgage/protection/GI — see docstring" as const;

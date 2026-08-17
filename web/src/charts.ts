@@ -36,8 +36,10 @@ export const STATUS_COLOR: Record<string, string> = {
 export function paceChart(opts: {
   days: string[];
   actual: Array<number | null>;
-  targetPace: number[];
-  projection: Array<number | null>;
+  /** Null for an UNTARGETED KPI — no target line is drawn. A flat zero pace line would read as the
+   *  team beating a target of nothing, which is exactly the false verdict `targeted` exists to stop. */
+  targetPace: number[] | null;
+  projection: Array<number | null> | null;
   behind: boolean;
   nowLabel?: string;
 }): EChartsOption {
@@ -65,14 +67,17 @@ export function paceChart(opts: {
       splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
     },
     series: [
-      {
-        name: "Target pace",
-        type: "line",
-        data: opts.targetPace,
-        showSymbol: false,
-        lineStyle: { width: 1.5, type: "dashed", color: PACE_GREY },
-        z: 1,
-      },
+      // Target and projection are dropped entirely for an untargeted KPI rather than drawn as zero.
+      ...(opts.targetPace
+        ? [{
+            name: "Target pace",
+            type: "line" as const,
+            data: opts.targetPace,
+            showSymbol: false,
+            lineStyle: { width: 1.5, type: "dashed" as const, color: PACE_GREY },
+            z: 1,
+          }]
+        : []),
       {
         name: "Actual",
         type: "line",
@@ -96,16 +101,18 @@ export function paceChart(opts: {
               }
             : undefined,
       },
-      {
-        name: "Projection",
-        type: "line",
-        data: opts.projection,
-        smooth: 0.2,
-        showSymbol: false,
-        connectNulls: false,
-        lineStyle: { width: 1.5, type: "dashed", color: PROJECTION_GREY },
-        z: 2,
-      },
+      ...(opts.projection
+        ? [{
+            name: "Projection",
+            type: "line" as const,
+            data: opts.projection,
+            smooth: 0.2,
+            showSymbol: false,
+            connectNulls: false,
+            lineStyle: { width: 1.5, type: "dashed" as const, color: PROJECTION_GREY },
+            z: 2,
+          }]
+        : []),
     ],
   };
 }

@@ -43,18 +43,21 @@ function placeholderState(): TargetsState {
 
 let state: TargetsState = placeholderState();
 
+// `?? 0` on both: an upload source that predates a KPI (or simply has no column for an untargeted
+// one) otherwise yields `undefined / 5` = NaN, which propagates silently into the office targets and
+// renders as a blank gap on the wall rather than an error anyone would notice.
 function divideBy5(t: KpiTargets): KpiTargets {
-  return Object.fromEntries(KPI_KEYS.map((k) => [k, t[k] / 5])) as KpiTargets;
+  return Object.fromEntries(KPI_KEYS.map((k) => [k, (t[k] ?? 0) / 5])) as KpiTargets;
 }
 
 function multiplyBy5(t: KpiTargets): KpiTargets {
-  return Object.fromEntries(KPI_KEYS.map((k) => [k, t[k] * 5])) as KpiTargets;
+  return Object.fromEntries(KPI_KEYS.map((k) => [k, (t[k] ?? 0) * 5])) as KpiTargets;
 }
 
 function sumOffices(offices: Record<string, KpiTargets>): KpiTargets {
-  const total: KpiTargets = { leads: 0, applications: 0, referrals: 0, sales: 0 };
+  const total: KpiTargets = { leads: 0, applications: 0, referrals: 0, sales: 0, existingCases: 0 };
   for (const t of Object.values(offices)) {
-    for (const k of KPI_KEYS) total[k] += t[k];
+    for (const k of KPI_KEYS) total[k] += t[k] ?? 0;
   }
   return total;
 }

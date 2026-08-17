@@ -1,42 +1,22 @@
-// Screen 3 — Adviser League: period KPI strip, Top Performers, Most Improved, Focus This Month.
+// Screen 3 — Adviser League: a week-to-date KPI strip over three cross-ranked leaderboards.
+//
+// The strip stays on the CURRENT WEEK, matching every other screen, so its figures remain directly
+// comparable with the run chase and with Capricorn's own weekly reports. The leaderboards below rank
+// over four weeks, because one week ranks on one or two cases — both windows are printed at full
+// size rather than left to be inferred. Top Performers / Most Improved / Focus This Month were
+// replaced by the boards on 2026-08-13.
 
 import { usePayload } from "../api.js";
 import { CompareStrip } from "../components/CompareStrip.js";
-import { Sparkline } from "../components/ui.js";
+import { LeagueBoards } from "../components/LeagueBoards.js";
 import { MetricInfo } from "../components/MetricInfo.js";
 import { gbpCompact, num, pct, shortDate } from "../format.js";
 import type { AdviserLeaguePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
-const trendArrow = { up: "↑", flat: "→", down: "↓" } as const;
-const trendColor = { up: "#16A34A", flat: "#64748B", down: "#DC2626" } as const;
-
-/**
- * Column headings for the per-adviser rows.
- *
- * These said "Apps" and "Refs" until 2026-08-11 — the two words that were deliberately RETIRED from
- * the tiles above them, for being wrong:
- *
- *   "Applications" → "Mortgages Written"        (2026-07-28) it counts business written, not
- *                                                applications submitted to a lender
- *   "Referrals"    → "Protection Opportunities" (2026-07-30) the tile was counting PaymentShield
- *                                                quote attempts; Capricorn records no referral event
- *
- * The rename never reached the league rows, so the same screen showed "Protection Opportunities" in
- * its headline and "Refs" underneath — for the identical number. That is the "no consistency across
- * the screens" complaint reproduced inside a single card. The short forms below are abbreviations OF
- * the agreed names rather than survivals of the old ones, and each carries the full name on hover.
- */
-const COLS = {
-  apps: { short: "Written", full: "Mortgages Written — business formally submitted for processing, not applications sent to a lender" },
-  refs: { short: "Opps", full: "Protection Opportunities — protection cases opened. NOT a count of referrals" },
-  sales: { short: "Sales", full: "Protection Sales — protection cases that have reached submission or beyond" },
-} as const;
-
 export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<AdviserLeaguePayload>("adviser-league", filters, mode, refreshMs);
   const { data: compareData } = usePayload<AdviserLeaguePayload>("adviser-league", compareFilters ?? null, mode, refreshMs);
-  const badge = (i: number) => (i === 0 ? "gold" : i === 1 ? "silver" : i === 2 ? "bronze" : "");
   return (
     <Load error={error} data={data}>
       {data && (
@@ -85,83 +65,7 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
             />
           )}
 
-          <div className="row cols-3 grow">
-            <div className="card">
-              <div className="card-title">
-                <span className="league-panel-title green">Top Performers</span>
-                <span className="card-sub">{shortDate(data.window.from)} – {shortDate(data.window.to)} · ranked by mortgages written</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {data.top.map((a, i) => (
-                  <div className={`league-row ${i === 0 ? "rank-1" : ""}`} key={a.name}>
-                    <span className={`league-badge ${badge(i)}`}>{i + 1}</span>
-                    <div>
-                      <div className="league-name">{a.name}</div>
-                      <div className="league-meta">
-                        {a.office !== "Unassigned" ? `${a.office} · ` : ""}avg {a.avgPerDay ?? "—"}/day{" "}
-                        <span style={{ color: trendColor[a.trendDir] }}>{trendArrow[a.trendDir]}</span>
-                      </div>
-                    </div>
-                    <div className="league-stats">
-                      <span title={COLS.apps.full}><span className="league-stat-label">{COLS.apps.short}</span>{num(a.apps)}</span>
-                      <span title={COLS.refs.full}><span className="league-stat-label">{COLS.refs.short}</span>{num(a.refs)}</span>
-                      <span title={COLS.sales.full}><span className="league-stat-label">{COLS.sales.short}</span>{num(a.sales)}</span>
-                      <Sparkline values={a.trend} color={trendColor[a.trendDir]} width={64} height={20} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-title">
-                <span className="league-panel-title blue">Most Improved</span>
-                <span className="card-sub">biggest positive trend vs prior period · current week pace-adjusted</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {data.improved.length === 0 && <div className="loading">No qualifying advisers yet this period.</div>}
-                {data.improved.map((a) => (
-                  <div className="league-row" key={a.name}>
-                    <span className="league-badge" style={{ background: "#1D4ED8" }}>↑</span>
-                    <div>
-                      <div className="league-name">{a.name}</div>
-                      <div className="league-meta">prev: {a.lastApps} written · {a.lastRefs} opps</div>
-                    </div>
-                    <div className="league-stats">
-                      <span title={COLS.apps.full}><span className="league-stat-label">{COLS.apps.short}</span>{num(a.thisApps)}</span>
-                      <span title={COLS.refs.full}><span className="league-stat-label">{COLS.refs.short}</span>{num(a.thisRefs)}</span>
-                      <span className="val-green">{a.deltaPct != null ? `+${Math.round(a.deltaPct * 100)}%` : "—"}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="card">
-              <div className="card-title">
-                <span className="league-panel-title amber">Focus This Month</span>
-                <span className="card-sub">below target · scheduled for review</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {data.focus.length === 0 && <div className="loading">Nobody needs a nudge — great month.</div>}
-                {data.focus.map((a) => (
-                  <div className="league-row" key={a.name}>
-                    <span className="league-badge" style={{ background: "#D97706" }}>!</span>
-                    <div>
-                      <div className="league-name">{a.name}</div>
-                      <div className="league-meta" style={{ color: trendColor[a.trendDir] }}>
-                        {trendArrow[a.trendDir]} {a.note}
-                      </div>
-                    </div>
-                    <div className="league-stats">
-                      <span title={COLS.apps.full}><span className="league-stat-label">{COLS.apps.short}</span>{num(a.apps)}</span>
-                      <span title={COLS.refs.full}><span className="league-stat-label">{COLS.refs.short}</span>{num(a.refs)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <LeagueBoards boards={data.boards} />
 
           <div className="placeholder-note">
             * Written commission, for the dates shown above, is <em>mortgage commission</em> (the procuration fee

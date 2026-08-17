@@ -3,10 +3,11 @@
 
 import { describe, expect, it } from "vitest";
 import { mortgageStageCounts } from "./funnel.js";
-import { kpiDaily, kpiDailyByAdviser, KPI_SPECS } from "./kpis.js";
+import { CLIENT_FIRST_CASE_CTE, kpiDaily, kpiDailyByAdviser, KPI_SPECS } from "./kpis.js";
 import { protectionWrittenDaily, revenueDaily } from "./momentum.js";
 import { applicationEvents, leadEvents, referralEvents, saleEvents } from "./ticker.js";
 import { revenueByAdviser } from "./advisers.js";
+import { KPI_KEYS } from "../../domain/targets.js";
 import type { BuiltQuery } from "./query.js";
 
 function expectConventions(q: BuiltQuery, opts: { deletedFlag?: boolean } = {}): void {
@@ -62,15 +63,17 @@ describe("mortgage 'written' keys on the platform's status-70 date", () => {
 });
 
 describe("kpi builders", () => {
-  it("covers all four KPIs with the verified semantics", () => {
+  it("covers every KPI with the verified semantics", () => {
     expect(KPI_SPECS.leads.countExpr).toContain("DISTINCT");
     expect(KPI_SPECS.applications.countExpr).toBe("COUNT(*)");
     // Protection Opportunities = protectioncase OPENED. crosssellreferral (PaymentShield quotes +
     // currency exchange) must never come back as the source — see PROTECTION_OPPORTUNITY_NOTE.
     expect(KPI_SPECS.referrals.table).toBe("dbo.protectioncase");
     expect(KPI_SPECS.referrals.dateColumn).toBe("CreatedDate");
-    for (const kpi of ["leads", "applications", "referrals", "sales"] as const) {
-      expect(KPI_SPECS[kpi].table).not.toContain("crosssellreferral");
+    // KPI_KEYS-driven, not a hand-listed four: a KPI added later must inherit this guard rather than
+    // quietly escape it.
+    for (const kpi of KPI_KEYS) {
+      expect(KPI_SPECS[kpi].table, kpi).not.toContain("crosssellreferral");
     }
     expect(KPI_SPECS.sales.table).toContain("protectioncase");
   });
@@ -122,14 +125,30 @@ describe("migration guard is scoped to LeadDate-keyed metrics", () => {
     expect(hasGuard(protectionWrittenDaily("2026-07-01", "2026-07-31"))).toBe(false);
   });
 
-  it("guards only the leads expression inside mortgageStageCounts, not the whole WHERE", () => {
+  it("guards the LeadDate-keyed expressions inside mortgageStageCounts, and only those", () => {
     const q = mortgageStageCounts("2026-07-01", "2026-07-31");
     expect(hasGuard(q)).toBe(true);
-    // The guard must sit inside the leads COUNT(DISTINCT CASE …), so applications/offers keep their
-    // rows. Everything before the applications SUM is the leads expression.
-    const leadsExpr = q.text.slice(0, q.text.indexOf("AS leads"));
-    expect(hasGuard({ text: leadsExpr, params: [] })).toBe(true);
-    expect(q.text.slice(q.text.indexOf("AS leads"))).not.toContain("@MigOrg0");
+    // Per-expression, not "everything after the leads stage": BOTH LeadDate-keyed stages (leads and
+    // existingCases) must carry the guard, and the two written-status stages must not. Slicing at the
+    // first stage boundary used to be enough when leads was the only guarded stage — it isn't now,
+    // and loosening it to "the guard appears somewhere" would retire the regression net that exists
+    // because guard leakage into written metrics cost 16 cases / £19,592.
+    const exprFor = (alias: string): string => {
+      const end = q.text.indexOf(`AS ${alias}`);
+      const start = q.text.lastIndexOf(",", end - 1) + 1 || q.text.indexOf("SELECT");
+      return q.text.slice(start, end);
+    };
+    for (const guarded of ["leads", "existingCases"]) {
+      expect(hasGuard({ text: exprFor(guarded), params: [] }), guarded).toBe(true);
+    }
+    for (const unguarded of ["applications", "offers"]) {
+      expect(exprFor(unguarded), unguarded).not.toContain("@MigOrg0");
+    }
+  });
+
+  it("guards the existingCases KPI (LeadDate-keyed, same batch)", () => {
+    expect(hasGuard(kpiDaily("existingCases", "2026-07-01", "2026-07-31"))).toBe(true);
+    expect(hasGuard(kpiDailyByAdviser("existingCases", "2026-07-01", "2026-07-31"))).toBe(true);
   });
 });
 
@@ -203,4 +222,92 @@ describe("ticker builders never touch the client table", () => {
       expect(q.text.toLowerCase()).not.toContain("dbo.client");
     });
   }
+});
+
+// A lead is a NEW CLIENT, not a new case (Capricorn 2026-08-17). The board read 378 for Sat 8 – Wed 12
+// Aug against 291 on their own report, which dates a lead by when the CLIENT record was created and so
+// never sees a lead for an existing client. These tests pin the shape of that definition — see
+// NEW_CLIENT_LEAD_BASIS in domain/data-quality.ts for the full ruling and the measured figures.
+describe("leads mean new CLIENTS, not new cases", () => {
+  const leadBuilders = () => [
+    kpiDaily("leads", "2026-08-08", "2026-08-12"),
+    kpiDailyByAdviser("leads", "2026-08-08", "2026-08-12"),
+    mortgageStageCounts("2026-08-08", "2026-08-12"),
+    leadEvents("2026-08-12"),
+  ];
+
+  it("counts DISTINCT CLIENTS, never distinct LeadIds", () => {
+    for (const q of [kpiDaily("leads", "2026-08-08", "2026-08-12"), kpiDailyByAdviser("leads", "2026-08-08", "2026-08-12")]) {
+      expect(q.text).toContain("COUNT(DISTINCT f.PrimaryClientKey)");
+      // COUNT(DISTINCT LeadId) is the OLD definition — it counted a remortgage of a ten-year client as
+      // new lead flow, which is the whole reason this changed.
+      expect(q.text).not.toContain("COUNT(DISTINCT f.LeadId)");
+    }
+  });
+
+  it("restricts every lead-counting builder to the client's FIRST case", () => {
+    for (const q of leadBuilders()) {
+      expect(q.text).toContain("clientFirstCase");
+      expect(q.text).toMatch(/fc\.firstDay IS NULL OR fc\.firstDay >= f\.LeadDate/);
+    }
+  });
+
+  it("derives first-appearance across all three case types, not mortgages alone", () => {
+    // A client who arrived via a protection or GI case is NOT a new lead when they later take a
+    // mortgage (Capricorn's ruling on the ambiguous case). Miss a table here and those clients would
+    // silently start counting as new.
+    const q = kpiDaily("leads", "2026-08-08", "2026-08-12");
+    for (const table of ["dbo.mortgagecase", "dbo.protectioncase", "dbo.generalinsurancecase"]) {
+      expect(q.text, table).toContain(table);
+    }
+  });
+
+  it("joins client identity LEFT, so an unresolvable client cannot vanish from the count", () => {
+    // PrimaryClientKey is never NULL in this feed today; an INNER join would nonetheless silently drop
+    // whole days of lead flow if that ever changed upstream.
+    for (const q of leadBuilders()) {
+      expect(q.text).toContain("LEFT JOIN clientFirstCase fc");
+      expect(q.text).not.toMatch(/(?<!LEFT )JOIN clientFirstCase/);
+    }
+  });
+
+  it("keeps the first-case CTE parameter-free so it cannot collide with the outer query's binds", () => {
+    // The CTE is inlined into builders that already bind @Org0/@Org1/@From/@To (and @D in the ticker).
+    // Any param of its own would either duplicate a name or go unbound — expectConventions catches
+    // both, so run it across every builder that inlines the CTE.
+    for (const q of leadBuilders()) expectConventions(q);
+    expect(CLIENT_FIRST_CASE_CTE).not.toContain("@");
+  });
+
+  it("scopes the CTE to live cases but NOT to one entity", () => {
+    // Client identity spans both Capricorn entities: a client whose first case sat in the Consultancy
+    // is not new when Mortgages opens their second.
+    expect(CLIENT_FIRST_CASE_CTE).toContain("COALESCE(DeletedYN, 'N') <> 'Y'");
+    expect(CLIENT_FIRST_CASE_CTE).not.toContain("OrganisationKey");
+  });
+});
+
+describe("existingCases is the exact complement of leads", () => {
+  it("counts CASES (not clients) for clients whose first case predates this one", () => {
+    for (const q of [kpiDaily("existingCases", "2026-08-08", "2026-08-12"), kpiDailyByAdviser("existingCases", "2026-08-08", "2026-08-12")]) {
+      expectConventions(q);
+      expect(q.text).toContain("COUNT(*)");
+      expect(q.text).toContain("fc.firstDay < f.LeadDate");
+    }
+  });
+
+  it("partitions the same population as leads — no case in both legs, none in neither", () => {
+    // The two extraClauses must be strict complements over the same rows, or the split silently
+    // loses or double-counts work. Compared as text because these are pure builders.
+    expect(KPI_SPECS.leads.extraClause).toBe("(fc.firstDay IS NULL OR fc.firstDay >= f.LeadDate)");
+    expect(KPI_SPECS.existingCases.extraClause).toBe("fc.firstDay < f.LeadDate");
+    expect(KPI_SPECS.existingCases.dateColumn).toBe(KPI_SPECS.leads.dateColumn);
+    expect(KPI_SPECS.existingCases.table).toBe(KPI_SPECS.leads.table);
+  });
+
+  it("is surfaced by the funnel alongside the stages, not as one of them", () => {
+    // Existing-client work enters the pipeline part-way along; folding it into the leads stage would
+    // inflate every conversion denominator on Funnel Health.
+    expect(mortgageStageCounts("2026-08-08", "2026-08-12").text).toContain("AS existingCases");
+  });
 });

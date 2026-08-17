@@ -5,6 +5,7 @@
 
 import { MORTGAGE_WRITTEN_DATE } from "../../domain/data-quality.js";
 import { combine, excludeMigrations, notDeleted, orgFilter } from "./filters.js";
+import { CLIENT_FIRST_CASE_CTE } from "./kpis.js";
 import type { BuiltQuery, SqlParam } from "./query.js";
 
 export interface ApplicationEvent {
@@ -38,18 +39,25 @@ export interface LeadEvent {
   introducer: string | null;
 }
 
+/** New-client lead events for the day. Restricted to first-case clients so the ticker names the same
+ *  events the Leads KPI counts — a ticker announcing "new lead" for a remortgage of a ten-year client
+ *  would contradict the tile above it (Capricorn 2026-08-17, see NEW_CLIENT_LEAD_BASIS). Still no
+ *  client-table join: the PII rule above is unaffected, `PrimaryClientKey` is a bare key. */
 export function leadEvents(day: string, top = 25): BuiltQuery {
   const base = combine(orgFilter("f"), notDeleted("f"), excludeMigrations("f"));
   const params: SqlParam[] = [...base.params, { name: "D", value: day, kind: "date" }];
   return {
-    text: `SELECT TOP ${Math.max(1, Math.min(100, top))}
+    text: `WITH ${CLIENT_FIRST_CASE_CTE}
+           SELECT TOP ${Math.max(1, Math.min(100, top))}
                   adv.FullName AS fullName, adv.Username AS username,
                   CASE WHEN COALESCE(i.IntroducerIsMainBrokerageYN, 'N') = 'Y' THEN NULL
                        ELSE i.IntroducerCompany END AS introducer
              FROM dbo.mortgagecase f
+             LEFT JOIN clientFirstCase fc ON fc.ck = f.PrimaryClientKey
              LEFT JOIN dbo.useraccount adv ON adv.UserAccountKey = f.PrimaryAdviserUserAccountKey
              LEFT JOIN dbo.introducer i ON i.IntroducerKey = f.IntroducerKey
             WHERE ${base.clause} AND f.LeadDate = @D
+              AND (fc.firstDay IS NULL OR fc.firstDay >= f.LeadDate)
             ORDER BY f.LeadId DESC;`,
     params,
   };

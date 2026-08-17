@@ -27,6 +27,7 @@ import {
   KPI_LABELS,
   LEAGUE,
   REFERRAL_RATE_TARGET,
+  TARGETED_KPI_KEYS,
   WEEK_DAY_NAMES,
   type KpiKey,
   type KpiTargets,
@@ -40,6 +41,7 @@ import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "
 import { completeThrough, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
+import { referredProtectionSales, type ReferredSale } from "./referrals.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
 import * as tickerQ from "./ticker.js";
 import { isoWeekNo, pctDelta, previousPeriod, shiftDays, weekdaysBetween, weekStartOf } from "./trends.js";
@@ -264,7 +266,7 @@ interface OfficeCums {
 }
 
 function emptyKpiRecord(): KpiTargets {
-  return { leads: 0, applications: 0, referrals: 0, sales: 0 };
+  return { leads: 0, applications: 0, referrals: 0, sales: 0, existingCases: 0 };
 }
 
 function officeAggregates(core: ChaseCore): OfficeCums[] {
@@ -397,6 +399,11 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
     const dailyTargets = getDailyTargets();
     const kpis = KPI_KEYS.map((k) => {
       const weekly = dailyTargets[k] * 5;
+      // A KPI Capricorn have set no target for is TRACKED, not chased. Without this it would pace
+      // against zero, and paceStatus/chaseStatus read "expected 0, actual > 0" as ahead — so
+      // `existingCases` would sit on the wall permanently bright green for beating a target that does
+      // not exist. The flag lets the card render the figure and its trend with no verdict attached.
+      const targeted = weekly > 0;
       const thisWeek = weekRows(core.daily[k], ctx);
       const wtd = sum(thisWeek.map((r) => r.n));
       // Each KPI paces against ITS OWN day curve: Saturday is 6% of a week's leads but 1.5% of its
@@ -414,28 +421,34 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       return {
         key: k,
         label: KPI_LABELS[k],
+        /** False = tracked but not chased; the card shows no target, gap, pace or status. */
+        targeted,
         weeklyTarget: weekly,
         wtd,
         // Week pace — drives the trend chart's header status (the chart is the WTD trend).
-        pace,
+        pace: targeted ? pace : null,
         day: {
           date: ctx.latestDay,
           actual: dayActual,
-          target,
-          gap: dayActual - target,
-          status: chaseStatus(dayActual, target),
+          target: targeted ? target : null,
+          gap: targeted ? dayActual - target : null,
+          status: targeted ? chaseStatus(dayActual, target) : null,
         },
         weekProgress: {
           actualPct,
-          expectedPct,
+          // Percentages OF THE WEEKLY TARGET — meaningless without one, so both go null together
+          // rather than showing an expected-% line the actual can never be measured against.
+          expectedPct: targeted ? expectedPct : null,
           // +ahead / −behind, percentage points of the weekly target.
-          gapPp: actualPct != null && expectedPct != null ? round(actualPct - expectedPct, 1) : null,
+          gapPp: actualPct != null && targeted && expectedPct != null ? round(actualPct - expectedPct, 1) : null,
         },
         chart: {
           days,
           actual,
-          targetPace: weeklyTargetPace(weekly, ctx.cumulativeShares[k]),
-          projection: projectionSeries(actual, pace.projectedFinish),
+          // No target line and no projection for an untargeted KPI: a flat zero pace line would read
+          // as a target of nothing, and a projection only means something against one.
+          targetPace: targeted ? weeklyTargetPace(weekly, ctx.cumulativeShares[k]) : null,
+          projection: targeted ? projectionSeries(actual, pace.projectedFinish) : null,
         },
       };
     });
@@ -501,8 +514,12 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
     const offices = officeAggregates(core)
       .map((o) => {
         const targets = officeDailyTargets[o.office] ?? emptyKpiRecord();
-        const hasTargets = KPI_KEYS.some((k) => targets[k] > 0);
-        const kpis = KPI_KEYS.map((k) => {
+        const hasTargets = TARGETED_KPI_KEYS.some((k) => targets[k] > 0);
+        // TARGETED KPIs only. This screen exists to rank offices against their targets, and its tiles
+        // are "actual/target" with a pace bar — an untargeted KPI has no honest rendering here (and
+        // chaseStatus would band "expected 0, actual > 0" as ahead, painting it green). The
+        // untargeted measures live on the Daily Run Chase cards instead.
+        const kpis = TARGETED_KPI_KEYS.map((k) => {
           const weekly = targets[k] * 5;
           const pace = computePace(weekly, o.mtd[k], ctx.fractionByKpi[k]);
           return {
@@ -518,7 +535,7 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
         // Mini chart: blended % of weekly target achieved by day vs the weighted pace line.
         const pctSeries = days.map((_, i) => {
           const ratios: number[] = [];
-          for (const k of KPI_KEYS) {
+          for (const k of TARGETED_KPI_KEYS) {
             const weekly = targets[k] * 5;
             const v = o.series[k][i];
             if (weekly > 0 && v != null) ratios.push(v / weekly);
@@ -733,6 +750,8 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
         trendDir: r.trendDir,
       }));
 
+    const boards = await leagueBoards(config, to);
+
     return {
       window: { from, to, weekdays, weeks: weekKeys.length },
       totals: {
@@ -758,6 +777,139 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
       })),
       improved,
       focus,
+      boards,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Screen 3b — the three cross-ranked leaderboards
+// ---------------------------------------------------------------------------
+
+/** How many weeks the boards rank over. A SINGLE week cannot carry a ranking: in the last complete
+ *  week the top scorer wrote 14 and six advisers wrote exactly 1, so places 5th downward are decided
+ *  by a single case and would reshuffle randomly every week. Over four weeks the top scorer is 44,
+ *  which separates people on behaviour rather than noise. */
+const BOARD_WEEKS = 4;
+
+/** Rows shown per board. The protection team is 6 people, so that board shows everyone. */
+const BOARD_ROWS = 12;
+
+interface BoardRow {
+  rank: number;
+  name: string;
+  office: string;
+  /** The headline count for THIS board. */
+  value: number;
+  /** Mortgages written in the board window (0 for protection-only advisers). */
+  written: number;
+  /** Protection sales introduced by this adviser's clients. */
+  referred: number;
+  /** Protection sales this adviser wrote themselves. */
+  sold: number;
+  /** referred ÷ written, as a percentage. Null when they wrote nothing. */
+  rate: number | null;
+  /** Protection commission, £ — only meaningful on the converters' board. */
+  commission: number;
+  /** Who converted this adviser's referrals (originators), busiest first. */
+  partners: Array<{ name: string; n: number }>;
+}
+
+/**
+ * Mortgages written, protection referred, and protection sold — three boards over the same window.
+ *
+ * The three do NOT rank the same population, which is the whole reason this is built the way it is.
+ * Protection sales are written by a specialist team of about six people who write no mortgages at
+ * all, so a mortgage adviser being absent from that board is their job description, not a failure.
+ * The link between the two populations is the REFERRED board: a protection sale is credited both to
+ * the adviser who wrote it and to the mortgage adviser whose client it was.
+ *
+ * `referred` replaced "protection opportunities opened" after the data contradicted it. James Storer
+ * opened 1 opportunity against 36 mortgages written, which looked like a total failure to cross-sell
+ * — but his clients produced 6 protection sales worth £10,787. Opportunities-opened measures who does
+ * the data entry; referred measures who introduces the business. See services/reporting/referrals.ts
+ * for how the credit is derived, and its caveats.
+ */
+export async function leagueBoards(config: Config, to: string) {
+  const from = shiftDays(weekStartOf(to), -7 * (BOARD_WEEKS - 1));
+  return cached(`ds-league-boards:${from}:${to}`, ttl(config), async () => {
+    const [writtenRows, soldRows, referralRows] = await Promise.all([
+      q<AdviserDailyCount>(config, kpiDailyByAdviser("applications", from, to)),
+      q<AdviserDailyCount>(config, kpiDailyByAdviser("sales", from, to)),
+      q<ReferredSale>(config, referredProtectionSales(from, to)),
+    ]);
+
+    interface Acc {
+      name: string; username: string | null; written: number; referred: number; sold: number;
+      commission: number; partners: Map<string, number>;
+    }
+    const people = new Map<string, Acc>();
+    const nameOf = (username: string | null, full: string | null) => full?.trim() || username?.trim() || "Unknown";
+    const get = (username: string | null, full: string | null): Acc => {
+      const name = nameOf(username, full);
+      let a = people.get(name);
+      if (!a) {
+        a = { name, username, written: 0, referred: 0, sold: 0, commission: 0, partners: new Map() };
+        people.set(name, a);
+      }
+      return a;
+    };
+
+    for (const r of writtenRows) get(r.username, r.fullName).written += r.n;
+    for (const r of soldRows) get(r.username, r.fullName).sold += r.n;
+
+    // Referral credit. Self-referrals (the protection adviser sourced the client themselves) are
+    // dropped: crediting someone for introducing business to themselves would flatter the board and
+    // tell nobody anything.
+    let attributed = 0;
+    let unattributed = 0;
+    for (const r of referralRows) {
+      if (!r.originator) { unattributed += r.sales; continue; }
+      if (r.originator === r.converter) continue;
+      attributed += r.sales;
+      const o = get(r.originator, r.originatorName);
+      o.referred += r.sales;
+      const who = nameOf(r.converter, r.converterName);
+      o.partners.set(who, (o.partners.get(who) ?? 0) + r.sales);
+      // The converter keeps their own commission total; the originator's referred count is separate.
+      get(r.converter, r.converterName).commission += r.commission ?? 0;
+    }
+    for (const r of referralRows) {
+      if (r.originator && r.originator === r.converter) {
+        get(r.converter, r.converterName).commission += r.commission ?? 0;
+      }
+    }
+
+    const all = [...people.values()];
+    /** Competition ranking (1,2,2,4) on a chosen measure, zeroes excluded. */
+    const board = (pick: (a: Acc) => number, limit: number): BoardRow[] => {
+      const sorted = all.filter((a) => pick(a) > 0).sort((x, y) => pick(y) - pick(x) || y.written - x.written);
+      let prev = Number.NaN;
+      let rank = 0;
+      return sorted.slice(0, limit).map((a, i) => {
+        if (pick(a) !== prev) { rank = i + 1; prev = pick(a); }
+        return {
+          rank,
+          name: a.name,
+          office: officeOf(a.username),
+          value: pick(a),
+          written: a.written,
+          referred: a.referred,
+          sold: a.sold,
+          rate: a.written > 0 ? Math.round((a.referred / a.written) * 100) : null,
+          commission: Math.round(a.commission),
+          partners: [...a.partners.entries()].map(([n, v]) => ({ name: n, n: v })).sort((p, r2) => r2.n - p.n),
+        };
+      });
+    };
+
+    return {
+      window: { from, to, weeks: BOARD_WEEKS },
+      /** Honest coverage for the referred board — shown on screen, not hidden. */
+      attribution: { attributed, unattributed, pct: round(divide(attributed, attributed + unattributed), 3) },
+      written: board((a) => a.written, BOARD_ROWS),
+      referred: board((a) => a.referred, BOARD_ROWS),
+      sold: board((a) => a.sold, BOARD_ROWS),
     };
   });
 }
@@ -809,11 +961,15 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
     };
     const gapWeekLabels = gapWeekStarts.map((w) => `W${isoWeekNo(shiftDays(w, 2))}`);
 
-    const s = stagesRows[0] ?? { leads: 0, applications: 0, offers: 0 };
+    const s = stagesRows[0] ?? { leads: 0, existingCases: 0, applications: 0, offers: 0 };
     const referrals = sum(referralsDaily.map((r) => r.n));
     const sales = sum(salesDaily.map((r) => r.n));
     const stages = [
-      { key: "leads", label: "Leads", count: s.leads },
+      // The mouth of the funnel is NEW CLIENTS, same definition as the run chase (Capricorn
+      // 2026-08-17). Existing-client cases are NOT a funnel stage — they enter the pipeline further
+      // along and would inflate every conversion denominator below — so they ride alongside as
+      // context, see `existingCases` in the payload.
+      { key: "leads", label: "New Client Leads", count: s.leads },
       { key: "applications", label: "Mortgages Written", count: s.applications },
       { key: "offers", label: "Offers", count: s.offers },
       { key: "referrals", label: "Protection Opportunities", count: referrals },
@@ -836,6 +992,11 @@ export async function funnelHealth(config: Config, f: ReportFilters) {
       window: { from, to: asOf },
       stages,
       conversions,
+      /** Cases opened for clients already on the books in the same window — remortgages above all.
+       *  Deliberately OUTSIDE `stages`: it is not a funnel stage (it enters part-way along, and
+       *  folding it into the leads stage would inflate every conversion denominator), but the page
+       *  shows it next to the funnel so the pipeline story isn't missing the remortgage book. */
+      existingCases: s.existingCases,
       applicationsReferralsGap: {
         weeks: gapWeekLabels,
         applications: bucketWeekly(gapAppsRows),
@@ -1113,7 +1274,10 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       kpi("applications", "Mortgages Written", appsW, "int", appsLtd),
       kpi("referrals", "Protection Opportunities", refsW, "int", refsLtd),
       kpi("written", "Weekly Written", combW, "gbpk", writtenLtd),
-      kpi("leads", "Lead Volume", leadsW, "int", leadsLtd),
+      // "New Client Leads", not "Lead Volume": same series, but it now counts new clients rather than
+      // every case created, and a generic label is exactly how the old wider number got compared
+      // against the platform's client-based report for a fortnight (see NEW_CLIENT_LEAD_BASIS).
+      kpi("leads", "New Client Leads", leadsW, "int", leadsLtd),
       kpi("case-size", "Avg Case Size", avgCaseW, "gbpk", avgCaseLtd),
     ];
 

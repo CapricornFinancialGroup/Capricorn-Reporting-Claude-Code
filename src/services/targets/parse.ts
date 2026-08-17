@@ -20,7 +20,7 @@
 
 import ExcelJS from "exceljs";
 import { OFFICES } from "../../domain/offices.js";
-import { KPI_KEYS, type KpiKey, type KpiTargets } from "../../domain/targets.js";
+import { TARGETED_KPI_KEYS, type KpiKey, type KpiTargets } from "../../domain/targets.js";
 
 export interface ParsedTargets {
   /** YYYY-MM-DD, a Monday. */
@@ -45,12 +45,17 @@ const WEEK_HEADER = "Effective Week (Mon)";
 const OFFICE_HEADER = "Office";
 const MORTGAGE_WRITTEN_HEADER = "Weekly Mortgage Written";
 const INSURANCE_WRITTEN_HEADER = "Weekly Insurance Written";
-const KPI_HEADER: Record<KpiKey, string> = { leads: "Leads", applications: "Applications", referrals: "Referrals", sales: "Sales" };
+// Capricorn's spreadsheet columns. Only the TARGETED KPIs appear: `existingCases` is tracked on the
+// board but has no target, so demanding a column for it would reject every file they already have.
+const KPI_HEADER: Record<KpiKey, string> = {
+  leads: "Leads", applications: "Applications", referrals: "Referrals", sales: "Sales",
+  existingCases: "Existing Client Cases",
+};
 
 // Soft-warning ceilings — generous multiples of the current placeholder scale (domain/targets.ts),
 // not a real business limit. A weekly figure above this reads as a data-entry slip worth flagging,
 // not something to hard-block on (it might genuinely be right).
-const PLAUSIBLE_MAX: KpiTargets = { leads: 3000, applications: 600, referrals: 300, sales: 300 };
+const PLAUSIBLE_MAX: KpiTargets = { leads: 3000, applications: 600, referrals: 300, sales: 300, existingCases: 3000 };
 const PLAUSIBLE_MAX_REVENUE = 2_000_000;
 const SWING_MULTIPLE = 5;
 const FAR_FROM_NOW_DAYS = 14;
@@ -111,7 +116,7 @@ export function parseTargetsWorkbook(
 
   // --- Office Targets ---
   const officeHeaders = headerRow(officeSheet);
-  const requiredOfficeHeaders = [WEEK_HEADER, OFFICE_HEADER, ...KPI_KEYS.map((k) => KPI_HEADER[k])];
+  const requiredOfficeHeaders = [WEEK_HEADER, OFFICE_HEADER, ...TARGETED_KPI_KEYS.map((k) => KPI_HEADER[k])];
   for (const h of requiredOfficeHeaders) {
     if (!officeHeaders.includes(h)) hardErrors.push(`"${OFFICE_SHEET}" is missing column "${h}".`);
   }
@@ -119,7 +124,7 @@ export function parseTargetsWorkbook(
 
   const weekCol = colIndex(officeHeaders, WEEK_HEADER);
   const officeCol = colIndex(officeHeaders, OFFICE_HEADER);
-  const kpiCols = Object.fromEntries(KPI_KEYS.map((k) => [k, colIndex(officeHeaders, KPI_HEADER[k])])) as Record<KpiKey, number>;
+  const kpiCols = Object.fromEntries(TARGETED_KPI_KEYS.map((k) => [k, colIndex(officeHeaders, KPI_HEADER[k])])) as Record<KpiKey, number>;
 
   const knownOffices = new Set(OFFICES.map((o) => o.name));
   const seenOffices = new Set<string>();
@@ -148,8 +153,9 @@ export function parseTargetsWorkbook(
       hardErrors.push(`"${OFFICE_SHEET}", row for "${officeName}": effective week ${week} doesn't match the other rows (${effectiveWeek}).`);
     }
 
-    const values = {} as KpiTargets;
-    for (const kpi of KPI_KEYS) {
+    // Seeded, not left undefined: the sheet has no column for the untargeted KPIs.
+    const values = { existingCases: 0 } as KpiTargets;
+    for (const kpi of TARGETED_KPI_KEYS) {
       const raw = row.getCell(kpiCols[kpi]).value;
       const n = cellToNumber(raw);
       if (n == null || n < 0) {
@@ -221,7 +227,7 @@ export function runSoftChecks(data: ParsedTargets, previous: ParsedTargets | nul
     softWarnings.push(`Effective week "${data.effectiveWeek}" is more than ${FAR_FROM_NOW_DAYS} days from today (${today}) — check this is the week you meant.`);
   }
   for (const [office, values] of Object.entries(data.offices)) {
-    for (const kpi of KPI_KEYS) {
+    for (const kpi of TARGETED_KPI_KEYS) {
       if (values[kpi] > PLAUSIBLE_MAX[kpi]) {
         softWarnings.push(`"${office}" ${KPI_HEADER[kpi]} (${values[kpi]}) looks implausibly large — double-check it.`);
       }
@@ -236,7 +242,7 @@ export function runSoftChecks(data: ParsedTargets, previous: ParsedTargets | nul
     for (const [office, values] of Object.entries(data.offices)) {
       const prev = previous.offices[office];
       if (!prev) continue;
-      for (const kpi of KPI_KEYS) {
+      for (const kpi of TARGETED_KPI_KEYS) {
         const prevVal = prev[kpi];
         const newVal = values[kpi];
         if (prevVal > 0 && newVal === 0) {

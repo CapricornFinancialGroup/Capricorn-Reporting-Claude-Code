@@ -34,12 +34,15 @@ describe("store — activateTargets", () => {
     };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-06T09:00:00.000Z");
 
-    expect(getOfficeDailyTargets()["Hammersmith"]).toEqual({ leads: 10, applications: 2, referrals: 1, sales: 1 });
+    // existingCases is 0 throughout: the upload sheet has no column for it (untargeted by design),
+    // and `?? 0` in the ÷5 keeps it a real zero rather than the NaN a missing key used to produce.
+    expect(getOfficeDailyTargets()["Hammersmith"]).toEqual({ leads: 10, applications: 2, referrals: 1, sales: 1, existingCases: 0 });
     expect(getDailyTargets()).toEqual({
       leads: 10 * OFFICES.length,
       applications: 2 * OFFICES.length,
       referrals: 1 * OFFICES.length,
       sales: 1 * OFFICES.length,
+      existingCases: 0,
     });
     expect(getWrittenWeeklyTargets()).toEqual({ mortgage: 200_000, insurance: 50_000 });
     expect(getTargetsProvenance()).toEqual({
@@ -72,6 +75,7 @@ describe("store — getCurrentAsParsedTargets", () => {
       applications: OFFICE_DAILY_TARGETS["Hammersmith"].applications * 5,
       referrals: OFFICE_DAILY_TARGETS["Hammersmith"].referrals * 5,
       sales: OFFICE_DAILY_TARGETS["Hammersmith"].sales * 5,
+      existingCases: OFFICE_DAILY_TARGETS["Hammersmith"].existingCases * 5,
     });
   });
 
