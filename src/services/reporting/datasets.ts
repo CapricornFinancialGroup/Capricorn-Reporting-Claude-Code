@@ -1343,16 +1343,22 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       };
     };
 
+    // SALES ORDER, and the charts below the tiles repeat it (Kyle, 2026-08-18: "the charts appear to
+    // be all over the place and not following — could you please put these in sales order"). The
+    // sequence is the business's own: a lead arrives, a mortgage is written, protection is opened
+    // off the back of it, that is worth £, and the average case sizes it. Previously the tiles led
+    // with Mortgages Written and buried Leads fourth, while the charts ran in a third order again —
+    // so nothing on the screen read left to right in the order the work actually happens.
     const kpis = [
+      // "New Client Leads", not "Lead Volume": same series, but it now counts new clients rather than
+      // every case created, and a generic label is exactly how the old wider number got compared
+      // against the platform's client-based report for a fortnight (see NEW_CLIENT_LEAD_BASIS).
+      kpi("leads", "New Client Leads", leadsW, "int", leadsLtd),
       // "Mortgages Written", not "Applications": this counts mortgagecase rows by WrittenDate, i.e.
       // business written, not applications submitted (Kyle read it as the latter, 2026-07-28).
       kpi("applications", "Mortgages Written", appsW, "int", appsLtd),
       kpi("referrals", "Protection Referrals", refsW, "int", refsLtd),
       kpi("written", "Weekly Written", combW, "gbpk", writtenLtd),
-      // "New Client Leads", not "Lead Volume": same series, but it now counts new clients rather than
-      // every case created, and a generic label is exactly how the old wider number got compared
-      // against the platform's client-based report for a fortnight (see NEW_CLIENT_LEAD_BASIS).
-      kpi("leads", "New Client Leads", leadsW, "int", leadsLtd),
       kpi("case-size", "Avg Case Size", avgCaseW, "gbpk", avgCaseLtd),
     ];
 

@@ -2,9 +2,10 @@
 // Progress read, the weekly progress indicator strip (Mon 20.83% → Fri 100%), a weighted chase chart
 // per TARGETED measure, office leaderboard, live-feed ticker.
 //
-// Cards and charts deliberately differ in count: since 2026-08-17 there are five cards (Leads split
-// into new clients vs existing-client cases) but still four chase charts, because the fifth measure
-// has no target to chase. See NEW_CLIENT_LEAD_BASIS on the server.
+// Cards and charts are both four since 2026-08-18: Leads was split into new clients vs
+// existing-client cases on 2026-08-17, and Capricorn then ruled the run chase should carry the new
+// client half only ("just be Client Added ie. New Client only" — Kyle). Existing-client cases are
+// still measured and still reported, on Funnel Health. See NEW_CLIENT_LEAD_BASIS on the server.
 
 import { usePayload } from "../api.js";
 import { paceChart } from "../charts.js";
@@ -71,14 +72,20 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   // placeholder values" line under the table had become untrue (Capricorn 2026-08-18 asked whether it
   // still was). It follows provenance now, exactly like the header pill.
   const placeholderTargets = meta.targetsProvenance.source === "placeholder";
+  // "I think we agreed that it should just be Client Added ie. New Client only" (Kyle, 2026-08-18).
+  // The measure is NOT deleted — it still ships in the payload and is reported on Funnel Health,
+  // which is now a back-office screen. It just no longer takes a card on the run chase, where a
+  // permanently untargeted "tracked · no target" tile read as a broken KPI rather than a deliberate
+  // one. Reverting is a one-line change here.
+  const cards = (data?.kpis ?? []).filter((k) => k.key !== "existingCases");
   return (
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
           <Ticker mode={mode} refreshMs={refreshMs} />
 
-          <div className={`row cols-${data.kpis.length}`}>
-            {data.kpis.map((k) => (
+          <div className={`row cols-${cards.length}`}>
+            {cards.map((k) => (
               <KpiCard
                 key={k.key}
                 name={k.label}
@@ -207,7 +214,6 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                   <th style={{ width: 44 }}>Rank</th>
                   <th>Office</th>
                   <th>New Clients</th>
-                  <th>Existing</th>
                   <th>Written</th>
                   <th>Referrals</th>
                   <th>Sales</th>
@@ -221,14 +227,11 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                     <td className="office-name">{o.office}</td>
                     {/* Each targeted column carries its own against-target read inline, rather than
                         the table having one "vs Target" column — a column of its own read as though
-                        every measure were being judged, including the ones that aren't. Existing
-                        Client Cases sits between New Clients and Written with no arrow: it has no
-                        target, deliberately. */}
+                        every measure were being judged, including the ones that aren't. */}
                     <td style={{ fontVariantNumeric: "tabular-nums" }}>
                       {num(o.leads)}
                       <PaceArrow pct={o.paceByKpi.leads.pct} expected={o.paceByKpi.leads.expected} actual={o.leads} noun="new clients" />
                     </td>
-                    <td style={{ color: "var(--text-secondary)" }}>{num(o.existingCases)}</td>
                     <td style={{ fontVariantNumeric: "tabular-nums" }}>
                       {num(o.applications)}
                       <PaceArrow pct={o.paceByKpi.applications.pct} expected={o.paceByKpi.applications.expected} actual={o.applications} noun="written" />
@@ -256,7 +259,6 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                       disagree about what "expected" means. Same "at least one unit due" bar the rows
                       use, for the same reason — see paceByKpi on the server. */}
                   <TotalCell total={data.leaderboardTotals.leads} kpi={kpiByKey.get("leads")} noun="new clients" />
-                  <td><b>{num(data.leaderboardTotals.existingCases)}</b></td>
                   <TotalCell total={data.leaderboardTotals.applications} kpi={kpiByKey.get("applications")} noun="written" />
                   <TotalCell total={data.leaderboardTotals.referrals} kpi={kpiByKey.get("referrals")} noun="referrals" />
                   <TotalCell total={data.leaderboardTotals.sales} kpi={kpiByKey.get("sales")} noun="sales" />

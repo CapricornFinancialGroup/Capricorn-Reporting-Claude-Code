@@ -6,12 +6,19 @@ export type KpiKey = "leads" | "applications" | "referrals" | "sales" | "existin
 export type PaceStatus = "ahead" | "on_pace" | "behind";
 export type ChaseStatus = "ahead" | "on_pace" | "behind" | "critical";
 
+/** Figures an upload can carry. `written` is the Revenue target (£, business-wide), not a per-office
+ *  KPI — so this is deliberately not `KpiKey`. */
+export type CapturedTarget = "leads" | "applications" | "referrals" | "sales" | "written";
+
 export interface TargetsProvenance {
   source: "placeholder" | "upload";
   effectiveWeek: string | null;
   uploadedBy: string | null;
   uploadedAt: string | null;
   note?: string;
+  /** Per-figure: true = Capricorn's own uploaded number, false = still our placeholder. `null` on an
+   *  upload made before this was recorded. See TargetsProvenance on the server for why this exists. */
+  captured: Record<CapturedTarget, boolean> | null;
 }
 
 export interface Meta {

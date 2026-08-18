@@ -101,7 +101,15 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
             />
           )}
 
+          {/* SALES ORDER, matching the tiles above one-for-one: leads → written → protection opened
+              → £ written → average case size → attach rate. The charts used to run in their own
+              order, so the third tile and the third chart were different measures and the eye had
+              to re-find each series ("the charts appear to be all over the place and not following"
+              — Kyle, 2026-08-18). The first chart is also renamed from "Lead Volume" to match its
+              own tile: one measure with two names on one screen is how the old, wider lead count
+              got read as the new one. */}
           <div className="row cols-3 grow">
+            <Trend title="New Client Leads" metricKey="leads" mode={mode} weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Mortgages Written" metricKey="applications" mode={mode} weeks={data.weeks} values={data.series.applications} vsQ={vsQ(data, "applications")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Protection Referrals" metricKey="referrals" mode={mode} weeks={data.weeks} values={data.series.referrals} vsQ={vsQ(data, "referrals")} color={BLUE} estimated={data.partialLastWeek} />
             <RevenueTrend
@@ -112,7 +120,6 @@ export function MarketMomentum({ filters, compareFilters, mode, refreshMs }: Pag
               vsQ={vsQ(data, "written")}
               written={data.written}
             />
-            <Trend title="Lead Volume" metricKey="leads" mode={mode} weeks={data.weeks} values={data.series.leads} vsQ={vsQ(data, "leads")} color={NAVY} estimated={data.partialLastWeek} />
             <Trend title="Avg Case Size (£k) *" metricKey="case-size" mode={mode} weeks={data.weeks} values={data.series.avgCaseSizeK} vsQ={vsQ(data, "case-size")} color={AMBER} />
             <Trend
               title="Protection Attach Rate (%) *" metricKey="attach-rate" mode={mode}

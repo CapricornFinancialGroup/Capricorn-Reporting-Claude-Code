@@ -50,6 +50,11 @@ Every table is a filtered copy of prod `GAGold`:
 - `_etl_created` / `_etl_modified` are pipeline timestamps, not business dates.
 - `LeadDate` = date the lead was created in Smartr (`tbllead.created`). The legacy
   in-app CSV exports date-filter on the *client* added date, so daily counts can differ
+  — that difference is the whole of the 378-vs-291 gap resolved on 2026-08-17. The board's
+  Leads KPI now means NEW CLIENTS, derived as the client's first case across
+  mortgage/protection/GI, because `client.AddedToSystemDate` (the platform's own
+  `tblClient.AddDate`) is NULL for every client row loaded since 8 Jul 2026 and stops at
+  21 Apr 2026. See `NEW_CLIENT_LEAD_BASIS` in `src/domain/data-quality.ts`
   by ±1 day around midnight for boundary cases.
 - Case facts are one row per **finance product**, not per lead. A lead with two mortgage
   products contributes two `mortgagecase` rows — use `COUNT(DISTINCT LeadId)` for

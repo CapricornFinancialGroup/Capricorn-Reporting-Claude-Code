@@ -19,7 +19,9 @@ async function hydrateTargets(storageAccount: string): Promise<void> {
   try {
     const stored = await hydrateFromStorage(storageAccount);
     if (stored) {
-      activateTargets(stored.parsed, stored.uploadedBy, stored.uploadedAt);
+      // `captured ?? null` — null means "this blob predates per-figure provenance", which the
+      // Targets page renders as unknown rather than asserting every figure is still a placeholder.
+      activateTargets(stored.parsed, stored.uploadedBy, stored.uploadedAt, stored.note, stored.captured ?? null);
       logger.info("Hydrated weekly targets from storage", { effectiveWeek: stored.parsed.effectiveWeek, uploadedBy: stored.uploadedBy });
     }
   } catch (err) {

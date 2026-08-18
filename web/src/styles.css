@@ -684,27 +684,18 @@ button { font: inherit; }
 }
 .lb-strip-window { font-size: 12px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .lb-strip-note { font-size: 10.5px; color: var(--text-secondary); }
-.lb-pause {
-  margin-left: auto; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
-  text-transform: uppercase; padding: 2px 9px; border-radius: 999px; cursor: pointer;
-  border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
-}
-.lb-pause.on { background: var(--navy); border-color: var(--navy); color: #fff; }
-
+/* The referral wires, the spotlight tour and its pause button were removed 2026-08-18 (Kyle: "lets
+   remove the 'link' for now") — see the header of components/LeagueBoards.tsx. .lb-wrap keeps its
+   positioning context: the columns are still a three-up grid, there is just nothing drawn over it. */
 .lb-wrap { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; min-height: 0; flex: 1; }
-.lb-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; overflow: visible; color: var(--blue); }
 .lb-col { position: relative; z-index: 1; min-height: 0; }
 .lb-rows { display: flex; flex-direction: column; }
 
 .lb-row {
   display: grid; grid-template-columns: 1.35rem 1fr auto; gap: 7px; align-items: center;
   padding: 3px 5px; border-bottom: 1px solid var(--track-bg); cursor: default;
-  transition: background 160ms ease, opacity 160ms ease;
 }
 .lb-row:last-child { border-bottom: none; }
-.lb-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
-.lb-dim { opacity: 0.3; }
-.lb-lit { background: rgba(29, 78, 216, 0.09); box-shadow: inset 3px 0 0 var(--blue); }
 .lb-rank { font-size: 11px; font-weight: 800; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
 .lb-first .lb-rank { color: #B7791F; }
 .lb-who { min-width: 0; }

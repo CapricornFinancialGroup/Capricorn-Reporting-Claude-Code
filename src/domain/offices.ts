@@ -19,9 +19,13 @@ export interface Office {
 
 // Conor's confirmed office list + order (2026-07-07 email): "There is no Turkey office." Türkiye
 // removed entirely (was 2 advisers, see ADVISER_OFFICE below — now UNASSIGNED pending Capricorn
-// telling us their real office). Dubai's status wasn't addressed by that email (it was carried
-// over from Kyle's original Datarails export as "a valid office" with no case advisers yet) —
-// left in for now, flagged separately rather than guessed at.
+// telling us their real office).
+//
+// Dubai removed 2026-08-18 on Kyle's instruction ("I think lets remove Dubai please"). It came from
+// his original Datarails export as "a valid office" and never had a single mapped adviser or case,
+// so it sat on the Office Run Chase as a permanent row of zeros — indistinguishable on a wall TV
+// from an office that had stopped trading, which is precisely the false alarm Newmarket's empty
+// row turned out to be. Nothing else references it; if Dubai opens, add it back here.
 export const OFFICES: Office[] = [
   { name: "Hammersmith", color: "#0E2040" },
   { name: "Mayfair", color: "#1D4ED8" },
@@ -29,7 +33,6 @@ export const OFFICES: Office[] = [
   { name: "Hong Kong", color: "#7C3AED" },
   { name: "Shanghai", color: "#BE185D" },
   { name: "Singapore", color: "#B45309" },
-  { name: "Dubai", color: "#0F766E" },
 ];
 
 export const UNASSIGNED = "Unassigned";
@@ -178,7 +181,16 @@ export const ADVISER_OFFICE: Record<string, string> = {
   "michael.ngoka@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Tim, protection adviser
   "tyron@capricornfinancialmortgages.co.uk": "Hammersmith",
   "patricia.mcnicholas@capricorncommercial.co.uk": "Hammersmith",
-  "arandeep.purewal@capricornfinancialmortgages.co.uk": "Mayfair", // Team Manny
+  // Kyle ruled "Arandeep Purewal – Mayfair (Team Manny)" and the entry was keyed on that name.
+  // His actual login is aran.purewal@ — verified in dbo.useraccount 2026-08-18 (UserAccountKey
+  // 3111480, 49 cases back to 2015); "arandeep.purewal@" matches NO account at all, so the ruling
+  // never took effect and he kept appearing under Unassigned ("Please let me know who is
+  // Unassigned", Kyle 2026-08-18). Same failure as the Shire Finance logins and the two advisers
+  // lost to a shorter version of their own name: a mapping keyed on the name a person is called
+  // rather than the name they sign in with. Both kept — the unused key costs nothing and documents
+  // the ruling as given.
+  "arandeep.purewal@capricornfinancialmortgages.co.uk": "Mayfair", // Team Manny (name as ruled)
+  "aran.purewal@capricornfinancialmortgages.co.uk": "Mayfair", // Team Manny (actual login)
   "emelia@capricornint.co.uk": "Singapore",
 };
 

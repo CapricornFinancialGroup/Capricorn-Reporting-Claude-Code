@@ -10,6 +10,7 @@
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import { DefaultAzureCredential } from "@azure/identity";
 import type { ParsedTargets } from "./parse.js";
+import type { CapturedMap } from "./store.js";
 
 const CONTAINER = "weekly-targets";
 const CURRENT_POINTER = "current.json";
@@ -18,6 +19,12 @@ export interface StoredTargets {
   parsed: ParsedTargets;
   uploadedBy: string;
   uploadedAt: string;
+  /** Which figures this upload (plus everything carried forward into it) supplies — so a restart
+   *  rebuilds the Targets page's per-figure provenance instead of silently losing it. Absent on
+   *  blobs written before 2026-08-18; the store treats that as "unknown", never as "none". */
+  captured?: CapturedMap;
+  /** The blended-source note shown on the Targets page, so it survives a restart too. */
+  note?: string;
 }
 
 let credential: DefaultAzureCredential | undefined;
@@ -37,11 +44,13 @@ export async function uploadTargetsBlob(
   parsed: ParsedTargets,
   uploadedBy: string,
   uploadedAt: string,
+  captured?: CapturedMap,
+  note?: string,
 ): Promise<void> {
   const container = containerClient(storageAccount);
   await container.createIfNotExists();
   const stamp = uploadedAt.replace(/[:.]/g, "-");
-  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt };
+  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt, captured, note };
   const json = Buffer.from(JSON.stringify(stored, null, 2));
 
   await container.getBlockBlobClient(`raw/${stamp}.xlsx`).uploadData(rawWorkbook);

@@ -17,7 +17,7 @@ const KPI_SHORT: Record<string, string> = {
   sales: "SALES",
 };
 
-export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
+export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<OfficeRunChasePayload>("office-run-chase", filters, mode, refreshMs);
   return (
     <Load error={error} data={data}>
@@ -94,7 +94,15 @@ export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
           </div>
 
           <div className="card">
-            <div className="card-title"><span>Ranking Strip</span><span className="placeholder-note">Targets placeholder pending Capricorn confirmation</span></div>
+            {/* Follows the real provenance rather than asserting "placeholder" forever — the
+                unconditional version survived Kyle's upload and made it look like nothing had
+                landed (2026-08-18). */}
+            <div className="card-title">
+              <span>Ranking Strip</span>
+              {meta.targetsProvenance.source === "placeholder" && (
+                <span className="placeholder-note">Targets placeholder pending Capricorn confirmation</span>
+              )}
+            </div>
             <div className="rank-strip">
               {data.offices.filter((o) => o.pct != null).map((o) => {
                 const width = Math.min(100, Math.max(3, (o.pct ?? 0) / 1.5));

@@ -2,17 +2,17 @@
 // — takes a buffer, returns a result; the upload route owns persistence and activation.
 //
 // Two sheets:
-//   "Office Targets"  — one row per office: Effective Week (Mon), Office, Leads, Applications,
+//   "Office Targets"  — one row per office: Effective Week (Sat), Office, Leads, Applications,
 //                        Referrals, Sales (WEEKLY figures — "everything is measured against a
 //                        WEEKLY target", targets.ts's own header).
-//   "Revenue Target"  — one row, business-wide: Effective Week (Mon), Weekly Mortgage Written,
+//   "Revenue Target"  — one row, business-wide: Effective Week (Sat), Weekly Mortgage Written,
 //                        Weekly Insurance Written (£; Kyle 2026-07-14: "Revenue" = written business).
 //
 // Validation collects EVERY issue in one pass rather than failing fast, so Arman gets one complete
 // fix-list, not a whack-a-mole of one-error-at-a-time reports.
 //   HARD (blocks the whole upload, nothing activates): both sheets present with required headers;
 //     exactly the known offices (domain/offices.ts — single source of truth) present, each once;
-//     effective week present, a Monday, and consistent across both sheets; every figure present,
+//     effective week present, a Saturday, and consistent across both sheets; every figure present,
 //     numeric, >= 0.
 //   SOFT (upload succeeds, surfaced as a warning): effective week far from "now"; implausibly large
 //     figures; >5x week-over-week swing or a drop to zero from previously-nonzero — the real
@@ -23,7 +23,7 @@ import { OFFICES } from "../../domain/offices.js";
 import { TARGETED_KPI_KEYS, type KpiKey, type KpiTargets } from "../../domain/targets.js";
 
 export interface ParsedTargets {
-  /** YYYY-MM-DD, a Monday. */
+  /** YYYY-MM-DD, the SATURDAY that starts the board's Sat–Fri week. */
   effectiveWeek: string;
   /** WEEKLY figures per office (not daily — callers divide as needed). */
   offices: Record<string, KpiTargets>;
@@ -41,7 +41,7 @@ export interface ParseOutcome {
 
 const OFFICE_SHEET = "Office Targets";
 const REVENUE_SHEET = "Revenue Target";
-const WEEK_HEADER = "Effective Week (Mon)";
+const WEEK_HEADER = "Effective Week (Sat)";
 const OFFICE_HEADER = "Office";
 const MORTGAGE_WRITTEN_HEADER = "Weekly Mortgage Written";
 const INSURANCE_WRITTEN_HEADER = "Weekly Insurance Written";
@@ -60,8 +60,10 @@ const PLAUSIBLE_MAX_REVENUE = 2_000_000;
 const SWING_MULTIPLE = 5;
 const FAR_FROM_NOW_DAYS = 14;
 
-function isMonday(iso: string): boolean {
-  return new Date(`${iso}T00:00:00Z`).getUTCDay() === 1;
+/** The board's week runs Saturday to Friday (Saturday became a real trading day 2026-08-04), so a
+ *  target week is identified by its Saturday — the same date the Datarails import asks for. */
+function isSaturday(iso: string): boolean {
+  return new Date(`${iso}T00:00:00Z`).getUTCDay() === 6;
 }
 
 function daysBetween(a: string, b: string): number {
@@ -201,8 +203,8 @@ export function parseTargetsWorkbook(
     }
   }
 
-  if (effectiveWeek != null && !isMonday(effectiveWeek)) {
-    hardErrors.push(`Effective week "${effectiveWeek}" is not a Monday.`);
+  if (effectiveWeek != null && !isSaturday(effectiveWeek)) {
+    hardErrors.push(`Effective week "${effectiveWeek}" is not a Saturday (the board's week runs Sat–Fri).`);
   }
 
   if (hardErrors.length > 0) return { ok: false, data: null, hardErrors, softWarnings };

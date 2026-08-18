@@ -11,7 +11,7 @@ export async function buildBlankTemplate(): Promise<Buffer> {
 
   const officeSheet = wb.addWorksheet("Office Targets");
   officeSheet.columns = [
-    { header: "Effective Week (Mon)", key: "week", width: 20 },
+    { header: "Effective Week (Sat)", key: "week", width: 20 },
     { header: "Office", key: "office", width: 18 },
     { header: "Leads", key: "leads", width: 10 },
     { header: "Applications", key: "applications", width: 14 },
@@ -24,7 +24,7 @@ export async function buildBlankTemplate(): Promise<Buffer> {
 
   const revenueSheet = wb.addWorksheet("Revenue Target");
   revenueSheet.columns = [
-    { header: "Effective Week (Mon)", key: "week", width: 20 },
+    { header: "Effective Week (Sat)", key: "week", width: 20 },
     { header: "Weekly Mortgage Written", key: "mortgage", width: 22 },
     { header: "Weekly Insurance Written", key: "insurance", width: 22 },
   ];

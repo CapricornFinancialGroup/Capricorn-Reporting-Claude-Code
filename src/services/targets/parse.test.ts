@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { OFFICES } from "../../domain/offices.js";
 import { parseTargetsWorkbook, type ParsedTargets } from "./parse.js";
 
-const WEEK = "2026-07-06"; // a Monday
+const WEEK = "2026-07-04"; // a Saturday — the board's week runs Sat–Fri
 
 function buildWorkbook(opts: {
   officeRows?: Array<{ office: string; week: string; leads: number | string; applications: number | string; referrals: number | string; sales: number | string }>;
@@ -20,12 +20,12 @@ function buildWorkbook(opts: {
 
   if (!opts.skipOfficeSheet) {
     const sheet = wb.addWorksheet("Office Targets");
-    sheet.addRow(opts.officeHeaders ?? ["Effective Week (Mon)", "Office", "Leads", "Applications", "Referrals", "Sales"]);
+    sheet.addRow(opts.officeHeaders ?? ["Effective Week (Sat)", "Office", "Leads", "Applications", "Referrals", "Sales"]);
     for (const r of officeRows) sheet.addRow([r.week, r.office, r.leads, r.applications, r.referrals, r.sales]);
   }
   if (!opts.skipRevenueSheet) {
     const sheet = wb.addWorksheet("Revenue Target");
-    sheet.addRow(["Effective Week (Mon)", "Weekly Mortgage Written", "Weekly Insurance Written"]);
+    sheet.addRow(["Effective Week (Sat)", "Weekly Mortgage Written", "Weekly Insurance Written"]);
     sheet.addRow([revenueRow.week, revenueRow.mortgage, revenueRow.insurance]);
   }
   return wb;
@@ -34,7 +34,7 @@ function buildWorkbook(opts: {
 describe("parseTargetsWorkbook — happy path", () => {
   it("parses a well-formed workbook with all known offices", () => {
     const wb = buildWorkbook({});
-    const outcome = parseTargetsWorkbook(wb, null, "2026-07-06");
+    const outcome = parseTargetsWorkbook(wb, null, "2026-07-04");
     expect(outcome.ok).toBe(true);
     expect(outcome.hardErrors).toEqual([]);
     expect(outcome.data?.effectiveWeek).toBe(WEEK);
@@ -56,7 +56,7 @@ describe("parseTargetsWorkbook — hard errors (block the whole upload)", () => 
   });
 
   it("missing required column", () => {
-    const wb = buildWorkbook({ officeHeaders: ["Effective Week (Mon)", "Office", "Leads", "Applications", "Referrals"] }); // no Sales
+    const wb = buildWorkbook({ officeHeaders: ["Effective Week (Sat)", "Office", "Leads", "Applications", "Referrals"] }); // no Sales
     const outcome = parseTargetsWorkbook(wb, null, WEEK);
     expect(outcome.ok).toBe(false);
     expect(outcome.hardErrors.some((e) => e.includes("Sales"))).toBe(true);
@@ -91,12 +91,12 @@ describe("parseTargetsWorkbook — hard errors (block the whole upload)", () => 
     expect(outcome.hardErrors.some((e) => e.includes(`is missing office "${OFFICES[0].name}"`))).toBe(true);
   });
 
-  it("effective week not a Monday", () => {
+  it("effective week not a Saturday", () => {
     const rows = OFFICES.map((o) => ({ office: o.name, week: "2026-07-07", leads: 10, applications: 2, referrals: 1, sales: 1 })); // Tuesday
     const wb = buildWorkbook({ officeRows: rows, revenueRow: { week: "2026-07-07", mortgage: 350000, insurance: 75000 } });
     const outcome = parseTargetsWorkbook(wb, null, WEEK);
     expect(outcome.ok).toBe(false);
-    expect(outcome.hardErrors.some((e) => e.includes("not a Monday"))).toBe(true);
+    expect(outcome.hardErrors.some((e) => e.includes("not a Saturday"))).toBe(true);
   });
 
   it("inconsistent effective week across office rows", () => {

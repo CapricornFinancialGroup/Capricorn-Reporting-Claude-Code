@@ -5,7 +5,26 @@
 
 import { useState } from "react";
 import { gbpCompact, num } from "../format.js";
+import type { CapturedTarget } from "../types.js";
 import type { PageProps } from "./common.js";
+
+/** Column order of the Current Targets table, so the source strip below the header lines up. */
+const CAPTURE_COLUMNS: Array<{ key: CapturedTarget; label: string }> = [
+  { key: "leads", label: "Leads" },
+  { key: "applications", label: "Applications" },
+  { key: "referrals", label: "Referrals" },
+  { key: "sales", label: "Sales" },
+];
+
+/** "Yours" vs "ours", per figure. Kyle uploaded a file that carries Applications, Protection and
+ *  Revenue but not Leads, and had no way to see that from a table where all four columns look
+ *  alike — so the upload read as a no-op ("nothing has updated?", 2026-08-18). */
+function SourceCell({ captured }: { captured: boolean | null }) {
+  if (captured == null) return <span className="pill muted" title="This upload predates per-figure provenance — see the note above.">not recorded</span>;
+  return captured
+    ? <span className="pill ahead" title="Capricorn's own figure, from an uploaded workbook.">your upload</span>
+    : <span className="pill behind" title="No upload has ever supplied this figure — it is still our stand-in, derived from your trailing averages.">our placeholder</span>;
+}
 
 interface UploadResult {
   ok: boolean;
@@ -31,6 +50,13 @@ export function Targets({ meta }: PageProps) {
   const [result, setResult] = useState<UploadResult | null>(null);
 
   const provenance = meta.targetsProvenance;
+  const captured = provenance.captured;
+  // Named rather than counted: "3 of 5 captured" tells nobody which two to chase.
+  const stillPlaceholder = captured
+    ? [...CAPTURE_COLUMNS, { key: "written" as CapturedTarget, label: "Revenue (written)" }]
+        .filter((c) => !captured[c.key])
+        .map((c) => c.label)
+    : [];
 
   const importDatarails = async () => {
     if (!file) return;
@@ -62,9 +88,16 @@ export function Targets({ meta }: PageProps) {
         <div className="card-title"><span>Current Targets</span></div>
         {provenance.source === "upload" ? (
           <div className="placeholder-note">
-            Effective week {provenance.effectiveWeek} — uploaded by {provenance.uploadedBy} on{" "}
+            Week commencing Saturday <b>{provenance.effectiveWeek}</b> — uploaded by {provenance.uploadedBy} on{" "}
             {provenance.uploadedAt ? new Date(provenance.uploadedAt).toLocaleString("en-GB") : "—"}.
             {provenance.note && <div>{provenance.note}</div>}
+            {stillPlaceholder.length > 0 && (
+              <div style={{ marginTop: 4 }}>
+                <b>Still on our placeholder, not yours:</b> {stillPlaceholder.join(", ")} — no workbook has ever
+                supplied {stillPlaceholder.length === 1 ? "this figure" : "these figures"}, so uploading again
+                will not change {stillPlaceholder.length === 1 ? "it" : "them"}.
+              </div>
+            )}
           </div>
         ) : (
           <div className="placeholder-note">
@@ -75,10 +108,13 @@ export function Targets({ meta }: PageProps) {
           <thead>
             <tr>
               <th>Office</th>
-              <th>Leads</th>
-              <th>Applications</th>
-              <th>Referrals</th>
-              <th>Sales</th>
+              {CAPTURE_COLUMNS.map((c) => <th key={c.key}>{c.label}</th>)}
+            </tr>
+            <tr>
+              <th style={{ fontWeight: 400, color: "var(--text-secondary)" }}>source</th>
+              {CAPTURE_COLUMNS.map((c) => (
+                <th key={c.key} style={{ fontWeight: 400 }}><SourceCell captured={captured ? captured[c.key] : null} /></th>
+              ))}
             </tr>
           </thead>
           <tbody>
@@ -98,8 +134,8 @@ export function Targets({ meta }: PageProps) {
         </table>
         <div className="placeholder-note" style={{ marginTop: 6 }}>
           Weekly Written target (Revenue): Mortgage {gbpCompact(meta.targets.writtenWeekly.mortgage)} + Insurance{" "}
-          {gbpCompact(meta.targets.writtenWeekly.insurance)} = {gbpCompact(meta.targets.writtenWeekly.mortgage + meta.targets.writtenWeekly.insurance)}.
-          All figures above are weekly.
+          {gbpCompact(meta.targets.writtenWeekly.insurance)} = {gbpCompact(meta.targets.writtenWeekly.mortgage + meta.targets.writtenWeekly.insurance)}{" "}
+          <SourceCell captured={captured ? captured.written : null} />. All figures above are weekly.
         </div>
       </div>
 

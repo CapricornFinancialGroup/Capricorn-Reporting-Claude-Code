@@ -13,19 +13,23 @@
 // TWO DESIGN CONSTRAINTS, BOTH FROM THE ROOM THIS IS READ IN.
 //
 //  1. The office TVs have no mouse. So every cross-reference is PRINTED on the row — "8 referred ·
-//     28% of clients · converted by Jack ×2" — and the connecting lines are drawn permanently rather
-//     than on hover. A spotlight walks the board on its own so the relationships read from a desk
-//     away, with nobody touching anything.
+//     28% of clients · sold by Jack ×2". That printed text is now the ONLY cross-reference.
+//
+//     There were also curved lines drawn between the Referred and Sales columns, with a spotlight
+//     touring the board to light one adviser's lines at a time. Removed 2026-08-18 on Kyle's
+//     instruction: "The link between Protection Referred and Protection Sales is too messy and if
+//     static doesn't really present well — lets remove the 'link' for now please." He is right about
+//     why: the lines were drawn from a DERIVED relationship (see the footnote on the Referred
+//     column — Smartr holds no referral event, so the link is inferred from the client), and a
+//     confident-looking wire between two named people implies a precision the underlying data does
+//     not have. The spotlight went with them: without lines to light, it only dimmed rows at random.
+//     The relationship itself is unchanged and still on screen, in words, where it can be qualified.
 //  2. Words, not initials. The previous version of this screen used "Apps" and "Refs", the two
 //     labels retired for being wrong, and nobody could tell what they meant. Every number here says
 //     what it is: written, referred, sold.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { BoardRow, LeagueBoards as Boards } from "../types.js";
 import { gbpCompact, num, shortDate } from "../format.js";
-
-/** How long each adviser holds the spotlight on an unattended screen. */
-const SPOTLIGHT_MS = 4500;
 
 function rateClass(rate: number | null): string {
   if (rate == null) return "";
@@ -35,22 +39,13 @@ function rateClass(rate: number | null): string {
 }
 
 /** One row. `detail` is the spelled-out shorthand — the only thing a wall viewer gets. */
-function Row({ row, detail, unit, lit, dim, onFocus }: {
+function Row({ row, detail, unit }: {
   row: BoardRow;
   detail: React.ReactNode;
   unit: string;
-  lit: boolean;
-  dim: boolean;
-  onFocus: (name: string) => void;
 }) {
   return (
-    <div
-      className={`lb-row${row.rank === 1 ? " lb-first" : ""}${lit ? " lb-lit" : ""}${dim ? " lb-dim" : ""}`}
-      data-name={row.name}
-      tabIndex={0}
-      onMouseEnter={() => onFocus(row.name)}
-      onFocus={() => onFocus(row.name)}
-    >
+    <div className={`lb-row${row.rank === 1 ? " lb-first" : ""}`} data-name={row.name}>
       <span className="lb-rank">{row.rank}</span>
       <span className="lb-who">
         <b>{row.name}</b>
@@ -70,75 +65,6 @@ function partnerText(row: BoardRow): string {
 }
 
 export function LeagueBoards({ boards }: { boards: Boards }) {
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [focus, setFocus] = useState<string | null>(null);
-  const [paused, setPaused] = useState(false);
-
-  // Advisers worth walking: those whose referrals someone converted, so the line has both ends.
-  const tour = boards.referred.filter((r) => r.partners.length > 0).map((r) => r.name);
-
-  // The wall has no mouse. Left alone, the board tours itself; a hover takes over and the tour
-  // resumes when the pointer leaves.
-  useEffect(() => {
-    if (paused || tour.length === 0) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let i = 0;
-    const id = window.setInterval(() => {
-      i = (i + 1) % tour.length;
-      setFocus(tour[i]);
-    }, SPOTLIGHT_MS);
-    return () => window.clearInterval(id);
-  }, [paused, tour.length, tour]);
-
-  // Draw the referral lines. Always on — thickness by volume — so the relationships are visible
-  // without interaction; the focused adviser's lines come forward and the rest recede.
-  useLayoutEffect(() => {
-    const wrap = wrapRef.current;
-    const svg = svgRef.current;
-    if (!wrap || !svg) return;
-    const paint = () => {
-      const box = wrap.getBoundingClientRect();
-      svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
-      const find = (col: string, name: string) =>
-        wrap.querySelector<HTMLElement>(`[data-col="${col}"] [data-name="${CSS.escape(name)}"]`);
-      const parts: string[] = [];
-      for (const r of boards.referred) {
-        const a = find("referred", r.name);
-        if (!a) continue;
-        for (const p of r.partners) {
-          const b = find("sold", p.name);
-          if (!b) continue;
-          const on = focus == null || focus === r.name;
-          const ra = a.getBoundingClientRect();
-          const rb = b.getBoundingClientRect();
-          const x1 = ra.right - box.left;
-          const y1 = ra.top + ra.height / 2 - box.top;
-          const x2 = rb.left - box.left;
-          const y2 = rb.top + rb.height / 2 - box.top;
-          const mid = (x1 + x2) / 2;
-          parts.push(
-            `<path d="M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}" fill="none" ` +
-              `stroke="currentColor" stroke-width="${on ? 1.2 + p.n * 0.9 : 1}" ` +
-              `stroke-linecap="round" opacity="${on ? 0.85 : 0.12}"/>`,
-          );
-        }
-      }
-      svg.innerHTML = parts.join("");
-    };
-    paint();
-    window.addEventListener("resize", paint);
-    return () => window.removeEventListener("resize", paint);
-  }, [boards, focus]);
-
-  const isDim = (name: string) => {
-    if (focus == null) return false;
-    if (name === focus) return false;
-    const f = boards.referred.find((r) => r.name === focus);
-    return !f?.partners.some((p) => p.name === name);
-  };
-  const isLit = (name: string) => focus != null && !isDim(name);
-
   const attributionPct = boards.attribution.pct == null ? null : Math.round(boards.attribution.pct * 100);
 
   return (
@@ -151,18 +77,9 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
         <span className="lb-strip-note">
           A single week ranks on one or two cases; four weeks ranks on behaviour.
         </span>
-        <button
-          type="button"
-          className={`lb-pause${paused ? "" : " on"}`}
-          onClick={() => { setPaused((p) => !p); if (!paused) setFocus(null); }}
-        >
-          {paused ? "Paused" : "Touring"}
-        </button>
       </div>
 
-      <div className="lb-wrap" ref={wrapRef} onMouseLeave={() => !paused && undefined}>
-        <svg className="lb-wires" ref={svgRef} aria-hidden="true" />
-
+      <div className="lb-wrap">
         <section className="card lb-col" data-col="written">
           <div className="card-title">
             <span className="league-panel-title blue">Mortgages Written</span>
@@ -174,9 +91,6 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
                 key={r.name}
                 row={r}
                 unit="written"
-                lit={isLit(r.name)}
-                dim={isDim(r.name)}
-                onFocus={setFocus}
                 detail={
                   <>
                     <b className={rateClass(r.rate)}>{r.referred}</b> referred
@@ -201,9 +115,6 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
                 key={r.name}
                 row={r}
                 unit="referred"
-                lit={isLit(r.name)}
-                dim={isDim(r.name)}
-                onFocus={setFocus}
                 detail={
                   <>
                     from <b>{r.written}</b> written
@@ -231,9 +142,6 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
                 key={r.name}
                 row={r}
                 unit="sold"
-                lit={isLit(r.name)}
-                dim={isDim(r.name)}
-                onFocus={setFocus}
                 detail={<><b>{gbpCompact(r.commission)}</b> commission</>}
               />
             ))}

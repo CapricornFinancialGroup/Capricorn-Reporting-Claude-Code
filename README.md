@@ -46,7 +46,8 @@ on the live lake (full review 2026-07-30). Where ours and the platform's differ,
 
 | KPI | Source |
 |---|---|
-| Leads | `mortgagecase` by `LeadDate`, `COUNT(DISTINCT LeadId)` |
+| New Client Leads | `mortgagecase` by `LeadDate`, `COUNT(DISTINCT PrimaryClientKey)`, **restricted to clients whose first case this is** (across mortgage/protection/GI). A lead is a NEW CLIENT, not a new case — Capricorn's ruling 2026-08-17. Was `COUNT(DISTINCT LeadId)` over every case until then |
+| Existing Client Cases | `mortgagecase` by `LeadDate`, `COUNT(*)` where the client's first case predates this one — remortgages, repeat clients, second applications. The other half of the old "Leads". **No target**, and since 2026-08-18 **not shown on the run chase** — Capricorn ruled the chase is new clients only ("just be Client Added ie. New Client only", Kyle). Still measured, still in the payload, still reported on Funnel Health |
 | Mortgages Written | `mortgagecase` by **`WorkflowStatusPreOfferProcessingDate`** (status 70 — the platform's own "written"), `COUNT(*)` per product. Labelled "Applications" until 2026-07-28 — it counts business **written**, not applications submitted to a lender |
 | Protection Opportunities | `protectioncase` by `CreatedDate` — protection cases OPENED. Was `crosssellreferral` (PaymentShield quotes + currency exchange, not protection) until 2026-07-30 |
 | Protection Sales | `protectioncase` by `WrittenDate` |
@@ -63,7 +64,7 @@ against a report sharing none of their days):
 |---|---|
 | Daily / Office Run Chase | current Sat–Fri week to date (+ latest trading day) |
 | Adviser League | current Sat–Fri week to date |
-| Funnel Health | month to date |
+| Funnel Health | month to date — **dashboard only, off the wall rotation since 2026-08-18** |
 | Market Momentum | **last complete Sat–Fri week** (+ rolling 13-week trend) |
 
 Data-source notes discovered during reconciliation:
@@ -99,10 +100,53 @@ Data-source notes discovered during reconciliation:
 - `crosssellreferral.CaseID` does not resolve against the exported case tables, so
   "referred vs not referred" (donut, REFER NOW queue) is a same-window **flow proxy**
   (referrals made vs applications written), labelled indicative on-screen.
-- **Leads verified sound** (2026-07-30): ours `COUNT(DISTINCT LeadId)` vs the platform's
-  client-deduplicated count gives 662 vs 655 for W30 — under 1% apart, and identical on most days.
-  Kyle's "daily lead flow is very different" is a scoping difference (his report is one firm and/or
-  introducer-filtered), not a definitional one.
+- **RESOLVED 2026-08-18 — the lead "gap" is the report's RUN TIME, not its definition.** Kyle
+  compared three figures and read them as a three-way discrepancy: "New Client Leads 136 vs. 175?
+  Also, our Daily Report had 116". They are three different things, and once measured at the same
+  moment the two systems agree to within 2 leads.
+  - **136** = new-client leads on Mon 17 Aug (a full day). **176** = the same measure week to date,
+    Sat 15 – Mon 17, which is what the office leaderboard is labelled. **116** = Capricorn's Daily
+    Lead Report for Monday alone, run at 17:01. Their own report also prints **156** WTD — the
+    number that compares with our 176. The gap is the same 20 on both, i.e. it is all in one day.
+  - **The weekend reconciles exactly.** Ours: Sat 38 + Sun 2 = 40. Theirs: 156 − 116 = 40. Their
+    report groups Sat/Sun into Monday and runs Mon–Fri; that grouping is not the discrepancy.
+  - **The 20 is leads entered after their report ran.** By `_etl_created` load batch, Monday's
+    new clients arrive 1 · 26 · 37 · 50 · 22 across the 07:50/11:10/14:15/17:10/20:10 UTC loads
+    (+2 the next morning). Cumulative by the 17:10 UTC load = **114**, against their **116** taken
+    at 16:01 UTC — 2 apart, ours measured slightly later. The last load adds **22**, which is the
+    whole gap. Their 17:00 send time sits in the middle of Capricorn's busiest lead hours.
+  - So the answer to "how do we narrow this gap" is a same-cut comparison, not a definition change:
+    compare their WTD to ours (156 vs 176), or run their report after the day closes. Worth knowing
+    too: the two halves of their OWN report disagree by 4 on the same day (patch table 116 today /
+    156 WTD, team-leader table 112 / 153), so there is a floor to how close any two cuts get.
+  - Their leads target rule, from the same report: **2 leads per adviser per working day, Mon–Fri,
+    weekend rolled into Monday** — 62 active advisers → 620/wk. Ours is 633/wk (⚠ see below: set by
+    headcount against the OLD, wider lead definition, so it is high on two counts now).
+- **RESOLVED 2026-08-17 — a lead is a NEW CLIENT, not a new case.** The board read 378 leads for
+  Sat 8 – Wed 12 Aug against 291 on the in-platform report the team ran at 17:00 on the 12th.
+  Capricorn's ruling: "a new lead is actually a new client added to the system". Their report is
+  `usp_LeadsReport` → `usp_GetLeadsByUserId_LeadFlow`, whose own header states the basis — *"Date
+  filtering is on `tblClient.AddDate` [rather than `tblLead.Created`]"* — so it dates a lead by when
+  the CLIENT record was created and never sees a lead raised for a pre-existing client. On the new
+  basis that week is **315 new clients + 61 existing-client cases**.
+  - ⚠ **We cannot key on their field.** `client.AddedToSystemDate` in the share is a one-off bulk
+    load of 225,246 rows on 22 Apr 2026 (latest value 21 Apr); the 128,850 rows that have arrived
+    since 8 Jul carry **NULL**. Of that week's leads, 335 are NULL and the 43 populated all predate
+    the window. Getting it populated on incremental loads is the ask that would allow literal
+    alignment. Until then "new" is derived as the client's **first case across mortgage, protection
+    and GI** (history to 2009, so first-appearance is well-founded). Client identity is
+    `mortgagecase.PrimaryClientKey` — never NULL across all 270,001 live cases, agreeing with
+    `mortgagecaseclient` on all 386 rows of the reference week, resolving 100% into `dbo.client`.
+  - Two differences to their report remain BY DESIGN: it is scoped to the advisers whoever ran it can
+    see (the board is group-wide, both entities — org 411 was 17 of that week), and it requires a live
+    non-external product of the chosen `FinanceTypeId`.
+  - ⚠ **The 633/wk leads target is now on the wrong basis** — set by headcount against the old wider
+    count, it runs ~16% above this one. Left unchanged rather than quietly rebased; flagged on-screen,
+    awaiting Kyle. `existingCases` ships untargeted, and is rendered as *tracked* (no pace line, no
+    status pill) precisely because `paceStatus`/`chaseStatus` band "expected 0, actual > 0" as AHEAD.
+  - The earlier "Leads verified sound (2026-07-30): 662 vs 655, under 1% apart" note was comparing a
+    client-deduplicated count on the SAME date basis, not this report — the `AddDate` basis cannot
+    land within 1%. Do not cite it as evidence that leads reconcile.
 - 2026-07-01 carries ~4,100 bulk-migrated leads (platform migration artifact) — July's lead chase
   and the CALL NOW queue are inflated until that washes through. The exclusion
   ([domain/data-quality.ts](src/domain/data-quality.ts)) applies to **`LeadDate`-keyed metrics only**:
@@ -180,7 +224,10 @@ Rotation dwell = `REPORTING_CYCLE_SECONDS` (20s), data poll = `REPORTING_REFRESH
    "Targets" tab, `docs/deployment.md` § Weekly targets upload) — disabled until Arman's and a
    backup's admin email addresses are confirmed and set.
 2. **Adviser → office mapping** — a username → office list (`src/domain/offices.ts`); until then
-   the office screens show "Unassigned".
+   the office screens show "Unassigned". Currently **one adviser outstanding: Denisa Ahmetaj**
+   (`denisa.ahmetaj@capricornfinancialmortgages.co.uk`, 66 cases back to 2015 — a real adviser
+   simply absent from the Datarails mapping export, not a new joiner). Dubai was retired
+   2026-08-18 on Kyle's instruction.
 3. **Revenue definition** — which commission columns count as revenue (screens label revenue
    figures *indicative* until confirmed).
 4. **Application definition** — per-product `COUNT(*)` vs per-lead; whether `NotProceedingYN`

@@ -10,6 +10,7 @@ import {
   getOfficeDailyTargets,
   getTargetsProvenance,
   getWrittenWeeklyTargets,
+  noneCaptured,
   resetTargetsForTest,
 } from "./store.js";
 
@@ -20,7 +21,7 @@ describe("store — seeded from placeholders, zero behaviour change before any u
     expect(getDailyTargets()).toEqual(DAILY_TARGETS);
     expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
     expect(getWrittenWeeklyTargets()).toEqual(WRITTEN_WEEKLY_TARGET);
-    expect(getTargetsProvenance()).toEqual({ source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null });
+    expect(getTargetsProvenance()).toEqual({ source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null, captured: noneCaptured() });
     expect(getLastParsed()).toBeNull();
   });
 });
@@ -50,6 +51,9 @@ describe("store — activateTargets", () => {
       effectiveWeek: "2026-07-06",
       uploadedBy: "arman@capricornfinancial.co.uk",
       uploadedAt: "2026-07-06T09:00:00.000Z",
+      note: undefined,
+      // No `captured` argument = this upload asserts nothing about which figures it supplied.
+      captured: noneCaptured(),
     });
     expect(getLastParsed()).toBe(parsed);
   });
@@ -62,6 +66,43 @@ describe("store — activateTargets", () => {
     };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-06T09:00:00.000Z", "Applications & Sales from Datarails import");
     expect(getTargetsProvenance().note).toBe("Applications & Sales from Datarails import");
+  });
+
+  // The Targets page answers "which of these numbers are actually mine?" from this map. Kyle's
+  // Datarails file carries Applications/Protection/Revenue but never Leads, so a successful upload
+  // legitimately leaves Leads on our placeholder — the distinction he read as a failed upload.
+  it("carries a figure's provenance forward when a later upload does not supply it", () => {
+    const offices = Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }]));
+    const parsed: ParsedTargets = { effectiveWeek: "2026-07-04", offices, writtenWeekly: { mortgage: 200_000, insurance: 50_000 } };
+
+    activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-04T09:00:00.000Z", undefined, { applications: true, sales: true, referrals: true });
+    expect(getTargetsProvenance().captured).toEqual({ leads: false, applications: true, referrals: true, sales: true, written: false });
+
+    // A written-only import next week must not demote Applications back to "placeholder": its value
+    // carried forward, so its provenance does too.
+    activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-11T09:00:00.000Z", undefined, { written: true });
+    expect(getTargetsProvenance().captured).toEqual({ leads: false, applications: true, referrals: true, sales: true, written: true });
+  });
+
+  it("erases the map for an upload that predates it, rather than claiming every figure is a placeholder", () => {
+    const offices = Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }]));
+    const parsed: ParsedTargets = { effectiveWeek: "2026-07-04", offices, writtenWeekly: { mortgage: 200_000, insurance: 50_000 } };
+    activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-04T09:00:00.000Z", undefined, null);
+    expect(getTargetsProvenance().captured).toBeNull();
+  });
+
+  // An upload outlives the office roster it was written against — Kyle's 15 Aug file still carries a
+  // Dubai row, and Dubai was retired on 2026-08-18. A retired office must not contribute to the
+  // group target, or the group stops equalling the offices shown beneath it.
+  it("excludes offices no longer on the roster from the group total", () => {
+    const offices: Record<string, { leads: number; applications: number; referrals: number; sales: number }> = {
+      ...Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }])),
+      Dubai: { leads: 500, applications: 100, referrals: 50, sales: 50 },
+    };
+    const parsed: ParsedTargets = { effectiveWeek: "2026-07-04", offices, writtenWeekly: { mortgage: 200_000, insurance: 50_000 } };
+    activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-04T09:00:00.000Z");
+    expect(getDailyTargets().leads).toBe(10 * OFFICES.length);
+    expect(getDailyTargets().applications).toBe(2 * OFFICES.length);
   });
 });
 

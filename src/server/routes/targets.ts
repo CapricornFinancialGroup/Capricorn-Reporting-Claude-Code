@@ -8,6 +8,14 @@
 //
 // Behind Easy Auth like /api/reporting/* (not Easy-Auth-excluded like the kiosk) — this mutates
 // live targets, so it's dashboard-only, never reachable from an unattended kiosk TV.
+//
+// WEEK_START — `effectiveWeek` is the SATURDAY the admin picked, stored verbatim.
+// It used to be shifted forward two days ("Saturday → the Monday that starts its working week"),
+// a leftover from when the board ran a Mon–Fri week. Saturday has been a real trading day since
+// 2026-08-04, so the shift left the Targets tab reporting a week start the board itself does not
+// use: Kyle uploaded for Saturday 15 Aug, the page said "Effective week 2026-08-17", and he could
+// not tell whether his file had been captured at all ("I have uploaded targets for the week
+// (Saturday 15th Aug) but nothing has updated?", 2026-08-18). Echo back exactly what was chosen.
 
 import ExcelJS from "exceljs";
 import type { FastifyInstance } from "fastify";
@@ -18,7 +26,6 @@ import { logger } from "../../services/logger.js";
 import { adviserRoster } from "../../services/reporting/advisers.js";
 import { tzToday } from "../../services/reporting/pace.js";
 import { run } from "../../services/reporting/query.js";
-import { shiftDays } from "../../services/reporting/trends.js";
 import { uploadTargetsBlob } from "../../services/targets/blob.js";
 import { parseDatarailsWorkbook, type AdviserRosterEntry } from "../../services/targets/parseDatarails.js";
 import { parseTargetsWorkbook, runSoftChecks, type ParsedTargets } from "../../services/targets/parse.js";
@@ -29,6 +36,8 @@ import {
   getCurrentAsParsedTargets,
   getLastParsed,
   getTargetsProvenance,
+  mergeCaptured,
+  type CapturedMap,
 } from "../../services/targets/store.js";
 
 export function registerTargetsRoutes(app: FastifyInstance, config: Config): void {
@@ -73,15 +82,18 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
 
     const uploadedBy = viewer.email;
     const uploadedAt = new Date().toISOString();
+    // The manual template has a column for every figure and validation rejects a file missing any,
+    // so a successful parse means all five are Capricorn's.
+    const captured: Partial<CapturedMap> = { leads: true, applications: true, referrals: true, sales: true, written: true };
     try {
       // Persist THEN activate — never the other order, so a failed blob write can't leave the UI
       // claiming success while nothing durable happened.
-      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, outcome.data, uploadedBy, uploadedAt);
+      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, outcome.data, uploadedBy, uploadedAt, mergeCaptured(captured) ?? undefined);
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Upload validated but could not be saved — please try again." });
     }
-    activateTargets(outcome.data, uploadedBy, uploadedAt);
+    activateTargets(outcome.data, uploadedBy, uploadedAt, undefined, captured);
     logger.info("Weekly targets activated", { effectiveWeek: outcome.data.effectiveWeek, uploadedBy });
 
     return reply.send({ ok: true, softWarnings: outcome.softWarnings, provenance: getTargetsProvenance() });
@@ -128,7 +140,7 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const today = tzToday(new Date(), config.reporting.timeZone);
     const base = getCurrentAsParsedTargets(today);
     const merged: ParsedTargets = {
-      effectiveWeek: shiftDays(weekSaturday, 2), // Saturday → the Monday that starts its working week
+      effectiveWeek: weekSaturday, // the Saturday chosen, verbatim — see WEEK_START above
       // Revenue = written commission £ (Mortgage + Insurance), from the same consolidated file's
       // written sheets. Each product left unchanged when its sheet has no data for the week.
       writtenWeekly: {
@@ -178,13 +190,22 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const uploadedBy = viewer.email;
     const uploadedAt = new Date().toISOString();
     const note = `${imported} from Datarails import (week of ${weekSaturday}); ${unchanged} unchanged.`;
+    // Leads is never in this file — it is a fixed group target — so it stays on whatever supplied it
+    // last, which until Capricorn send one is our placeholder. That distinction is the whole point of
+    // the map: it is why the Leads target can read 633 both before and after a successful upload.
+    const captured: Partial<CapturedMap> = {
+      applications: outcome.applicationsAvailable,
+      sales: outcome.salesAvailable,
+      referrals: outcome.salesAvailable,
+      written: writtenImported,
+    };
     try {
-      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, merged, uploadedBy, uploadedAt);
+      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, merged, uploadedBy, uploadedAt, mergeCaptured(captured) ?? undefined, note);
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Import validated but could not be saved — please try again." });
     }
-    activateTargets(merged, uploadedBy, uploadedAt, note);
+    activateTargets(merged, uploadedBy, uploadedAt, note, captured);
     logger.info("Datarails targets import activated", { effectiveWeek: merged.effectiveWeek, uploadedBy, unmatched: outcome.unmatchedAdvisers.length });
 
     return reply.send({ ok: true, softWarnings, unmatchedAdvisers: outcome.unmatchedAdvisers, provenance: getTargetsProvenance() });
@@ -238,7 +259,7 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const today = tzToday(new Date(), config.reporting.timeZone);
     const base = getCurrentAsParsedTargets(today);
     const merged: ParsedTargets = {
-      effectiveWeek: shiftDays(weekSaturday, 2), // Saturday → the Monday that starts its working week
+      effectiveWeek: weekSaturday, // the Saturday chosen, verbatim — see WEEK_START above
       offices: base.offices,
       writtenWeekly: outcome.writtenWeekly,
     };
@@ -247,14 +268,15 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const uploadedBy = viewer.email;
     const uploadedAt = new Date().toISOString();
     const note = `Written targets from import (week of ${weekSaturday}): Mortgage £${Math.round(outcome.writtenWeekly.mortgage).toLocaleString()} + Insurance £${Math.round(outcome.writtenWeekly.insurance).toLocaleString()}/wk. Leads/Applications/Protection unchanged.`;
+    const captured: Partial<CapturedMap> = { written: true };
     try {
       // Store the mortgage workbook as the audit artefact (the pair share a week + provenance row).
-      await uploadTargetsBlob(config.targets.storageAccount, mortgageBuffer, merged, uploadedBy, uploadedAt);
+      await uploadTargetsBlob(config.targets.storageAccount, mortgageBuffer, merged, uploadedBy, uploadedAt, mergeCaptured(captured) ?? undefined, note);
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Import validated but could not be saved — please try again." });
     }
-    activateTargets(merged, uploadedBy, uploadedAt, note);
+    activateTargets(merged, uploadedBy, uploadedAt, note, captured);
     logger.info("Written targets import activated", { effectiveWeek: merged.effectiveWeek, uploadedBy });
 
     return reply.send({ ok: true, softWarnings, provenance: getTargetsProvenance() });

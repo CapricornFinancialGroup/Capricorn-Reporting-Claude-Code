@@ -25,9 +25,15 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
               Market Momentum's tiles report the last COMPLETE week — reading one as the other is how
               £24.2k here got compared with £266.3k there (Kyle 2026-07-28). */}
           <div className="row" style={{ gridTemplateColumns: "repeat(5, 1fr)" }}>
+            {/* Order follows the process, not importance: written → referred → how well that
+                conversion is going → sold → the money. Conversion used to sit last, after the
+                revenue tile, where it read as an afterthought rather than as the step between
+                referring and selling ("Did we not agree to move the Conversion forward as part of
+                the process?" — Kyle, 2026-08-18). */}
             {[
               { label: "Mortgages Written", value: num(data.totals.applications), cls: "val-blue", sub: null, mk: "applications" },
               { label: "Protection Referrals", value: num(data.totals.referrals), cls: "", sub: null, mk: "referrals" },
+              { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue", sub: null, mk: "attach-rate" },
               { label: "Total Protection Sales", value: num(data.totals.sales), cls: "val-green", sub: null, mk: "sales" },
               {
                 // Commission ONLY. Client fees are stated beneath as a separate figure, never added
@@ -40,7 +46,6 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
                 sub: `mortgage ${gbpCompact(data.totals.mortgageWritten)} + protection ${gbpCompact(data.totals.protectionWritten)} · client fees ${gbpCompact(data.totals.clientFees)} shown separately, NOT included`,
                 mk: "revenue",
               },
-              { label: "Avg Conversion *", value: pct(data.totals.avgConversion, 0), cls: "val-blue", sub: null, mk: "attach-rate" },
             ].map((k) => (
               <div className="card mom-kpi" key={k.label}>
                 <div className="mom-kpi-label">{k.label} <MetricInfo metricKey={k.mk} mode={mode} /></div>
@@ -56,11 +61,13 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
               primaryLabel={`${shortDate(data.window.from)} – ${shortDate(data.window.to)}`}
               compareLabel={`${shortDate(compareData.window.from)} – ${shortDate(compareData.window.to)}`}
               rows={[
+                // Same process order as the tiles above — a compare strip in a different order to
+                // the thing it compares is its own small reconciliation problem.
                 { label: "Mortgages Written", primary: data.totals.applications, compare: compareData.totals.applications, fmt: "int" },
                 { label: "Protection Referrals", primary: data.totals.referrals, compare: compareData.totals.referrals, fmt: "int" },
+                { label: "Avg Conversion", primary: data.totals.avgConversion, compare: compareData.totals.avgConversion, fmt: "pct" },
                 { label: "Protection Sales", primary: data.totals.sales, compare: compareData.totals.sales, fmt: "int" },
                 { label: "Written Commission", primary: data.totals.revenue, compare: compareData.totals.revenue, fmt: "gbp" },
-                { label: "Avg Conversion", primary: data.totals.avgConversion, compare: compareData.totals.avgConversion, fmt: "pct" },
               ]}
             />
           )}

@@ -159,8 +159,7 @@ export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
 //   • LEADS — CONFIRMED. 633 leads/wk group target, split across offices weighted by adviser
 //     headcount (Kyle's rule: ~10 leads/adviser/wk). Headcount from the Datarails Adviser Mapping
 //     (domain/offices.ts): Hammersmith 55, Mayfair 6, Newmarket 4, Hong Kong 2, Singapore 3,
-//     Shanghai 1 (71 total → ~8.9 leads each) → weekly 490/53/36/18/27/9. Dubai has no mapped
-//     advisers → 0. Weekly ÷ 5 below.
+//     Shanghai 1 (71 total → ~8.9 leads each) → weekly 490/53/36/18/27/9. Weekly ÷ 5 below.
 //   • REFERRALS = SALES — CONFIRMED. The protection "pledge" is one weekly activity number that is
 //     both the referral target and the sales target (Kyle), so referrals mirrors sales here (actual
 //     referrals-made comes from the lake → drives the target-vs-actual %). The Datarails import
@@ -169,7 +168,9 @@ export function weeklyOfficeTarget(office: string, kpi: KpiKey): number {
 //     us to hold Applications as a fixed benchmark for now; it'll auto-consume once their Weekly_Par
 //     tab starts updating. Sales here is the placeholder pending the real weekly pledge from file.
 // No Türkiye row (Conor confirmed 2026-07-07 there's no Turkey office — its 2 advisers are
-// UNASSIGNED pending a real mapping). Unassigned carries none by design.
+// UNASSIGNED pending a real mapping), and no Dubai row since Kyle retired the office 2026-08-18 —
+// leaving it here would have kept 0.2 applications/day in the GROUP target for an office no screen
+// shows, i.e. a target nobody could ever be seen to chase. Unassigned carries none by design.
 export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
   Hammersmith: { leads: 98, applications: 18, referrals: 4, sales: 4, existingCases: 0 },
   Mayfair: { leads: 10.6, applications: 2.4, referrals: 0.4, sales: 0.4, existingCases: 0 },
@@ -177,7 +178,6 @@ export const OFFICE_DAILY_TARGETS: Record<string, KpiTargets> = {
   "Hong Kong": { leads: 3.6, applications: 0.6, referrals: 0.2, sales: 0.2, existingCases: 0 },
   Singapore: { leads: 5.4, applications: 0.8, referrals: 0.2, sales: 0.2, existingCases: 0 },
   Shanghai: { leads: 1.8, applications: 0.2, referrals: 0.2, sales: 0.2, existingCases: 0 },
-  Dubai: { leads: 0, applications: 0.2, referrals: 0.2, sales: 0.2, existingCases: 0 },
   [UNASSIGNED]: { leads: 0, applications: 0, referrals: 0, sales: 0, existingCases: 0 },
 };
 
