@@ -1,5 +1,6 @@
 // Scrolling live-feed ticker (navy bar, strawman bottom strip). Content is duplicated for a
-// seamless loop; speed honours Conor's 2026-07-07 "speed up 2x" note (~9-16s vs the ~18-40s prior).
+// seamless loop; speed honours Conor's 2026-07-07 "speed up 2x" note and Capricorn's 2026-08-18
+// "25% quicker again" (~6.75-15s, vs ~9-20s before it and ~18-40s originally).
 
 import { EMPTY_FILTERS, usePayload, type Mode } from "../api.js";
 import type { LiveFeedPayload } from "../types.js";
@@ -17,8 +18,10 @@ export function Ticker({ mode, refreshMs }: { mode: Mode; refreshMs: number }) {
     </div>
   ));
   // Scale the loop duration with content so density doesn't change perceived speed (halved vs the
-  // original pass for Conor's "2x faster" ask).
-  const secs = Math.max(9, Math.min(20, data.items.length * 0.8));
+  // original pass for Conor's "2x faster" ask, then a further 25% off on Capricorn's 2026-08-18
+  // review — the bounds move with the multiplier, otherwise a short or long feed clamps straight
+  // back to the old speed and the change only shows on mid-length feeds).
+  const secs = Math.max(6.75, Math.min(15, data.items.length * 0.6));
   return (
     <div className="ticker-wrap">
       <div className="ticker-label">Latest Activity · {data.dayLabel}</div>

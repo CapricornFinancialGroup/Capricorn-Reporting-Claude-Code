@@ -13,43 +13,64 @@ import { KpiCard } from "../components/KpiCard.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { Ticker } from "../components/Ticker.js";
 import { num, shortDate, signed } from "../format.js";
-import type { DailyRunChasePayload } from "../types.js";
+import type { DailyRunChasePayload, Pace } from "../types.js";
 import { Load, type PageProps } from "./common.js";
 
 /**
  * Against-target read for a single figure: a coloured arrow and a percentage, sitting beside the
  * number it judges. Capricorn asked for exactly this rather than a "vs Target" column (2026-08-17) —
- * a column of its own read as though every measure in the table were being judged, when only written
- * has a target.
+ * a column of its own read as though the whole table were being judged.
  *
  * `pct` is the SIGNED deviation from expected-by-now, so the arrow carries the sign and the label
  * shows magnitude only: ▲ 12% means 12% ahead of pace, not 12% of target. Renders nothing at all
- * when `pct` is null — an office with no target gets no verdict, not a 0%.
+ * when `pct` is null — a measure with no target gets no verdict, not a 0%.
  */
-function PaceArrow({ pct, expected, actual }: { pct: number | null; expected: number; actual: number }) {
+function PaceArrow({ pct, expected, actual, noun }: { pct: number | null; expected: number; actual: number; noun: string }) {
   if (pct == null) return null;
   const ahead = pct >= 0;
   const verdict = pct === 0 ? "exactly on pace" : `${Math.abs(pct)}% ${ahead ? "ahead of" : "behind"} pace`;
   return (
     <span
       className={`lb-pace ${ahead ? "lb-pace-up" : "lb-pace-down"}`}
-      title={`${num(actual)} written vs ${num(expected)} expected by now — ${verdict}`}
+      title={`${num(actual)} ${noun} vs ${num(expected)} expected by now — ${verdict}`}
     >
       {ahead ? "▲" : "▼"} {Math.abs(pct)}%
     </span>
   );
 }
 
-export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
+/** One totals-row cell: the column sum, plus the all-offices against-target read for that KPI. */
+function TotalCell({ total, kpi, noun }: { total: number; kpi: { pace: Pace | null } | undefined; noun: string }) {
+  const expected = kpi?.pace?.expectedByNow ?? null;
+  return (
+    <td style={{ fontVariantNumeric: "tabular-nums" }}>
+      <b>{num(total)}</b>
+      {expected != null && (
+        <PaceArrow
+          pct={expected >= 1 ? Math.round((total / expected - 1) * 100) : null}
+          expected={expected}
+          actual={total}
+          noun={noun}
+        />
+      )}
+    </td>
+  );
+}
+
+export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
   // KPIs with a target, i.e. the ones a "week chase" chart can honestly be drawn for. Filtering on
   // `pace` rather than `targeted` also narrows the type, so the charts below need no non-null casts
   // beyond the ones TS still can't see through the closure.
   const chased = (data?.kpis ?? []).filter((k) => k.targeted && k.pace != null);
-  // The leaderboard's against-target read hangs off WRITTEN — the only measure Capricorn sets office
-  // targets on — and reuses that KPI's own expected-by-now rather than recomputing it, so the table
-  // and the card can never disagree about what "expected" means.
-  const writtenKpi = data?.kpis.find((k) => k.key === "applications");
+  // The totals row reuses each KPI's OWN expected-by-now rather than summing the per-office
+  // expectations, so the footer and that KPI's card can never disagree about what "expected" means.
+  const kpiByKey = new Map((data?.kpis ?? []).map((k) => [k.key, k]));
+  // Whether the targets on screen are Capricorn's own upload or our derived stand-ins. Kyle has been
+  // uploading the real weekly workbook since 2026-08-13, so the old unconditional "these are
+  // placeholder values" line under the table had become untrue (Capricorn 2026-08-18 asked whether it
+  // still was). It follows provenance now, exactly like the header pill.
+  const placeholderTargets = meta.targetsProvenance.source === "placeholder";
   return (
     <Load error={error} data={data}>
       {data && (
@@ -76,10 +97,18 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
               Lending is still on the board: Momentum's Avg Case Size covers loan value and its
               Weekly Written covers commission. */}
 
-          {/* Weekly progress indicator — where the team should be by end of each day. */}
+          {/* Weekly progress indicator — where the team SHOULD be by end of each day. The bars mark
+              days closed off, not attainment: Capricorn read them as progress and asked why they
+              always agreed with "expected" (2026-08-18). They always did, and always would — the
+              expected figure is by construction the cumulative share at the last complete day, i.e.
+              the label printed under the last filled bar. The strip now says what it is, and the
+              expected read is paired with the blended ACTUAL so the two can genuinely differ. */}
           <div className="card" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: "8px 14px" }}>
             <span className="card-title" style={{ marginBottom: 0, whiteSpace: "nowrap" }}>
-              This Week <span className="card-sub">{shortDate(data.week.start)} – {shortDate(data.week.end)}</span>
+              This Week{" "}
+              <span className="card-sub">
+                {shortDate(data.week.start)} – {shortDate(data.week.end)} · bars = days closed off
+              </span>
             </span>
             <div style={{ display: "flex", flex: 1, gap: 8 }}>
               {data.week.days.map((d, i) => {
@@ -98,14 +127,31 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                     <div style={{ fontSize: 9, color: "var(--text-secondary)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
                       {data.week.cumulativeSharesPct[i]}%
                     </div>
+
                   </div>
                 );
               })}
             </div>
             <span className="asof" style={{ whiteSpace: "nowrap" }}>
-              {data.week.pending
-                ? <>Awaiting this week&rsquo;s data · last day {shortDate(data.week.latestDay)}</>
-                : <>Expected so far: <b>{data.week.expectedPct}%</b></>}
+              {data.week.pending ? (
+                <>Awaiting this week&rsquo;s data · last day {shortDate(data.week.latestDay)}</>
+              ) : (
+                <>
+                  Expected <b>{data.week.expectedPct}%</b>
+                  {data.week.actualPct != null && <> · achieved <b>{data.week.actualPct}%</b></>}
+                  {/* One decimal place, not signedPp's whole number: this is a BLENDED gap and sits
+                      within a point or two most days, so rounding it turned a −0.3pp miss into an
+                      amber "0pp" — a colour contradicting its own figure. */}
+                  {data.week.gapPp != null && (
+                    <>
+                      {" "}
+                      <span className={data.week.gapPp >= 0 ? "val-green" : "val-amber"}>
+                        ({data.week.gapPp >= 0 ? "+" : "−"}{Math.abs(data.week.gapPp).toFixed(1)}pp)
+                      </span>
+                    </>
+                  )}
+                </>
+              )}
             </span>
           </div>
 
@@ -173,17 +219,28 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                   <tr key={o.office} className={i === 0 && o.hasTargets ? "rank-1" : undefined}>
                     <td className="rank-num"><span>{i + 1}</span></td>
                     <td className="office-name">{o.office}</td>
-                    <td>{num(o.leads)}</td>
+                    {/* Each targeted column carries its own against-target read inline, rather than
+                        the table having one "vs Target" column — a column of its own read as though
+                        every measure were being judged, including the ones that aren't. Existing
+                        Client Cases sits between New Clients and Written with no arrow: it has no
+                        target, deliberately. */}
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {num(o.leads)}
+                      <PaceArrow pct={o.paceByKpi.leads.pct} expected={o.paceByKpi.leads.expected} actual={o.leads} noun="new clients" />
+                    </td>
                     <td style={{ color: "var(--text-secondary)" }}>{num(o.existingCases)}</td>
-                    {/* Written carries the against-target read inline rather than in its own column,
-                        because written is the ONLY measure Capricorn sets office targets on — a
-                        separate column implied the whole table was judged. */}
                     <td style={{ fontVariantNumeric: "tabular-nums" }}>
                       {num(o.applications)}
-                      <PaceArrow pct={o.writtenPct} expected={o.writtenExpected} actual={o.applications} />
+                      <PaceArrow pct={o.paceByKpi.applications.pct} expected={o.paceByKpi.applications.expected} actual={o.applications} noun="written" />
                     </td>
-                    <td>{num(o.referrals)}</td>
-                    <td>{num(o.sales)}</td>
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {num(o.referrals)}
+                      <PaceArrow pct={o.paceByKpi.referrals.pct} expected={o.paceByKpi.referrals.expected} actual={o.referrals} noun="referrals" />
+                    </td>
+                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
+                      {num(o.sales)}
+                      <PaceArrow pct={o.paceByKpi.sales.pct} expected={o.paceByKpi.sales.expected} actual={o.sales} noun="sales" />
+                    </td>
                     <td style={{ textAlign: "right" }}>
                       {o.hasTargets ? <StatusPill status={o.status} /> : <span className="pill muted">No target</span>}
                     </td>
@@ -194,35 +251,40 @@ export function DailyRunChase({ filters, mode, refreshMs }: PageProps) {
                 <tr className="lb-total">
                   <td />
                   <td className="office-name">All offices</td>
-                  <td><b>{num(data.leaderboardTotals.leads)}</b></td>
+                  {/* Each all-offices arrow reuses that KPI's own expectedByNow rather than summing
+                      the per-office expectations, so the footer and the matching card can never
+                      disagree about what "expected" means. Same "at least one unit due" bar the rows
+                      use, for the same reason — see paceByKpi on the server. */}
+                  <TotalCell total={data.leaderboardTotals.leads} kpi={kpiByKey.get("leads")} noun="new clients" />
                   <td><b>{num(data.leaderboardTotals.existingCases)}</b></td>
-                  {/* The all-offices arrow reuses the written KPI's own expectedByNow rather than
-                      summing the per-office expectations, so the footer and the Mortgages Written
-                      card can never disagree about what "expected" means. */}
-                  <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                    <b>{num(data.leaderboardTotals.applications)}</b>
-                    {writtenKpi?.pace && (
-                      <PaceArrow
-                        pct={
-                          // Same "at least one case due" bar the per-office rows use, for the same
-                          // reason — see writtenJudgeable on the server.
-                          writtenKpi.pace.expectedByNow >= 1
-                            ? Math.round((data.leaderboardTotals.applications / writtenKpi.pace.expectedByNow - 1) * 100)
-                            : null
-                        }
-                        expected={writtenKpi.pace.expectedByNow}
-                        actual={data.leaderboardTotals.applications}
-                      />
-                    )}
-                  </td>
-                  <td><b>{num(data.leaderboardTotals.referrals)}</b></td>
-                  <td><b>{num(data.leaderboardTotals.sales)}</b></td>
+                  <TotalCell total={data.leaderboardTotals.applications} kpi={kpiByKey.get("applications")} noun="written" />
+                  <TotalCell total={data.leaderboardTotals.referrals} kpi={kpiByKey.get("referrals")} noun="referrals" />
+                  <TotalCell total={data.leaderboardTotals.sales} kpi={kpiByKey.get("sales")} noun="sales" />
                   <td style={{ textAlign: "right", color: "var(--text-secondary)", fontSize: 11 }}>= card “week to date”</td>
                 </tr>
               </tfoot>
             </table>
-            <div className="placeholder-note" style={{ marginTop: 6 }}>
-              Targets are placeholder values pending Capricorn confirmation; advisers without an office mapping show as Unassigned.
+            {/* An upload can be a BLEND — the Datarails import supplies only Sales/Referrals/Revenue
+                and leaves Leads/Applications at whatever they were — so the provenance note travels
+                in the tooltip rather than being flattened into "Capricorn's targets" full stop. */}
+            <div
+              className="placeholder-note"
+              style={{ marginTop: 6 }}
+              title={
+                placeholderTargets
+                  ? "No target file has been uploaded — every target shown is derived from trailing averages, not Capricorn's own."
+                  : [
+                      meta.targetsProvenance.uploadedBy && `Uploaded by ${meta.targetsProvenance.uploadedBy}`,
+                      meta.targetsProvenance.note,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")
+              }
+            >
+              {placeholderTargets
+                ? "Targets are placeholder values pending Capricorn confirmation; "
+                : `Targets from Capricorn's weekly upload${meta.targetsProvenance.effectiveWeek ? ` (week of ${shortDate(meta.targetsProvenance.effectiveWeek)})` : ""}; `}
+              advisers without an office mapping show as Unassigned.
             </div>
           </div>
         </div>

@@ -381,6 +381,15 @@ export async function meta(config: Config) {
 // Screen 1 — Daily Run Chase
 // ---------------------------------------------------------------------------
 
+/** One office's against-target read for one KPI. `gap`/`pct` go null together when the KPI has no
+ *  target for that office, or when less than one whole unit is due so far — see paceByKpi. */
+interface OfficePace {
+  target: number;
+  expected: number;
+  gap: number | null;
+  pct: number | null;
+}
+
 export async function dailyRunChase(config: Config, _f: ReportFilters) {
   return cached("ds-daily-run-chase", ttl(config), async () => {
     const core = await chaseCore(config);
@@ -451,6 +460,18 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       };
     });
 
+    // The strip's "expected so far" is, by construction, the blended cumulative share at dataAsOf —
+    // i.e. exactly the label printed under the last filled day. On its own it therefore told you
+    // nothing the strip had not already said, which is what Capricorn spotted on 2026-08-18 ("we say
+    // expected and we show progress but they always seem to match"). Pairing it with the blended
+    // ACTUAL attainment gives the two numbers something to disagree about. Blended the same way the
+    // expected curve is (a mean across the TARGETED KPIs, see BLENDED_CUMULATIVE_SHARES) so both
+    // halves of the comparison are built alike; each KPI's own figure is on its own card.
+    const judgedKpis = kpis.filter((k) => k.targeted && k.weekProgress.actualPct != null);
+    const blendedActualPct = judgedKpis.length
+      ? round(judgedKpis.reduce((a, k) => a + (k.weekProgress.actualPct ?? 0), 0) / judgedKpis.length, 1)
+      : null;
+
     const officeDailyTargets = getOfficeDailyTargets();
     const leaderboard = officeAggregates(core)
       .map((o) => {
@@ -459,39 +480,48 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         // The leaderboard carried only a status colour, which said an office was behind without
         // saying by how much (Capricorn 2026-08-17 asked for an against-target figure).
         //
-        // It hangs off WRITTEN, and only written. It was first built against leads, which was wrong:
-        // Capricorn confirmed (2026-08-17) that written is the only measure they hold offices to a
-        // target on. The per-office leads figures in OFFICE_DAILY_TARGETS are headcount-derived
-        // placeholders, and since leads was redefined to new clients only they are ~16% high as well
-        // — judging an office against one would be inventing a verdict twice over.
-        const writtenWeekly = targets.applications * 5;
-        // Kept UNROUNDED for the percentage. Rounding the expectation first destroys the signal early
-        // in the week: on Sun 16 Aug only 3.5% of the written week is due, so Mayfair's expectation of
-        // 0.42 rounded to 0 and the office fell out of the comparison entirely.
-        const writtenExpectedRaw = writtenWeekly * ctx.fractionByKpi.applications;
-        const writtenExpected = Math.round(writtenExpectedRaw);
-        // Below one whole expected case there is no honest percentage to quote — one case landing on
-        // a Saturday against an expectation of 0.4 is not a 150% outperformance, it is one case. The
-        // office still shows its raw figures; it just gets no verdict yet. Same instinct as refusing
-        // to judge a part-day (DATA_CADENCE.asOfRule).
-        const writtenJudgeable = writtenExpectedRaw >= 1;
+        // It shipped as written-only, on the understanding that written was the one measure Capricorn
+        // held offices to. That was wrong: Kyle's uploads of 13 and 18 Aug carry Capricorn's OWN
+        // weekly per-office figures for leads, applications, referrals and sales alike, so all four
+        // are judgeable and all four now carry the read (Capricorn 2026-08-18: "we have RAG on
+        // Written but not on New Clients / Referrals / Sales but they have targets?"). existingCases
+        // has no target and drops out of its own accord.
+        const paceByKpi = Object.fromEntries(
+          KPI_KEYS.map((k) => {
+            const weekly = targets[k] * 5;
+            // Kept UNROUNDED for the percentage. Rounding the expectation first destroys the signal
+            // early in the week: on Sun 16 Aug only 3.5% of the written week was due, so Mayfair's
+            // expectation of 0.42 rounded to 0 and the office fell out of the comparison entirely.
+            const expectedRaw = weekly * ctx.fractionByKpi[k];
+            const expected = Math.round(expectedRaw);
+            // Below one whole expected unit there is no honest percentage to quote — one case landing
+            // on a Saturday against an expectation of 0.14 is not a 614% outperformance, it is one
+            // case. The office still shows its raw figures; it just gets no verdict yet. Same
+            // instinct as refusing to judge a part-day (DATA_CADENCE.asOfRule).
+            const judgeable = expectedRaw >= 1;
+            const actualK = (o.mtd as Record<string, number>)[k] ?? 0;
+            return [k, {
+              /** Weekly target for this office and KPI. 0 = untargeted. */
+              target: Math.round(weekly),
+              expected,
+              /** +ahead / −behind against expected-by-now. Null when not yet judgeable. */
+              gap: judgeable ? actualK - expected : null,
+              /**
+               * Signed % deviation from expected-by-now: +12 = 12% ahead of pace, −8 = 8% behind.
+               * Drives the arrow's direction and colour. Null when the office has no target for this
+               * KPI, or when less than one unit is due so far — NOT 0, which would render as
+               * "exactly on pace" against a target nobody set or a bar nobody has had time to clear.
+               */
+              pct: judgeable ? Math.round((actualK / expectedRaw - 1) * 100) : null,
+            }];
+          }),
+        ) as Record<KpiKey, OfficePace>;
         return {
           office: o.office,
           color: o.color,
           ...o.mtd,
           latest: o.latest,
-          /** Weekly written target for this office, and the share of it due by now. 0 = untargeted. */
-          writtenTarget: Math.round(writtenWeekly),
-          writtenExpected,
-          /** +ahead / −behind on written against expected-by-now. Null when not yet judgeable. */
-          writtenGap: writtenJudgeable ? o.mtd.applications - writtenExpected : null,
-          /**
-           * Signed % deviation from expected-by-now on written: +12 = 12% ahead of pace, −8 = 8%
-           * behind. Drives the arrow's direction and colour. Null when the office has no written
-           * target, or when less than one case is due so far — NOT 0, which would render as
-           * "exactly on pace" against a target nobody set or a bar nobody has had time to clear.
-           */
-          writtenPct: writtenJudgeable ? Math.round((o.mtd.applications / writtenExpectedRaw - 1) * 100) : null,
+          paceByKpi,
           pct,
           status: officeStatus(pct),
           hasTargets: TARGETED_KPI_KEYS.some((k) => targets[k] > 0),
@@ -524,6 +554,12 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         cumulativeSharesPct: ctx.blendedShares.map((s) => round(s * 100, 2)),
         fraction: round(ctx.fraction, 4),
         expectedPct: round(ctx.fraction * 100, 1),
+        /** Blended ACTUAL attainment across the targeted KPIs, so "expected so far" has something to
+         *  be compared against rather than restating the strip. Null before any targeted KPI has a
+         *  measurable week. */
+        actualPct: blendedActualPct,
+        /** +ahead / −behind, percentage points of the weekly target, blended. */
+        gapPp: blendedActualPct != null ? round(blendedActualPct - ctx.fraction * 100, 1) : null,
         nowLabel: ctx.nowLabel,
         latestDay: ctx.latestDay,
         pending: ctx.currentWeekPending,
@@ -1391,8 +1427,19 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
 // live-feed — the ticker
 // ---------------------------------------------------------------------------
 
-const gbp = (v: number | null | undefined): string =>
-  v == null ? "" : `£${Math.round(v) >= 1000 ? `${Math.round(v / 1000)}k` : Math.round(v)}`;
+/**
+ * Money for the ticker. The millions branch exists because the k-only version rendered a £1.2m
+ * mortgage as "£1200k" (Capricorn 2026-08-18) — four digits and a "k" is harder to read at a glance
+ * across a room than the thing it is, and it is the large cases people most want to see go past.
+ * Two decimals matches gbpCompact on the client, so the same value reads the same on every screen.
+ */
+const gbp = (v: number | null | undefined): string => {
+  if (v == null) return "";
+  const n = Math.round(v);
+  if (Math.abs(n) >= 1_000_000) return `£${(n / 1_000_000).toFixed(2)}M`;
+  if (Math.abs(n) >= 1_000) return `£${Math.round(n / 1_000)}k`;
+  return `£${n}`;
+};
 
 export interface FeedItem {
   kind: "application" | "lead" | "referral" | "sale" | "milestone";

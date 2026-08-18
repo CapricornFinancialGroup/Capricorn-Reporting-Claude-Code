@@ -59,6 +59,16 @@ export interface ChaseChart {
   projection: Array<number | null> | null;
 }
 
+/** One office's against-target read for one KPI. `gap`/`pct` go null together when there is no
+ *  target, or when less than one whole unit is due so far — a percentage against 0.14 expected is
+ *  noise, not a verdict. */
+export interface OfficePace {
+  target: number;
+  expected: number;
+  gap: number | null;
+  pct: number | null;
+}
+
 export interface WeekProgress {
   actualPct: number | null;
   expectedPct: number | null;
@@ -93,6 +103,12 @@ export interface DailyRunChasePayload {
     dayNames: string[];
     fraction: number;
     expectedPct: number;
+    /** Blended ACTUAL attainment across the targeted KPIs. "Expected so far" is by construction the
+     *  cumulative share at dataAsOf — the label under the last filled day — so it needs a real actual
+     *  beside it or the pair says nothing (Capricorn 2026-08-18). Null before any week is measurable. */
+    actualPct: number | null;
+    /** +ahead / −behind, percentage points of the weekly target, blended. */
+    gapPp: number | null;
     nowLabel: string;
     /** Most recent day with data — can now be a Saturday. */
     latestDay: string;
@@ -122,13 +138,9 @@ export interface DailyRunChasePayload {
     sales: number;
     existingCases: number;
     latest: Record<KpiKey, number>;
-    /** Against-target figures for WRITTEN — the only measure Capricorn sets office targets on. */
-    writtenTarget: number;
-    writtenExpected: number;
-    /** Null when the office has no written target — the indicator is omitted, never shown as 0%. */
-    writtenGap: number | null;
-    /** Signed % deviation from expected-by-now: +12 = 12% ahead of pace, −8 = 8% behind. */
-    writtenPct: number | null;
+    /** Against-target read per KPI. Every KPI Capricorn uploads a target for carries one; the
+     *  untargeted ones come back with null gap/pct and render no indicator. */
+    paceByKpi: Record<KpiKey, OfficePace>;
     pct: number | null;
     status: ChaseStatus;
     hasTargets: boolean;
