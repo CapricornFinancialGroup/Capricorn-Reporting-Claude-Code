@@ -17,7 +17,7 @@ const KPI_SHORT: Record<string, string> = {
   sales: "SALES",
 };
 
-export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
+export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<OfficeRunChasePayload>("office-run-chase", filters, mode, refreshMs);
   return (
     <Load error={error} data={data}>
@@ -67,7 +67,7 @@ export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
                       );
                     })}
                   </div>
-                  <div className="grow" style={{ minHeight: 90 }}>
+                  <div className="chart-box" style={{ minHeight: 90 }}>
                     <EChart
                       height={110}
                       option={pctPaceChart({
@@ -94,7 +94,17 @@ export function OfficeRunChase({ filters, mode, refreshMs }: PageProps) {
           </div>
 
           <div className="card">
-            <div className="card-title"><span>Ranking Strip</span><span className="placeholder-note">Targets placeholder pending Capricorn confirmation</span></div>
+            {/* Follows provenance, like the header pill and the Daily Run Chase note. It was hardcoded
+                and had been false since Kyle's first upload on 2026-08-13 — the twin of this line was
+                fixed on 2026-08-18 and this copy was missed. */}
+            <div className="card-title">
+              <span>Ranking Strip</span>
+              <span className="placeholder-note">
+                {meta.targetsProvenance.source === "placeholder"
+                  ? "Targets placeholder pending Capricorn confirmation"
+                  : `Targets from Capricorn's upload${meta.targetsProvenance.effectiveWeek ? ` · week of ${shortDate(meta.targetsProvenance.effectiveWeek)}` : ""}`}
+              </span>
+            </div>
             <div className="rank-strip">
               {data.offices.filter((o) => o.pct != null).map((o) => {
                 const width = Math.min(100, Math.max(3, (o.pct ?? 0) / 1.5));

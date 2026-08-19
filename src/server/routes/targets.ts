@@ -13,6 +13,7 @@ import ExcelJS from "exceljs";
 import type { FastifyInstance } from "fastify";
 import type { Config } from "../../config.js";
 import { UNASSIGNED } from "../../domain/offices.js";
+import { TARGETED_KPI_KEYS, type KpiKey } from "../../domain/targets.js";
 import { isTargetsAdmin, resolveCsm } from "../../services/auth.js";
 import { logger } from "../../services/logger.js";
 import { adviserRoster } from "../../services/reporting/advisers.js";
@@ -76,12 +77,13 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     try {
       // Persist THEN activate — never the other order, so a failed blob write can't leave the UI
       // claiming success while nothing durable happened.
-      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, outcome.data, uploadedBy, uploadedAt);
+      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, outcome.data, uploadedBy, uploadedAt, undefined, []);
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Upload validated but could not be saved — please try again." });
     }
-    activateTargets(outcome.data, uploadedBy, uploadedAt);
+    // The full workbook carries a column for every targeted KPI, so nothing is left as ours.
+    activateTargets(outcome.data, uploadedBy, uploadedAt, undefined, []);
     logger.info("Weekly targets activated", { effectiveWeek: outcome.data.effectiveWeek, uploadedBy });
 
     return reply.send({ ok: true, softWarnings: outcome.softWarnings, provenance: getTargetsProvenance() });
@@ -178,13 +180,21 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const uploadedBy = viewer.email;
     const uploadedAt = new Date().toISOString();
     const note = `${imported} from Datarails import (week of ${weekSaturday}); ${unchanged} unchanged.`;
+    // The structured twin of `unchanged`, so the board can name which targets are still ours rather
+    // than leaving it to prose nobody on a wall can read. "leads" is unconditional here for the same
+    // reason it is unconditional in `unchanged` above: this import has no Leads column at all.
+    const unconfirmed: KpiKey[] = [
+      "leads",
+      ...(outcome.applicationsAvailable ? [] : (["applications"] as KpiKey[])),
+      ...(outcome.salesAvailable ? [] : (["referrals", "sales"] as KpiKey[])),
+    ];
     try {
-      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, merged, uploadedBy, uploadedAt);
+      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, merged, uploadedBy, uploadedAt, note, unconfirmed);
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Import validated but could not be saved — please try again." });
     }
-    activateTargets(merged, uploadedBy, uploadedAt, note);
+    activateTargets(merged, uploadedBy, uploadedAt, note, unconfirmed);
     logger.info("Datarails targets import activated", { effectiveWeek: merged.effectiveWeek, uploadedBy, unmatched: outcome.unmatchedAdvisers.length });
 
     return reply.send({ ok: true, softWarnings, unmatchedAdvisers: outcome.unmatchedAdvisers, provenance: getTargetsProvenance() });
@@ -249,12 +259,13 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const note = `Written targets from import (week of ${weekSaturday}): Mortgage £${Math.round(outcome.writtenWeekly.mortgage).toLocaleString()} + Insurance £${Math.round(outcome.writtenWeekly.insurance).toLocaleString()}/wk. Leads/Applications/Protection unchanged.`;
     try {
       // Store the mortgage workbook as the audit artefact (the pair share a week + provenance row).
-      await uploadTargetsBlob(config.targets.storageAccount, mortgageBuffer, merged, uploadedBy, uploadedAt);
+      await uploadTargetsBlob(config.targets.storageAccount, mortgageBuffer, merged, uploadedBy, uploadedAt, note, [...TARGETED_KPI_KEYS]);
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Import validated but could not be saved — please try again." });
     }
-    activateTargets(merged, uploadedBy, uploadedAt, note);
+    // Revenue only — every COUNTED target is still whatever it already was.
+    activateTargets(merged, uploadedBy, uploadedAt, note, [...TARGETED_KPI_KEYS]);
     logger.info("Written targets import activated", { effectiveWeek: merged.effectiveWeek, uploadedBy });
 
     return reply.send({ ok: true, softWarnings, provenance: getTargetsProvenance() });

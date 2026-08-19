@@ -166,6 +166,16 @@ button { font: inherit; }
 .cols-2 { grid-template-columns: repeat(2, 1fr); }
 .cols-6 { grid-template-columns: repeat(6, 1fr); }
 .grow { flex: 1; min-height: 0; }
+/* Chart wrapper. Deliberately NOT a modifier on .grow: that class is also applied to grid rows
+   (`row cols-4 grow`), where a `display: flex` would override .row's `display: grid` and stack the
+   four chase charts on top of each other instead of laying them out in columns.
+   Being a flex COLUMN is the whole point — EChart's container asks for `flex: 1 1 auto` so it can
+   shrink inside a short card, and flex properties on a child are inert unless the parent is a flex
+   container. Without this the chart stayed a rigid block at its preferred height and, on a squeezed
+   viewport, its x-axis labels rendered outside the card and over whatever sat below (Kyle 2026-08-07
+   "the graphs appear to be overlapping … looks very messy"; still true 2026-08-19 whenever the
+   office table gained a row). */
+.chart-box { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 .card {
   background: var(--surface);

@@ -40,7 +40,14 @@ export function EChart({ option, height = 300, onClick }: Props) {
     chart.current = instance;
     const resize = () => instance.resize();
     window.addEventListener("resize", resize);
+    // A window listener alone is not enough: ECharts sizes its canvas once, at init, and the card a
+    // chart lives in changes height WITHOUT the window changing — the office table gaining a row
+    // squeezes the chart row above it. The canvas then kept its original height and spilled its axis
+    // labels over the card below. Observing the container catches every such relayout.
+    const observer = new ResizeObserver(resize);
+    observer.observe(el.current);
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", resize);
       instance.dispose();
       chart.current = null;

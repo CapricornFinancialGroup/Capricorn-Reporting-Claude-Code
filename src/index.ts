@@ -19,8 +19,18 @@ async function hydrateTargets(storageAccount: string): Promise<void> {
   try {
     const stored = await hydrateFromStorage(storageAccount);
     if (stored) {
-      activateTargets(stored.parsed, stored.uploadedBy, stored.uploadedAt);
-      logger.info("Hydrated weekly targets from storage", { effectiveWeek: stored.parsed.effectiveWeek, uploadedBy: stored.uploadedBy });
+      // Legacy default of ["leads"] for blobs written before provenance was persisted (2026-08-19).
+      // It is the honest FLOOR, not a guess: neither import route has ever supplied a Leads target —
+      // the Datarails route lists it as unchanged unconditionally — so any pre-existing upload left
+      // the leads figure as our own headcount estimate. Without this, the first restart after a
+      // deploy would have the board claim 633/wk is Capricorn's number.
+      const unconfirmed = stored.unconfirmed ?? (["leads"] as const).slice();
+      activateTargets(stored.parsed, stored.uploadedBy, stored.uploadedAt, stored.note, unconfirmed);
+      logger.info("Hydrated weekly targets from storage", {
+        effectiveWeek: stored.parsed.effectiveWeek,
+        uploadedBy: stored.uploadedBy,
+        unconfirmed,
+      });
     }
   } catch (err) {
     logger.warn("Failed to hydrate weekly targets from storage — using placeholders", { err: String(err) });

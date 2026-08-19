@@ -71,6 +71,13 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   // placeholder values" line under the table had become untrue (Capricorn 2026-08-18 asked whether it
   // still was). It follows provenance now, exactly like the header pill.
   const placeholderTargets = meta.targetsProvenance.source === "placeholder";
+  // Which of the targets on screen are still OURS despite an upload having landed. Read from the
+  // structured provenance rather than the note's prose, so the wording can't drift from the truth.
+  // Labels come off the payload rather than a client-side copy of KPI_LABELS — one source, so a
+  // rename on the server can't leave this line naming a measure by a retired name.
+  const unconfirmedLabels = (meta.targetsProvenance.unconfirmed ?? [])
+    .map((k) => kpiByKey.get(k)?.label ?? k)
+    .join(", ");
   return (
     <Load error={error} data={data}>
       {data && (
@@ -168,7 +175,7 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                     label={k.pace!.status === "on_pace" ? "On Pace" : `${k.pace!.status === "ahead" ? "Ahead" : "Behind"} ${signed(k.pace!.aheadBehind)}`}
                   />
                 </div>
-                <div className="grow">
+                <div className="chart-box">
                   <EChart
                     height={288}
                     option={paceChart({
@@ -284,6 +291,13 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
               {placeholderTargets
                 ? "Targets are placeholder values pending Capricorn confirmation; "
                 : `Targets from Capricorn's weekly upload${meta.targetsProvenance.effectiveWeek ? ` (week of ${shortDate(meta.targetsProvenance.effectiveWeek)})` : ""}; `}
+              {/* "source: upload" does NOT mean every figure is Capricorn's. No import route supplies
+                  Leads, so the leads target is still our headcount estimate — and it was calibrated
+                  when a "lead" meant any mortgage case, not a new client. Naming the exceptions stops
+                  a red arrow on New Clients being read as Capricorn's own verdict. */}
+              {!placeholderTargets && unconfirmedLabels && (
+                <>except {unconfirmedLabels}, still our estimate pending confirmation; </>
+              )}
               advisers without an office mapping show as Unassigned.
             </div>
           </div>

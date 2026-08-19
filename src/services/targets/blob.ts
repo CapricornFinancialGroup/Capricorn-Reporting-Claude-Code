@@ -9,6 +9,7 @@
 
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import { DefaultAzureCredential } from "@azure/identity";
+import type { KpiKey } from "../../domain/targets.js";
 import type { ParsedTargets } from "./parse.js";
 
 const CONTAINER = "weekly-targets";
@@ -18,6 +19,12 @@ export interface StoredTargets {
   parsed: ParsedTargets;
   uploadedBy: string;
   uploadedAt: string;
+  /** Persisted so a RESTART does not quietly launder a partial import into "all Capricorn's targets".
+   *  Both were in-memory only until 2026-08-19: the board would state the caveat until App Service
+   *  recycled, then drop it and claim every figure came from the upload. Optional because blobs
+   *  written before then have neither — see the legacy default in hydrateTargets. */
+  note?: string;
+  unconfirmed?: KpiKey[];
 }
 
 let credential: DefaultAzureCredential | undefined;
@@ -37,11 +44,13 @@ export async function uploadTargetsBlob(
   parsed: ParsedTargets,
   uploadedBy: string,
   uploadedAt: string,
+  note?: string,
+  unconfirmed?: KpiKey[],
 ): Promise<void> {
   const container = containerClient(storageAccount);
   await container.createIfNotExists();
   const stamp = uploadedAt.replace(/[:.]/g, "-");
-  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt };
+  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt, note, unconfirmed };
   const json = Buffer.from(JSON.stringify(stored, null, 2));
 
   await container.getBlockBlobClient(`raw/${stamp}.xlsx`).uploadData(rawWorkbook);

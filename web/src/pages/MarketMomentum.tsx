@@ -165,7 +165,7 @@ function Trend({ title, weeks, values, vsQ, color, reference, estimated, metricK
   return (
     <div className="card">
       <div className="card-title"><span>{title}{metricKey && mode && <> <MetricInfo metricKey={metricKey} mode={mode} /></>}</span>{accel}</div>
-      <div className="grow">
+      <div className="chart-box">
         <EChart
           height={355}
           option={momentumChart({
@@ -212,7 +212,7 @@ function RevenueTrend({ title, weeks, actual, forecast, vsQ, written }: {
         {written.provisional && <span className="mom-kpi-prov">provisional</span>}
         {accel}
       </div>
-      <div className="grow">
+      <div className="chart-box">
         <EChart height={320} option={momentumForecastChart({ weeks, actual, forecast, referenceLine: { value: targetK, label: `£${targetK}k combined target` } })} />
       </div>
       <div style={{ display: "flex", gap: 10, alignItems: "baseline", fontSize: 12, marginTop: 6, opacity: 0.9, flexWrap: "wrap" }}>

@@ -20,7 +20,17 @@ describe("store — seeded from placeholders, zero behaviour change before any u
     expect(getDailyTargets()).toEqual(DAILY_TARGETS);
     expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
     expect(getWrittenWeeklyTargets()).toEqual(WRITTEN_WEEKLY_TARGET);
-    expect(getTargetsProvenance()).toEqual({ source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null });
+    // Before any upload NO target is Capricorn's, so every targeted KPI is listed as unconfirmed.
+    // Asserted exhaustively rather than loosened: the board words its "except X" caveat off this
+    // list, and a KPI silently dropping out of it would have the wall claim a figure is Capricorn's
+    // when it is still ours.
+    expect(getTargetsProvenance()).toEqual({
+      source: "placeholder",
+      effectiveWeek: null,
+      uploadedBy: null,
+      uploadedAt: null,
+      unconfirmed: ["leads", "applications", "referrals", "sales"],
+    });
     expect(getLastParsed()).toBeNull();
   });
 });
@@ -62,6 +72,19 @@ describe("store — activateTargets", () => {
     };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-06T09:00:00.000Z", "Applications & Sales from Datarails import");
     expect(getTargetsProvenance().note).toBe("Applications & Sales from Datarails import");
+  });
+
+  it("carries the unconfirmed KPIs so an upload cannot claim targets it never supplied", () => {
+    const parsed: ParsedTargets = {
+      effectiveWeek: "2026-07-06",
+      offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }])),
+      writtenWeekly: { mortgage: 200_000, insurance: 50_000 },
+    };
+    // The real case this exists for: an import lands, so source flips to "upload", but Leads was
+    // never in the file and is still our headcount estimate. Both facts have to survive together.
+    activateTargets(parsed, "kyle@capricornfinancial.co.uk", "2026-08-18T08:12:36.127Z", "Sales & Referrals from Datarails import", ["leads"]);
+    expect(getTargetsProvenance().source).toBe("upload");
+    expect(getTargetsProvenance().unconfirmed).toEqual(["leads"]);
   });
 });
 

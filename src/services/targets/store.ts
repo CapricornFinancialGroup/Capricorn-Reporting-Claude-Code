@@ -6,7 +6,7 @@
 // shape as the domain/targets.ts constants they replace, since every existing call site already
 // does `dailyTarget * 5` to get back to weekly — that idiom doesn't change, only its source does.
 
-import { DAILY_TARGETS, KPI_KEYS, OFFICE_DAILY_TARGETS, WRITTEN_WEEKLY_TARGET, type KpiTargets, type WrittenTargets } from "../../domain/targets.js";
+import { DAILY_TARGETS, KPI_KEYS, OFFICE_DAILY_TARGETS, TARGETED_KPI_KEYS, WRITTEN_WEEKLY_TARGET, type KpiKey, type KpiTargets, type WrittenTargets } from "../../domain/targets.js";
 import type { ParsedTargets } from "./parse.js";
 
 export interface TargetsProvenance {
@@ -18,6 +18,18 @@ export interface TargetsProvenance {
    *  Applications/Sales, leaving Leads/Referrals/Revenue whatever they were before) — surfaced on
    *  the Targets admin page so it's clear the figures aren't all from one upload. */
   note?: string;
+  /**
+   * KPIs whose target is NOT from the upload — still one of our derived stand-ins, carried through
+   * the merge. Structured rather than left to `note`'s prose because the board has to be able to say
+   * which figures Capricorn actually set.
+   *
+   * Leads is the standing case, and it matters: NEITHER import route supplies it (the Datarails route
+   * lists "Leads" as unchanged unconditionally), so the 633/wk on the wall has never been set by
+   * Capricorn — it is OUR headcount estimate, and it was calibrated when "lead" still meant any
+   * mortgage case rather than a new client (2026-08-17). A red arrow against it was being read as a
+   * verdict from Capricorn's own target. See NEW_CLIENT_LEAD_BASIS.
+   */
+  unconfirmed?: KpiKey[];
 }
 
 interface TargetsState {
@@ -36,7 +48,8 @@ function placeholderState(): TargetsState {
     officeDaily: OFFICE_DAILY_TARGETS,
     daily: DAILY_TARGETS,
     writtenWeekly: WRITTEN_WEEKLY_TARGET,
-    provenance: { source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null },
+    // Nothing uploaded yet, so NO target is Capricorn's.
+    provenance: { source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null, unconfirmed: [...TARGETED_KPI_KEYS] },
     lastParsed: null,
   };
 }
@@ -65,14 +78,20 @@ function sumOffices(offices: Record<string, KpiTargets>): KpiTargets {
 /** Activate a freshly-parsed, validated upload. Call ONLY after the blob write succeeds — never
  *  the other order, so a failed blob write can't leave the UI claiming success while nothing
  *  durable happened. `note` flags a blended-source activation (e.g. the Datarails import). */
-export function activateTargets(parsed: ParsedTargets, uploadedBy: string, uploadedAt: string, note?: string): void {
+export function activateTargets(
+  parsed: ParsedTargets,
+  uploadedBy: string,
+  uploadedAt: string,
+  note?: string,
+  unconfirmed?: KpiKey[],
+): void {
   const officeDaily: Record<string, KpiTargets> = {};
   for (const [office, weekly] of Object.entries(parsed.offices)) officeDaily[office] = divideBy5(weekly);
   state = {
     officeDaily,
     daily: divideBy5(sumOffices(parsed.offices)),
     writtenWeekly: parsed.writtenWeekly,
-    provenance: { source: "upload", effectiveWeek: parsed.effectiveWeek, uploadedBy, uploadedAt, note },
+    provenance: { source: "upload", effectiveWeek: parsed.effectiveWeek, uploadedBy, uploadedAt, note, unconfirmed },
     lastParsed: parsed,
   };
 }

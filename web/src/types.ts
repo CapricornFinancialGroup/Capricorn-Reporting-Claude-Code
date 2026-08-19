@@ -12,6 +12,10 @@ export interface TargetsProvenance {
   uploadedBy: string | null;
   uploadedAt: string | null;
   note?: string;
+  /** KPIs whose target is NOT from the upload but still one of our derived stand-ins. Leads is the
+   *  standing case — no import route supplies it — so "source: upload" must never be read as "every
+   *  figure here is Capricorn's". See TargetsProvenance on the server. */
+  unconfirmed?: KpiKey[];
 }
 
 export interface Meta {
