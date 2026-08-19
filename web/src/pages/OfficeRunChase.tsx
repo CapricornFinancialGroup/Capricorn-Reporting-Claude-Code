@@ -1,5 +1,11 @@
-// Screen 2 — Office Run Chase: a card per office (4 KPI rows + mini %-to-pace chart), champion
-// celebration on the leader, and the overall ranking strip.
+// Screen 2 — Office Run Chase: a card per office (rank, 4 KPI rows, mini %-to-pace chart), with a
+// champion celebration on the leader.
+//
+// The ranking strip that used to sit beneath was removed on 2026-08-19 (Capricorn): it re-stated as
+// bars the "% of pace" every tile already shows, and it was spending the height the six tiles need to
+// be legible across an office. Rank moved ONTO the tile rather than being dropped — the tiles are in
+// fixed office order, so without it nothing on the screen said who was first, and the header's
+// "ranked #1-N by pace" would have been describing a strip that no longer existed.
 
 import { usePayload } from "../api.js";
 import { pctPaceChart, STATUS_COLOR } from "../charts.js";
@@ -24,7 +30,7 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
       {data && (
         <div className="screen">
           <div className="card" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: "8px 14px" }}>
-            <span className="card-title" style={{ marginBottom: 0 }}>% to Weekly Target Pace <span className="card-sub">fixed office order · ranked #1-{data.offices.length} by pace</span></span>
+            <span className="card-title" style={{ marginBottom: 0 }}>% to Weekly Target Pace <span className="card-sub">fixed office order · rank #1-{data.offices.length} by pace shown on each tile</span></span>
             <span className="asof">Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · data as of {shortDate(data.dataAsOf)} · expected {data.week.expectedPct}%</span>
           </div>
 
@@ -37,13 +43,17 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
             ))}
           </div>
 
-          <div className="row cols-3 grow">
+          <div className="row cols-3 grow" style={{ gridAutoRows: "1fr" }}>
             {data.offices.map((o) => {
               const champion = o.office === data.champion;
               return (
                 <div key={o.office} className={`card office-card ${champion ? "champion" : ""}`}>
                   {champion && <div className="leading-badge">Leading</div>}
                   <div className="office-head">
+                    {/* Rank ahead of the name, because the tiles are in fixed office order — the
+                        position is the one thing the layout itself cannot tell you. Blank rather than
+                        "—" for an office with no target: there is no rank to hold. */}
+                    {o.rank != null && <span className="office-rank">{o.rank}</span>}
                     <span className="office-title">{o.office}</span>
                     {o.pct != null ? <StatusPill status={o.status} label={`${o.pct}% of pace`} /> : <span className="pill muted">No target</span>}
                   </div>
@@ -93,32 +103,16 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
             })}
           </div>
 
-          <div className="card">
-            {/* Follows provenance, like the header pill and the Daily Run Chase note. It was hardcoded
-                and had been false since Kyle's first upload on 2026-08-13 — the twin of this line was
-                fixed on 2026-08-18 and this copy was missed. */}
-            <div className="card-title">
-              <span>Ranking Strip</span>
-              <span className="placeholder-note">
-                {meta.targetsProvenance.source === "placeholder"
-                  ? "Targets placeholder pending Capricorn confirmation"
-                  : `Targets from Capricorn's upload${meta.targetsProvenance.effectiveWeek ? ` · week of ${shortDate(meta.targetsProvenance.effectiveWeek)}` : ""}`}
-              </span>
-            </div>
-            <div className="rank-strip">
-              {data.offices.filter((o) => o.pct != null).map((o) => {
-                const width = Math.min(100, Math.max(3, (o.pct ?? 0) / 1.5));
-                return (
-                  <div className="rank-bar-row" key={o.office}>
-                    <span className="rank-bar-name">{o.rank != null ? `${o.rank}. ` : ""}{o.office}</span>
-                    <div className="rank-bar-track">
-                      <div className="rank-bar-fill" style={{ width: `${width}%`, background: STATUS_COLOR[o.status] }} />
-                    </div>
-                    <span className="rank-bar-pct">{o.pct}%</span>
-                  </div>
-                );
-              })}
-            </div>
+          {/* The Ranking Strip was removed on 2026-08-19 (Capricorn): it re-stated, as bars, the
+              "% of pace" pill each tile already carries, and it was costing the six tiles the height
+              they need to be read across an office. Rank moved onto the tiles rather than going with it.
+
+              Its provenance line survives as this footnote. It follows `targetsProvenance` rather than
+              being hardcoded (it was, and had been false since Kyle's first upload on 2026-08-13). */}
+          <div className="placeholder-note">
+            {meta.targetsProvenance.source === "placeholder"
+              ? "Targets are placeholder values pending Capricorn confirmation."
+              : `Targets from Capricorn's weekly upload${meta.targetsProvenance.effectiveWeek ? ` (week of ${shortDate(meta.targetsProvenance.effectiveWeek)})` : ""}.`}
           </div>
         </div>
       )}

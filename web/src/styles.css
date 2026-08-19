@@ -333,13 +333,23 @@ button { font: inherit; }
   background: #F59E0B; color: #fff; font-size: 8.5px; font-weight: 900; letter-spacing: 0.16em;
   padding: 3px 9px; border-radius: 0 0 6px 6px; text-transform: uppercase;
 }
+/* Sized up ~30% on 2026-08-19 (Capricorn: "make the tiles bigger so they are easier to see on wall
+   view"). Removing the ranking strip gave the row the height; this spends it on the figures rather
+   than on whitespace, which is the half of "bigger" that actually helps at ten feet. The KPI grid's
+   fixed columns grew with the type — leaving them at 52/64/84px would have clipped the wider text. */
 .office-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.office-title { font-size: 15px; font-weight: 800; letter-spacing: 0.01em; }
-.office-kpis { display: flex; flex-direction: column; gap: 5px; }
-.office-kpi { display: grid; grid-template-columns: 52px 64px 1fr 84px; align-items: center; gap: 8px; }
-.office-kpi-label { font-size: 9px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-secondary); }
-.office-kpi-val { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
-.office-kpi-gap { font-size: 10px; font-weight: 700; text-align: right; white-space: nowrap; }
+/* Rank, not decoration: the tiles sit in fixed office order, so this is the only thing that says who
+   is winning now the strip is gone. */
+.office-rank {
+  font-size: 13px; font-weight: 900; color: var(--text-secondary); font-variant-numeric: tabular-nums;
+  min-width: 1.1em; flex-shrink: 0;
+}
+.office-title { font-size: 19px; font-weight: 800; letter-spacing: 0.01em; margin-right: auto; }
+.office-kpis { display: flex; flex-direction: column; gap: 7px; }
+.office-kpi { display: grid; grid-template-columns: 60px 88px 1fr 104px; align-items: center; gap: 10px; }
+.office-kpi-label { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; color: var(--text-secondary); }
+.office-kpi-val { font-size: 16px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.office-kpi-gap { font-size: 12px; font-weight: 700; text-align: right; white-space: nowrap; }
 
 .rank-strip { display: flex; flex-direction: column; gap: 6px; }
 .rank-bar-row { display: grid; grid-template-columns: 110px 1fr 56px; align-items: center; gap: 10px; }

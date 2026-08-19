@@ -91,11 +91,23 @@ export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) 
   const wall = isRotating(mode ?? "dashboard");
 
   // The tour alternates Written / Referred so both boards get their turn as the subject. Only people
-  // with something to draw are included: a chain needs at least the hop to their own referred row.
+  // whose chain can actually be DRAWN are included.
+  //
+  // The parity hop — Mortgages Written across to Protection Referred, the same person both ends — is
+  // the line Capricorn asked for, and it needs a row in BOTH boards to join. Membership used to be
+  // tested against `referred` alone, so the tour admitted advisers with no written row: their parity
+  // line silently had nothing to join to, and a turn showed either a thin fan of sales links or
+  // nothing at all. On live data that was 4 of 10 turns, which is what "it seems to stop doing the
+  // linking lines" was (Capricorn 2026-08-19) — not intermittent breakage, an intermittent subject.
+  //
+  // Cost, stated: a top REFERRER outside the written top ten no longer gets a turn as the subject. It
+  // is the right trade — a line drawn "to show parity" cannot show it for someone with nothing to be
+  // at parity with — but it does mean the subject pool is the intersection, not the union.
   const tour = useMemo(() => {
     const canDraw = (name: string) => {
       const r = boards.referred.find((x) => x.name === name);
-      return r != null && (r.referred > 0 || r.partners.length > 0);
+      if (r == null || (r.referred === 0 && r.partners.length === 0)) return false;
+      return boards.written.some((x) => x.name === name);
     };
     const w = boards.written.map((r) => r.name).filter(canDraw);
     const rf = boards.referred.map((r) => r.name).filter(canDraw);
