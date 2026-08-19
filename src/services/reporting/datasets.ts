@@ -381,15 +381,6 @@ export async function meta(config: Config) {
 // Screen 1 — Daily Run Chase
 // ---------------------------------------------------------------------------
 
-/** One office's against-target read for one KPI. `gap`/`pct` go null together when the KPI has no
- *  target for that office, or when less than one whole unit is due so far — see paceByKpi. */
-interface OfficePace {
-  target: number;
-  expected: number;
-  gap: number | null;
-  pct: number | null;
-}
-
 export async function dailyRunChase(config: Config, _f: ReportFilters) {
   return cached("ds-daily-run-chase", ttl(config), async () => {
     const core = await chaseCore(config);
@@ -472,74 +463,11 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       ? round(judgedKpis.reduce((a, k) => a + (k.weekProgress.actualPct ?? 0), 0) / judgedKpis.length, 1)
       : null;
 
-    const officeDailyTargets = getOfficeDailyTargets();
-    const leaderboard = officeAggregates(core)
-      .map((o) => {
-        const targets = officeDailyTargets[o.office] ?? emptyKpiRecord();
-        const pct = pctToPace(o.mtd, targets, ctx);
-        // The leaderboard carried only a status colour, which said an office was behind without
-        // saying by how much (Capricorn 2026-08-17 asked for an against-target figure).
-        //
-        // It shipped as written-only, on the understanding that written was the one measure Capricorn
-        // held offices to. That was wrong: Kyle's uploads of 13 and 18 Aug carry Capricorn's OWN
-        // weekly per-office figures for leads, applications, referrals and sales alike, so all four
-        // are judgeable and all four now carry the read (Capricorn 2026-08-18: "we have RAG on
-        // Written but not on New Clients / Referrals / Sales but they have targets?"). existingCases
-        // has no target and drops out of its own accord.
-        const paceByKpi = Object.fromEntries(
-          KPI_KEYS.map((k) => {
-            const weekly = targets[k] * 5;
-            // Kept UNROUNDED for the percentage. Rounding the expectation first destroys the signal
-            // early in the week: on Sun 16 Aug only 3.5% of the written week was due, so Mayfair's
-            // expectation of 0.42 rounded to 0 and the office fell out of the comparison entirely.
-            const expectedRaw = weekly * ctx.fractionByKpi[k];
-            const expected = Math.round(expectedRaw);
-            // Below one whole expected unit there is no honest percentage to quote — one case landing
-            // on a Saturday against an expectation of 0.14 is not a 614% outperformance, it is one
-            // case. The office still shows its raw figures; it just gets no verdict yet. Same
-            // instinct as refusing to judge a part-day (DATA_CADENCE.asOfRule).
-            const judgeable = expectedRaw >= 1;
-            const actualK = (o.mtd as Record<string, number>)[k] ?? 0;
-            return [k, {
-              /** Weekly target for this office and KPI. 0 = untargeted. */
-              target: Math.round(weekly),
-              expected,
-              /** +ahead / −behind against expected-by-now. Null when not yet judgeable. */
-              gap: judgeable ? actualK - expected : null,
-              /**
-               * Signed % deviation from expected-by-now: +12 = 12% ahead of pace, −8 = 8% behind.
-               * Drives the arrow's direction and colour. Null when the office has no target for this
-               * KPI, or when less than one unit is due so far — NOT 0, which would render as
-               * "exactly on pace" against a target nobody set or a bar nobody has had time to clear.
-               */
-              pct: judgeable ? Math.round((actualK / expectedRaw - 1) * 100) : null,
-            }];
-          }),
-        ) as Record<KpiKey, OfficePace>;
-        return {
-          office: o.office,
-          color: o.color,
-          ...o.mtd,
-          latest: o.latest,
-          paceByKpi,
-          pct,
-          status: officeStatus(pct),
-          hasTargets: TARGETED_KPI_KEYS.some((k) => targets[k] > 0),
-        };
-      })
-      .filter((o) => o.office !== UNASSIGNED || KPI_KEYS.some((k) => (o as Record<string, unknown>)[k] as number > 0))
-      .sort((a, b) => b.leads - a.leads);
-
-    // Column totals, so the board can be tied back to the KPI cards on its own face. Capricorn read
-    // the cards' TODAY headline (28 new clients) against this table's week-to-date rows (40) and
-    // reported them as disagreeing — both were right, over different windows. The table now carries
-    // its own total and states its window, so the equality with each card's "Week to date" stat is
-    // visible rather than something you have to add up by eye.
-    const leaderboardTotals = KPI_KEYS.reduce((acc, k) => {
-      acc[k] = sum(leaderboard.map((o) => (o as Record<string, unknown>)[k] as number));
-      return acc;
-    }, {} as KpiTargets);
-
+    // The Office Leaderboard was removed from this screen on 2026-08-19 (Capricorn), and with it the
+    // per-office `leaderboard` / `leaderboardTotals` this dataset used to carry. Nothing rendered them
+    // afterwards, and a payload field no page reads is the kind of thing that gets "fixed" later by
+    // someone who assumes it is live. Office-level chase is officeRunChase's entire job — including
+    // the per-KPI against-target read, which it shows for every office rather than one table's worth.
     return {
       dataAsOf: ctx.dataAsOf,
       // Intraday context, NOT part of the chase — see `todaySoFar`. Null on Sundays.
@@ -566,8 +494,6 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       },
       dataAsOfLagsWeek: ctx.currentWeekPending,
       kpis,
-      leaderboard,
-      leaderboardTotals,
     };
   });
 }
