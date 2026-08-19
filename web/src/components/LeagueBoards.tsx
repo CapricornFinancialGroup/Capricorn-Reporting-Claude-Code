@@ -2,45 +2,47 @@
 //
 // WHAT THE THREE COLUMNS ARE, AND WHY THEY ARE NOT THE SAME PEOPLE.
 //
-//   Mortgages Written    ~59 mortgage advisers
+//   Mortgages Written    mortgage advisers
 //   Protection Referred  the same people — protection sold to THEIR clients, whoever wrote it
 //   Protection Sales     ~6 protection specialists, who write no mortgages at all
 //
 // A mortgage adviser is absent from the third board because writing protection is not their job.
-// The REFERRED board is what links the two populations, and it is the one that answers Conor's
-// question: who is doing well on their own numbers but not on the activity that should follow?
+// The middle board is what joins the two populations, and it answers Conor's question: who is doing
+// well on their own numbers but not on the activity that should follow?
 //
-// THE CONNECTING LINES, AND WHY THEY WORK THIS WAY.
+// THE CHAIN, AND WHY THE LINES ARE DRAWN ONE ADVISER AT A TIME.
 //
-// Curved wires between Referred and Sales were drawn for every pair, permanently, with a spotlight
-// touring the board. Kyle, 2026-08-18: "too messy and if static doesn't really present well — lets
-// remove the 'link' for now please." He was right about the symptom. Drawing forty-odd wires at once
-// is unreadable, and a static thicket of them says nothing.
+//   Mortgages Written → Protection Referred    the SAME person, so a straight hop across
+//   Protection Referred → Protection Sales     a different person: who actually converted it
 //
-// They are back in the only form that answers that:
+// Drawn for everyone at once that is forty-odd curves and unreadable — Kyle, 2026-08-18: "too messy
+// and if static doesn't really present well". So there is never more than ONE adviser's chain on
+// screen. On the wall a different adviser each turn of the rotation; on the dashboard the links are
+// off until asked for, and then the same one-at-a-time tour runs. The tour alternates between the
+// Written board and the Referred board so both get their turn as the subject.
 //
-//   Dashboard — OFF by default, behind a button. Nobody is made to look at them.
-//   Wall      — ON, but never more than ONE mortgage adviser's links at a time, a different adviser
-//               each time the screen comes round. One name, two or three lines, legible across a room.
+// ROWS LINE UP BY CONSTRUCTION. Every row is the same fixed height and every sub-line carries the
+// same shape — a labelled figure — so row N sits level with row N beside it. The lines are drawn
+// between row centres, so a ragged column would make them appear to point at the wrong person.
 //
-// The spotlight is bound to the links: dimming rows with nothing drawn between them is what made the
-// old tour meaningless once the wires were pulled, so if links are off, nothing dims.
+// EVERY NUMBER SAYS WHAT IT IS. This screen used "Apps" and "Refs" until 2026-08-13 (the two labels
+// retired for being wrong) and later showed a bare "3" under a name that turned out to mean
+// referrals. Both are the same failure: a number with no noun.
 //
-// A caveat that has not changed: the relationship is DERIVED from the client, not recorded (Smartr
-// holds no referral event — see the footnote on the Referred column). A confident-looking wire
-// implies more precision than the data has, which is exactly why it is opt-in and why the words on
-// each row, where the inference can be qualified, remain the primary cross-reference.
-//
-// Words, not initials. This screen used "Apps" and "Refs" until 2026-08-13 — the two labels retired
-// for being wrong — and nobody could tell what they meant. Every number says what it is.
+// The relationship itself is DERIVED from the client, not recorded — Smartr holds no referral event
+// (see the footnote on the middle column). A confident-looking wire implies more precision than the
+// data has, which is why it is opt-in on the dashboard and why the words on each row are primary.
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { isRotating, type Mode } from "../api.js";
 import type { BoardRow, LeagueBoards as Boards } from "../types.js";
 import { gbpCompact, num, shortDate } from "../format.js";
 
-/** Which adviser the wall highlights. Module-level so it ADVANCES each time the screen rotates back
- *  into view — the kiosk unmounts the page between turns, so component state would reset to the same
+/** How long each adviser holds the tour on the dashboard. The wall advances once per rotation. */
+const TOUR_MS = 5000;
+
+/** Which adviser the wall shows. Module-level so it ADVANCES each time the screen rotates back into
+ *  view — the kiosk unmounts the page between turns, so component state would reset to the same
  *  person forever. */
 let wallTurn = 0;
 
@@ -49,6 +51,15 @@ function rateClass(rate: number | null): string {
   if (rate >= 20) return "lb-hi";
   if (rate < 10) return "lb-lo";
   return "";
+}
+
+/** A labelled figure. The label is the point: a bare number under a name means nothing. */
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <>
+      <span className="lb-lab">{label}</span> {children}
+    </>
+  );
 }
 
 function Row({ row, detail, unit, lit, dim }: {
@@ -76,27 +87,51 @@ function Row({ row, detail, unit, lit, dim }: {
   );
 }
 
-function partnerText(row: BoardRow): string {
-  if (!row.partners.length) return "";
-  return row.partners.map((p) => `${p.name.split(" ")[0]} ×${p.n}`).join(", ");
-}
-
 export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) {
   const wall = isRotating(mode ?? "dashboard");
-  // Advisers whose referrals someone converted — the only ones a line has both ends for.
-  const linkable = boards.referred.filter((r) => r.partners.length > 0);
 
-  // On the wall the links are always on and always narrowed to one adviser. On the dashboard they
-  // start off, and turning them on shows all of them (there is a mouse to explore with).
+  // The tour alternates Written / Referred so both boards get their turn as the subject. Only people
+  // with something to draw are included: a chain needs at least the hop to their own referred row.
+  const tour = useMemo(() => {
+    const canDraw = (name: string) => {
+      const r = boards.referred.find((x) => x.name === name);
+      return r != null && (r.referred > 0 || r.partners.length > 0);
+    };
+    const w = boards.written.map((r) => r.name).filter(canDraw);
+    const rf = boards.referred.map((r) => r.name).filter(canDraw);
+    const out: string[] = [];
+    for (let i = 0; i < Math.max(w.length, rf.length); i++) {
+      if (w[i] && !out.includes(w[i])) out.push(w[i]);
+      if (rf[i] && !out.includes(rf[i])) out.push(rf[i]);
+    }
+    return out;
+  }, [boards]);
+
   const [showLinks, setShowLinks] = useState(wall);
-  const [spotlight, setSpotlight] = useState<string | null>(null);
+  const [subject, setSubject] = useState<string | null>(null);
 
+  // Wall: one adviser per rotation, advancing across mounts.
   useEffect(() => {
-    if (!wall || linkable.length === 0) return;
-    const pick = linkable[wallTurn % linkable.length];
+    if (!wall || tour.length === 0) return;
+    setSubject(tour[wallTurn % tour.length]);
     wallTurn += 1;
-    setSpotlight(pick.name);
-  }, [wall, linkable]);
+  }, [wall, tour]);
+
+  // Dashboard: once links are on, the same one-at-a-time tour runs on a timer.
+  useEffect(() => {
+    if (wall || !showLinks || tour.length === 0) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setSubject(tour[0]);
+      return;
+    }
+    let i = 0;
+    setSubject(tour[0]);
+    const id = window.setInterval(() => {
+      i = (i + 1) % tour.length;
+      setSubject(tour[i]);
+    }, TOUR_MS);
+    return () => window.clearInterval(id);
+  }, [wall, showLinks, tour]);
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -106,30 +141,37 @@ export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) 
     const svg = svgRef.current;
     if (!wrap || !svg) return;
     const paint = () => {
-      if (!showLinks) { svg.innerHTML = ""; return; }
+      if (!showLinks || !subject) { svg.innerHTML = ""; return; }
       const box = wrap.getBoundingClientRect();
       svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
       const find = (col: string, name: string) =>
         wrap.querySelector<HTMLElement>(`[data-col="${col}"] [data-name="${CSS.escape(name)}"]`);
       const parts: string[] = [];
-      for (const r of boards.referred) {
-        if (spotlight && r.name !== spotlight) continue;
-        const a = find("referred", r.name);
-        if (!a) continue;
-        for (const p of r.partners) {
-          const b = find("sold", p.name);
-          if (!b) continue;
-          const ra = a.getBoundingClientRect();
-          const rb = b.getBoundingClientRect();
-          const x1 = ra.right - box.left;
-          const y1 = ra.top + ra.height / 2 - box.top;
-          const x2 = rb.left - box.left;
-          const y2 = rb.top + rb.height / 2 - box.top;
-          const mid = (x1 + x2) / 2;
-          parts.push(
-            `<path d="M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}" fill="none" ` +
-              `stroke="currentColor" stroke-width="${1.4 + p.n * 0.9}" stroke-linecap="round" opacity="0.85"/>`,
-          );
+      const curve = (a: HTMLElement, b: HTMLElement, width: number) => {
+        const ra = a.getBoundingClientRect();
+        const rb = b.getBoundingClientRect();
+        const x1 = ra.right - box.left;
+        const y1 = ra.top + ra.height / 2 - box.top;
+        const x2 = rb.left - box.left;
+        const y2 = rb.top + rb.height / 2 - box.top;
+        const mid = (x1 + x2) / 2;
+        parts.push(
+          `<path d="M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}" fill="none" ` +
+            `stroke="currentColor" stroke-width="${width}" stroke-linecap="round" opacity="0.85"/>`,
+        );
+      };
+
+      // Hop one: the adviser's own row, Written across to Referred. Same person both ends.
+      const w = find("written", subject);
+      const rf = find("referred", subject);
+      if (w && rf) curve(w, rf, 2);
+
+      // Hop two: their referred sales out to whoever converted each of them.
+      const ref = boards.referred.find((r) => r.name === subject);
+      if (rf && ref) {
+        for (const p of ref.partners) {
+          const sold = find("sold", p.name);
+          if (sold) curve(rf, sold, 1.4 + p.n * 0.9);
         }
       }
       svg.innerHTML = parts.join("");
@@ -137,15 +179,14 @@ export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) 
     paint();
     window.addEventListener("resize", paint);
     return () => window.removeEventListener("resize", paint);
-  }, [boards, showLinks, spotlight]);
+  }, [boards, showLinks, subject]);
 
   // Rows only dim when there is something drawn to dim them against.
-  const focused = showLinks ? spotlight : null;
-  const partnersOf = (name: string) =>
-    boards.referred.find((r) => r.name === name)?.partners.map((p) => p.name) ?? [];
-  const inFocus = (name: string) => focused != null && (name === focused || partnersOf(focused).includes(name));
-  const isLit = (name: string) => focused != null && inFocus(name);
-  const isDim = (name: string) => focused != null && !inFocus(name);
+  const focused = showLinks ? subject : null;
+  const partners = focused ? (boards.referred.find((r) => r.name === focused)?.partners ?? []) : [];
+  const inChain = (name: string) => name === focused || partners.some((p) => p.name === name);
+  const isLit = (name: string) => focused != null && inChain(name);
+  const isDim = (name: string) => focused != null && !inChain(name);
 
   const attributionPct = boards.attribution.pct == null ? null : Math.round(boards.attribution.pct * 100);
 
@@ -154,26 +195,23 @@ export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) 
       <div className="lb-strip">
         <span className="lb-strip-label">Leaderboards</span>
         <span className="lb-strip-window">
-          Ranked over {boards.window.weeks} weeks · {shortDate(boards.window.from)} – {shortDate(boards.window.to)}
+          {boards.window.weeks} weeks · {shortDate(boards.window.from)} – {shortDate(boards.window.to)}
         </span>
-        <span className="lb-strip-note">
-          A single week ranks on one or two cases; four weeks ranks on behaviour.
-        </span>
-        {wall
-          ? spotlight && (
-              <span className="lb-spot">Referrals shown for <b>{spotlight}</b></span>
-            )
-          : linkable.length > 0 && (
-              <button
-                type="button"
-                className={`lb-links-btn${showLinks ? " on" : ""}`}
-                aria-pressed={showLinks}
-                onClick={() => setShowLinks((v) => !v)}
-                title="Draw the referral links between Protection Referred and Protection Sales. Off by default: the relationship is spelled out on each row in words, which is the version that can carry its caveat."
-              >
-                {showLinks ? "Hide links" : "Show links"}
-              </button>
-            )}
+        <span className="lb-strip-note">Same window as the figures above.</span>
+        {focused && (
+          <span className="lb-spot">Chain shown for <b>{focused}</b></span>
+        )}
+        {!wall && tour.length > 0 && (
+          <button
+            type="button"
+            className={`lb-links-btn${showLinks ? " on" : ""}`}
+            aria-pressed={showLinks}
+            onClick={() => { setShowLinks((v) => !v); if (showLinks) setSubject(null); }}
+            title="Trace one adviser at a time: their mortgages written across to the protection referred from their clients, then out to whoever converted it. Off by default — the relationship is spelled out on every row in words, which is the version that can carry its caveat."
+          >
+            {showLinks ? "Hide links" : "Show links"}
+          </button>
+        )}
       </div>
 
       <div className="lb-wrap" ref={wrapRef}>
@@ -193,10 +231,10 @@ export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) 
                 lit={isLit(r.name)}
                 dim={isDim(r.name)}
                 detail={
-                  <>
-                    <b className={rateClass(r.rate)}>{r.referred}</b> referred
+                  <Fact label="Referred">
+                    <b className={rateClass(r.rate)}>{r.referred}</b>
                     {r.rate != null && <> · <span className={rateClass(r.rate)}>{r.rate}%</span> of clients</>}
-                  </>
+                  </Fact>
                 }
               />
             ))}
@@ -219,11 +257,10 @@ export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) 
                 lit={isLit(r.name)}
                 dim={isDim(r.name)}
                 detail={
-                  <>
-                    from <b>{r.written}</b> written
-                    {r.rate != null && <> · <span className={rateClass(r.rate)}>{r.rate}%</span></>}
-                    {r.partners.length > 0 && <> · sold by {partnerText(r)}</>}
-                  </>
+                  <Fact label="Written">
+                    <b>{r.written}</b>
+                    {r.rate != null && <> · <span className={rateClass(r.rate)}>{r.rate}%</span> converted</>}
+                  </Fact>
                 }
               />
             ))}
@@ -247,7 +284,7 @@ export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) 
                 unit="sold"
                 lit={isLit(r.name)}
                 dim={isDim(r.name)}
-                detail={<><b>{gbpCompact(r.commission)}</b> commission</>}
+                detail={<Fact label="Commission"><b>{gbpCompact(r.commission)}</b></Fact>}
               />
             ))}
           </div>

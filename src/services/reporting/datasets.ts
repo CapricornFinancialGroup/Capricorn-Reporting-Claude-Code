@@ -671,11 +671,21 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
 export async function adviserLeague(config: Config, f: ReportFilters) {
   const asOf = await dataAsOf(config);
   const today = tzToday(new Date(), config.reporting.timeZone);
-  // Window: an explicit range (dashboard date filter) wins; default = the CURRENT week — the same
-  // week as the Daily/Office Run Chase, so the league's headline totals agree with them instead of
-  // quietly comparing a different period (Conor 2026-07-07: "the summary dials don't look correct").
+  // ONE WINDOW FOR THE WHOLE SCREEN — the rolling 4 weeks the leaderboards rank over.
+  //
+  // The strip used to report the current week while the boards below ranked over four, on the
+  // reasoning that the strip stayed comparable with the run-chase screens. In the room that just
+  // produced two date ranges on one page, which is the "screens disagree" reading this whole
+  // engagement has been about. Luke, 2026-08-19: "make their date range match the date range of the
+  // three columns underneath. We will go on a four-week rolling period so that everything matches."
+  //
+  // `boardWindowFrom` is the single source, so the strip and the boards cannot drift apart.
+  //
+  // ⚠ Consequence, accepted: these totals are NO LONGER a week and will not tie to a weekly Total
+  // Written Report. The window is printed on every tile; Market Momentum remains the week-on-week
+  // screen.
   const to = f.to ?? (asOf < today ? asOf : today);
-  const from = f.from ?? weekStartOf(today);
+  const from = f.from ?? boardWindowFrom(to);
   return cached(`ds-adviser-league:${from}:${to}`, ttl(config), async () => {
     const prev = previousPeriod({ from, to });
     const [appsRows, refRows, salesRows, revRows, protRows, prevApps, prevRefs] = await Promise.all([
@@ -867,8 +877,11 @@ export async function adviserLeague(config: Config, f: ReportFilters) {
  *  which separates people on behaviour rather than noise. */
 const BOARD_WEEKS = 4;
 
-/** Rows shown per board. The protection team is 6 people, so that board shows everyone. */
-const BOARD_ROWS = 12;
+/** Rows shown per board. Ten across all three so the columns are the same height and row N lines up
+ *  with row N beside it — the connecting lines are drawn between rows, so a ragged right-hand column
+ *  makes them read as though they point at the wrong person. The protection team is only ~6 people,
+ *  so that board still shows everyone. */
+const BOARD_ROWS = 10;
 
 interface BoardRow {
   rank: number;
@@ -905,8 +918,14 @@ interface BoardRow {
  * the data entry; referred measures who introduces the business. See services/reporting/referrals.ts
  * for how the credit is derived, and its caveats.
  */
+/** Start of the rolling board window ending at `to`. Exported-by-use: `adviserLeague` calls it for
+ *  its own default window so the strip above the boards covers exactly the same days. */
+function boardWindowFrom(to: string): string {
+  return shiftDays(weekStartOf(to), -7 * (BOARD_WEEKS - 1));
+}
+
 export async function leagueBoards(config: Config, to: string) {
-  const from = shiftDays(weekStartOf(to), -7 * (BOARD_WEEKS - 1));
+  const from = boardWindowFrom(to);
   return cached(`ds-league-boards:${from}:${to}`, ttl(config), async () => {
     const [writtenRows, soldRows, referralRows] = await Promise.all([
       q<AdviserDailyCount>(config, kpiDailyByAdviser("applications", from, to)),

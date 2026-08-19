@@ -715,9 +715,13 @@ button { font: inherit; }
 .lb-spot b { font-weight: 800; }
 .lb-rows { display: flex; flex-direction: column; }
 
+/* FIXED HEIGHT IS LOAD-BEARING. The connecting lines are drawn between row centres, so if a row in
+   one column is taller than the row beside it the line appears to point at the wrong person. Every
+   row is the same height in every column, and the sub-line is clipped rather than allowed to wrap. */
 .lb-row {
   display: grid; grid-template-columns: 1.35rem 1fr auto; gap: 7px; align-items: center;
   padding: 3px 5px; border-bottom: 1px solid var(--track-bg); cursor: default;
+  height: 34px; box-sizing: border-box;
 }
 .lb-row:last-child { border-bottom: none; }
 .lb-rank { font-size: 11px; font-weight: 800; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
@@ -728,7 +732,13 @@ button { font: inherit; }
    previous screen used "Apps"/"Refs" and nobody could tell what they meant. */
 .lb-detail {
   display: block; font-size: 9.5px; line-height: 1.35; color: var(--text-secondary);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; height: 13px;
+}
+/* The noun. A bare "3" under a name is exactly the failure "Apps"/"Refs" was: a number nobody can
+   identify. Every sub-line names its measure first. */
+.lb-lab {
+  font-size: 8px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--text-secondary); opacity: 0.75;
 }
 .lb-detail b { font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .lb-hi { color: var(--green); font-weight: 800; }
