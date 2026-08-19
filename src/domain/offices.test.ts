@@ -42,6 +42,12 @@ describe("Kyle's rulings", () => {
     expect(officeOf(login)).toBe(office);
   });
 
+  // 2026-08-19 — the last name on the Unassigned card. She post-dates the Datarails export, so
+  // unlike every other miss in this file she was never mis-keyed, just absent.
+  it("places Denisa Ahmetaj, who joined after the mapping export was taken", () => {
+    expect(officeOf("denisa.ahmetaj@capricornfinancialmortgages.co.uk")).toBe("Hammersmith");
+  });
+
   it("places Michael Ngoka, who carries £13,948 on Capricorn's own Written Report", () => {
     // He was invisible for weeks: the Unassigned card read only lead counts, and he is a protection
     // adviser who sources none. A mortgage-only audit could not have found him.
