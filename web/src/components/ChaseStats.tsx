@@ -88,7 +88,10 @@ export function ChaseStats({ day, weeklyTarget, wtd, today, companion }: {
         {judged && (
           <StatusPill
             status={day.status!}
-            label={`${shortDate(day.date)}: ${statusLabel(day.status!)}${day.status === "ahead" || day.status === "behind" ? ` ${signed(dayGap)}` : ""}`}
+            // The gap is appended only when there IS one. chaseStatus returns "ahead" at ratio >= 1,
+            // so hitting a day target exactly used to render "AHEAD 0" — a label arguing with its own
+            // number. The green is right (the target was met); the "0" was the only wrong part.
+            label={`${shortDate(day.date)}: ${statusLabel(day.status!)}${dayGap !== 0 && (day.status === "ahead" || day.status === "behind") ? ` ${signed(dayGap)}` : ""}`}
           />
         )}
       </div>
