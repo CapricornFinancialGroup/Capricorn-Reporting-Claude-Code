@@ -13,3 +13,9 @@ dist/
 # `git add -A` would commit another session's entire working checkout.
 .claude/settings.local.json
 .claude/worktrees/
+
+# One-off investigation scripts (tmp-cols.ts, tmp-overlap.ts, tmp-denisa.ts, …). Seven of them were
+# committed on this branch and carried for three days before being noticed: they are written against
+# the live lake to answer one question, then dead. Ignored so the next one cannot ride along in a
+# `git add -A`; anything worth keeping belongs in src/ with a test, not a tmp- prefix.
+tmp-*.ts
