@@ -2,30 +2,31 @@
 // beyond the navy header. Data polls on its own interval; rotation dwell = meta.cycleSeconds.
 //
 // Per-TV control via the `pages` query param (comma-separated page ids, in order):
-//   /screens?k=…                     → cycle all five screens (default)
-//   /screens?k=…&pages=daily         → PIN one screen, static (no rotation/progress)
-//   /screens?k=…&pages=daily,funnel  → cycle just those
+//   /screens?k=…                      → cycle all four wall screens (default)
+//   /screens?k=…&pages=daily          → PIN one screen, static (no rotation/progress)
+//   /screens?k=…&pages=daily,offices  → cycle just those
 
 import { useEffect, useRef, useState } from "react";
 import { EMPTY_FILTERS, KIOSK_TOKEN, usePayload, type Mode } from "./api.js";
 import type { Meta } from "./types.js";
 import { ErrorNote } from "./components/ui.js";
 import { GosHeader } from "./components/GosHeader.js";
-import { KIOSK_PAGE_IDS, PAGES, type PageDef } from "./pages/index.js";
+import { KIOSK_PAGE_IDS, PAGES, onWall, type PageDef } from "./pages/index.js";
 
 /** The pages this kiosk shows, from `?pages=` (falls back to the full set), in order. Admin-only
  *  pages (Targets, Glossary) are excluded even from an explicit `?pages=` override — the kiosk has
  *  no signed-in identity to check isTargetsAdmin against (it's Easy-Auth-excluded, token-gated
  *  only), so there's no way to authorize one honestly. Without this, `?pages=targets` would put
  *  the upload form on an unattended office wall TV, which is exactly the gotcha this flag exists
- *  to prevent. */
+ *  to prevent. wallExcluded pages (Funnel Health) are filtered by the same `onWall` predicate, so
+ *  a page taken off the wall stays off it no matter what the TV's URL asks for. */
 function selectedRotation(): PageDef[] {
   const raw = new URLSearchParams(window.location.search).get("pages");
   const ids = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : KIOSK_PAGE_IDS;
   const rot = ids
     .map((id) => PAGES.find((p) => p.id === id))
-    .filter((p): p is PageDef => p != null && !p.adminOnly);
-  const fallback = PAGES.filter((p) => !p.adminOnly);
+    .filter((p): p is PageDef => p != null && onWall(p));
+  const fallback = PAGES.filter(onWall);
   return rot.length ? rot : fallback;
 }
 

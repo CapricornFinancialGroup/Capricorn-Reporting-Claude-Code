@@ -1,4 +1,5 @@
-// Dashboard mode (/dashboard, Easy Auth) — the same five screens with nav tabs, fluid width.
+// Dashboard mode (/dashboard, Easy Auth) — all five screens with nav tabs, fluid width. One MORE
+// than the wall: Funnel Health is wallExcluded, so it appears here and not in the TV rotation.
 // Deep-linkable via the URL hash (#advisers).
 
 import { useEffect, useState } from "react";
