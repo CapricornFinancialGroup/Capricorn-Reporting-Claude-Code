@@ -2,7 +2,8 @@
 
 Wall-dashboard / kiosk system for Capricorn Financial Group: five screens (Daily Run Chase, Office
 Run Chase, Adviser League, Funnel Health, Market Momentum) rendered from the Capricorn data lake,
-designed for 1920×1080 office TVs and an authenticated browser dashboard.
+designed for 1920×1080 office TVs and an authenticated browser dashboard. The office TV rotation
+carries four of them — Funnel Health is dashboard-only (`wallExcluded` in `web/src/pages/index.ts`).
 
 Built from Capricorn's signed-off strawman screens; visual language: light background, white cards,
 navy header, Inter, colour only for meaning — *"Formula One mission control designed by Apple"*.
@@ -166,9 +167,9 @@ Actions workflow is activated.
 Point each TV's browser at:
 
 ```
-https://<app>/screens?k=<kiosk-token>                 # rotate all five screens
+https://<app>/screens?k=<kiosk-token>                 # rotate all four wall screens
 https://<app>/screens?k=<kiosk-token>&pages=daily     # pin one screen
-https://<app>/screens?k=<kiosk-token>&pages=daily,funnel
+https://<app>/screens?k=<kiosk-token>&pages=daily,offices
 ```
 
 Rotation dwell = `REPORTING_CYCLE_SECONDS` (20s), data poll = `REPORTING_REFRESH_SECONDS` (60s).

@@ -19,18 +19,26 @@ export interface PageDef {
    *  admin-only page can't accidentally end up on the office wall TVs by adding it here and
    *  forgetting a second list. */
   adminOnly?: boolean;
+  /** Hidden from the wall/kiosk rotation ONLY — still in the dashboard nav for every viewer.
+   *  Distinct from adminOnly, which is an authorization gate: this one is editorial, for a page
+   *  that earns its place in the browser but not on an unattended office TV. Like adminOnly, it
+   *  is enforced against an explicit `?pages=` override too, so "not on the wall" means not on
+   *  the wall by any URL. */
+  wallExcluded?: boolean;
 }
 
 export const PAGES: PageDef[] = [
   { id: "daily", label: "Daily Run Chase", Component: DailyRunChase },
   { id: "offices", label: "Office Run Chase", Component: OfficeRunChase },
   { id: "advisers", label: "Adviser League", Component: AdviserLeague },
-  { id: "funnel", label: "Funnel Health", Component: FunnelHealth },
+  { id: "funnel", label: "Funnel Health", Component: FunnelHealth, wallExcluded: true },
   { id: "momentum", label: "Market Momentum", Component: MarketMomentum },
   { id: "targets", label: "Targets", Component: Targets, adminOnly: true },
   { id: "glossary", label: "Glossary", Component: Glossary, adminOnly: true },
 ];
 
 // The wall/kiosk rotation is for the office TVs — an upload form or an internal glossary has no
-// business there.
-export const KIOSK_PAGE_IDS = PAGES.filter((p) => !p.adminOnly).map((p) => p.id);
+// business there, and neither does a page flagged wallExcluded.
+export const onWall = (p: PageDef): boolean => !p.adminOnly && !p.wallExcluded;
+
+export const KIOSK_PAGE_IDS = PAGES.filter(onWall).map((p) => p.id);
