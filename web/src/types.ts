@@ -70,16 +70,6 @@ export interface ChaseChart {
   projection: Array<number | null> | null;
 }
 
-/** One office's against-target read for one KPI. `gap`/`pct` go null together when there is no
- *  target, or when less than one whole unit is due so far — a percentage against 0.14 expected is
- *  noise, not a verdict. */
-export interface OfficePace {
-  target: number;
-  expected: number;
-  gap: number | null;
-  pct: number | null;
-}
-
 export interface WeekProgress {
   actualPct: number | null;
   expectedPct: number | null;
@@ -140,24 +130,6 @@ export interface DailyRunChasePayload {
     weekProgress: WeekProgress;
     chart: ChaseChart;
   }>;
-  leaderboard: Array<{
-    office: string;
-    color: string;
-    leads: number;
-    applications: number;
-    referrals: number;
-    sales: number;
-    existingCases: number;
-    latest: Record<KpiKey, number>;
-    /** Against-target read per KPI. Every KPI Capricorn uploads a target for carries one; the
-     *  untargeted ones come back with null gap/pct and render no indicator. */
-    paceByKpi: Record<KpiKey, OfficePace>;
-    pct: number | null;
-    status: ChaseStatus;
-    hasTargets: boolean;
-  }>;
-  /** Column totals, so the table ties to each card's "Week to date" stat on its own face. */
-  leaderboardTotals: Record<KpiKey, number>;
 }
 
 export interface OfficeRunChasePayload {

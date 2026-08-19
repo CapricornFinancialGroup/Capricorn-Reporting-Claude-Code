@@ -1,62 +1,30 @@
-// Screen 1 — Weekly Run Chase (Conor's principles): a KPI card per measure with the cumulative Week
-// Progress read, the weekly progress indicator strip (Mon 20.83% → Fri 100%), a weighted chase chart
-// per TARGETED measure, office leaderboard, live-feed ticker.
+// Screen 1 — Weekly Run Chase (Conor's principles): one large chase chart per TARGETED measure, each
+// carrying its own figure strip, plus the weekly progress indicator and the live-feed ticker.
 //
-// Cards and charts are both four since 2026-08-18: Leads was split into new clients vs
-// existing-client cases on 2026-08-17, and Capricorn then ruled the run chase should carry the new
-// client half only ("just be Client Added ie. New Client only" — Kyle). Existing-client cases are
-// still measured and still reported, on Funnel Health. See NEW_CLIENT_LEAD_BASIS on the server.
+// Restructured 2026-08-19 on Capricorn's instruction. It previously opened with five KPI tiles above
+// four chase charts, which said the same thing twice — the tile's job was the current figures, the
+// chart's job was the trend, and the tile was winning the argument for space. The tiles are gone, the
+// charts are twice the size in a 2x2, and each one carries the tile's figures underneath it (see
+// ChaseStats, which keeps the today-is-never-judged rule the tiles existed to protect).
+//
+// Charts are TARGETED measures only: a week chase drawn for a measure with no target would be an
+// actual line against an empty pace line, which reads as catastrophically behind rather than as
+// untargeted. That leaves Existing Client Cases with no chart and, now, no tile — so it rides along as
+// the tracked companion on New Client Leads, the measure it is the other half of.
+//
+// The Office Leaderboard was removed from this screen the same day. Office-level chase is Screen 2's
+// entire job (OfficeRunChase), which shows every office against every KPI rather than a table this
+// page had to keep explaining the window of.
 
 import { usePayload } from "../api.js";
 import { paceChart } from "../charts.js";
+import { ChaseStats, type TrackedCompanion } from "../components/ChaseStats.js";
 import { EChart } from "../components/EChart.js";
-import { KpiCard } from "../components/KpiCard.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { Ticker } from "../components/Ticker.js";
-import { num, shortDate, signed } from "../format.js";
-import type { DailyRunChasePayload, Pace } from "../types.js";
+import { shortDate, signed } from "../format.js";
+import type { DailyRunChasePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
-
-/**
- * Against-target read for a single figure: a coloured arrow and a percentage, sitting beside the
- * number it judges. Capricorn asked for exactly this rather than a "vs Target" column (2026-08-17) —
- * a column of its own read as though the whole table were being judged.
- *
- * `pct` is the SIGNED deviation from expected-by-now, so the arrow carries the sign and the label
- * shows magnitude only: ▲ 12% means 12% ahead of pace, not 12% of target. Renders nothing at all
- * when `pct` is null — a measure with no target gets no verdict, not a 0%.
- */
-function PaceArrow({ pct, expected, actual, noun }: { pct: number | null; expected: number; actual: number; noun: string }) {
-  if (pct == null) return null;
-  const ahead = pct >= 0;
-  const verdict = pct === 0 ? "exactly on pace" : `${Math.abs(pct)}% ${ahead ? "ahead of" : "behind"} pace`;
-  return (
-    <span
-      className={`lb-pace ${ahead ? "lb-pace-up" : "lb-pace-down"}`}
-      title={`${num(actual)} ${noun} vs ${num(expected)} expected by now — ${verdict}`}
-    >
-      {ahead ? "▲" : "▼"} {Math.abs(pct)}%
-    </span>
-  );
-}
-
-/** One totals-row cell: the column sum, plus the all-offices against-target read for that KPI. */
-function TotalCell({ total, kpi, noun }: { total: number; kpi: { pace: Pace | null } | undefined; noun: string }) {
-  const expected = kpi?.pace?.expectedByNow ?? null;
-  return (
-    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-      <b>{num(total)}</b>
-      {expected != null && (
-        <PaceArrow
-          pct={expected >= 1 ? Math.round((total / expected - 1) * 100) : null}
-          expected={expected}
-          actual={total}
-          noun={noun}
-        />
-      )}
-    </td>
-  );
-}
 
 export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
@@ -64,52 +32,32 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   // `pace` rather than `targeted` also narrows the type, so the charts below need no non-null casts
   // beyond the ones TS still can't see through the closure.
   const chased = (data?.kpis ?? []).filter((k) => k.targeted && k.pace != null);
-  // The totals row reuses each KPI's OWN expected-by-now rather than summing the per-office
-  // expectations, so the footer and that KPI's card can never disagree about what "expected" means.
-  const kpiByKey = new Map((data?.kpis ?? []).map((k) => [k.key, k]));
-  // Whether the targets on screen are Capricorn's own upload or our derived stand-ins. Kyle has been
-  // uploading the real weekly workbook since 2026-08-13, so the old unconditional "these are
-  // placeholder values" line under the table had become untrue (Capricorn 2026-08-18 asked whether it
-  // still was). It follows provenance now, exactly like the header pill.
+
+  // Existing Client Cases: tracked, untargeted, chartless. Attached to New Client Leads because they
+  // are the two halves of the same intake — a case opened for a brand-new client vs one opened for a
+  // client already on file (Capricorn 2026-08-17, "eg - Remos").
+  const existing = (data?.kpis ?? []).find((k) => k.key === "existingCases");
+  const companion: TrackedCompanion | null = existing
+    ? {
+        label: existing.label,
+        today: data?.today ? (data.today.counts.existingCases ?? 0) : null,
+        wtd: existing.wtd,
+      }
+    : null;
+
+  // Which targets on screen are still OURS rather than Capricorn's. This caveat used to sit under the
+  // leaderboard; it outlived the table because the point it makes — that no import route supplies a
+  // Leads target — applies to the leads chart above it just as much.
   const placeholderTargets = meta.targetsProvenance.source === "placeholder";
-  // "I think we agreed that it should just be Client Added ie. New Client only" (Kyle, 2026-08-18).
-  // The measure is NOT deleted — it still ships in the payload and is reported on Funnel Health,
-  // which is now a back-office screen. It just no longer takes a card on the run chase, where a
-  // permanently untargeted "tracked · no target" tile read as a broken KPI rather than a deliberate
-  // one. Reverting is a one-line change here.
-  const cards = (data?.kpis ?? []).filter((k) => k.key !== "existingCases");
-  // Which of the targets on screen are still OURS despite an upload having landed. Read from the
-  // structured provenance rather than the note's prose, so the wording can't drift from the truth.
-  // Labels come off the payload rather than a client-side copy of KPI_LABELS — one source, so a
-  // rename on the server can't leave this line naming a measure by a retired name.
   const unconfirmedLabels = (meta.targetsProvenance.unconfirmed ?? [])
-    .map((k) => kpiByKey.get(k)?.label ?? k)
+    .map((k) => (data?.kpis ?? []).find((x) => x.key === k)?.label ?? k)
     .join(", ");
+
   return (
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
           <Ticker mode={mode} refreshMs={refreshMs} />
-
-          <div className={`row cols-${cards.length}`}>
-            {cards.map((k) => (
-              <KpiCard
-                key={k.key}
-                name={k.label}
-                day={k.day}
-                targeted={k.targeted}
-                weeklyTarget={k.weeklyTarget}
-                wtd={k.wtd}
-                today={data.today ? { count: data.today.counts[k.key] ?? 0, loadedAt: data.today.loadedAt } : null}
-                metricKey={k.key}
-                mode={mode}
-              />
-            ))}
-          </div>
-
-          {/* The Total Lending bar sat here until 2026-08-17, removed on Capricorn's instruction.
-              Lending is still on the board: Momentum's Avg Case Size covers loan value and its
-              Weekly Written covers commission. */}
 
           {/* Weekly progress indicator — where the team SHOULD be by end of each day. The bars mark
               days closed off, not attainment: Capricorn read them as progress and asked why they
@@ -141,7 +89,6 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                     <div style={{ fontSize: 9, color: "var(--text-secondary)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
                       {data.week.cumulativeSharesPct[i]}%
                     </div>
-
                   </div>
                 );
               })}
@@ -169,10 +116,12 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
             </span>
           </div>
 
-          {/* Target pacing, so TARGETED KPIs only: a "week chase" chart for a measure with no target
-              would be an actual line against an empty pace line, which reads as catastrophically
-              behind rather than as untargeted. The tracked KPI still has its card above. */}
-          <div className="row cols-4 grow">
+          {/* 2x2 rather than 4-across: with the tiles and the leaderboard gone there is roughly four
+              times the area to give each chart, and four tall narrow columns would have spent it all
+              on height the pace lines don't need. `gridAutoRows: 1fr` so the two rows split the space
+              evenly — grid rows default to sizing on content, which would let the row with the taller
+              figure strip steal height from the other. */}
+          <div className="row cols-2 grow" style={{ gridAutoRows: "1fr" }}>
             {chased.map((k) => (
               <div className="card" key={k.key}>
                 <div className="card-title">
@@ -184,7 +133,7 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                 </div>
                 <div className="chart-box">
                   <EChart
-                    height={288}
+                    height={200}
                     option={paceChart({
                       days: k.chart.days,
                       actual: k.chart.actual,
@@ -194,114 +143,25 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                     })}
                   />
                 </div>
+                <ChaseStats
+                  day={k.day}
+                  weeklyTarget={k.weeklyTarget}
+                  wtd={k.wtd}
+                  today={data.today ? { count: data.today.counts[k.key] ?? 0, loadedAt: data.today.loadedAt } : null}
+                  companion={k.key === "leads" ? companion : null}
+                />
               </div>
             ))}
           </div>
 
-          {/* The table's window is stated in full, and it carries its own totals row. Capricorn read
-              the cards' TODAY headline (28 new clients) against these week-to-date rows (40) and
-              reported them as disagreeing — both figures were right, over different windows. Naming
-              the window and totalling the column makes the tie to each card's "Week to date" stat
-              visible instead of something you add up by eye. The window CANNOT simply be changed to
-              include today: this table judges offices against target, and part-days must not be
-              judged (see DATA_CADENCE.asOfRule). */}
-          <div className="card">
-            <div className="card-title">
-              <span>
-                Office Leaderboard{" "}
-                <span className="card-sub">
-                  — ranked by new-client leads · week to date, {shortDate(data.week.start)} – {shortDate(data.dataAsOf)} (complete days; today not included)
-                </span>
-              </span>
-              <span className="asof">Expected {data.week.expectedPct}% of weekly target by now</span>
-            </div>
-            <table className="lb-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 44 }}>Rank</th>
-                  <th>Office</th>
-                  <th>New Clients</th>
-                  <th>Written</th>
-                  <th>Referrals</th>
-                  <th>Sales</th>
-                  <th style={{ textAlign: "right" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.leaderboard.map((o, i) => (
-                  <tr key={o.office} className={i === 0 && o.hasTargets ? "rank-1" : undefined}>
-                    <td className="rank-num"><span>{i + 1}</span></td>
-                    <td className="office-name">{o.office}</td>
-                    {/* Each targeted column carries its own against-target read inline, rather than
-                        the table having one "vs Target" column — a column of its own read as though
-                        every measure were being judged, including the ones that aren't. */}
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {num(o.leads)}
-                      <PaceArrow pct={o.paceByKpi.leads.pct} expected={o.paceByKpi.leads.expected} actual={o.leads} noun="new clients" />
-                    </td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {num(o.applications)}
-                      <PaceArrow pct={o.paceByKpi.applications.pct} expected={o.paceByKpi.applications.expected} actual={o.applications} noun="written" />
-                    </td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {num(o.referrals)}
-                      <PaceArrow pct={o.paceByKpi.referrals.pct} expected={o.paceByKpi.referrals.expected} actual={o.referrals} noun="referrals" />
-                    </td>
-                    <td style={{ fontVariantNumeric: "tabular-nums" }}>
-                      {num(o.sales)}
-                      <PaceArrow pct={o.paceByKpi.sales.pct} expected={o.paceByKpi.sales.expected} actual={o.sales} noun="sales" />
-                    </td>
-                    <td style={{ textAlign: "right" }}>
-                      {o.hasTargets ? <StatusPill status={o.status} /> : <span className="pill muted">No target</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr className="lb-total">
-                  <td />
-                  <td className="office-name">All offices</td>
-                  {/* Each all-offices arrow reuses that KPI's own expectedByNow rather than summing
-                      the per-office expectations, so the footer and the matching card can never
-                      disagree about what "expected" means. Same "at least one unit due" bar the rows
-                      use, for the same reason — see paceByKpi on the server. */}
-                  <TotalCell total={data.leaderboardTotals.leads} kpi={kpiByKey.get("leads")} noun="new clients" />
-                  <TotalCell total={data.leaderboardTotals.applications} kpi={kpiByKey.get("applications")} noun="written" />
-                  <TotalCell total={data.leaderboardTotals.referrals} kpi={kpiByKey.get("referrals")} noun="referrals" />
-                  <TotalCell total={data.leaderboardTotals.sales} kpi={kpiByKey.get("sales")} noun="sales" />
-                  <td style={{ textAlign: "right", color: "var(--text-secondary)", fontSize: 11 }}>= card “week to date”</td>
-                </tr>
-              </tfoot>
-            </table>
-            {/* An upload can be a BLEND — the Datarails import supplies only Sales/Referrals/Revenue
-                and leaves Leads/Applications at whatever they were — so the provenance note travels
-                in the tooltip rather than being flattened into "Capricorn's targets" full stop. */}
-            <div
-              className="placeholder-note"
-              style={{ marginTop: 6 }}
-              title={
-                placeholderTargets
-                  ? "No target file has been uploaded — every target shown is derived from trailing averages, not Capricorn's own."
-                  : [
-                      meta.targetsProvenance.uploadedBy && `Uploaded by ${meta.targetsProvenance.uploadedBy}`,
-                      meta.targetsProvenance.note,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ")
-              }
-            >
-              {placeholderTargets
-                ? "Targets are placeholder values pending Capricorn confirmation; "
-                : `Targets from Capricorn's weekly upload${meta.targetsProvenance.effectiveWeek ? ` (week of ${shortDate(meta.targetsProvenance.effectiveWeek)})` : ""}; `}
-              {/* "source: upload" does NOT mean every figure is Capricorn's. No import route supplies
-                  Leads, so the leads target is still our headcount estimate — and it was calibrated
-                  when a "lead" meant any mortgage case, not a new client. Naming the exceptions stops
-                  a red arrow on New Clients being read as Capricorn's own verdict. */}
-              {!placeholderTargets && unconfirmedLabels && (
-                <>except {unconfirmedLabels}, still our estimate pending confirmation; </>
-              )}
-              advisers without an office mapping show as Unassigned.
-            </div>
+          <div className="placeholder-note">
+            {placeholderTargets
+              ? "Targets are placeholder values pending Capricorn confirmation."
+              : `Targets from Capricorn's weekly upload${meta.targetsProvenance.effectiveWeek ? ` (week of ${shortDate(meta.targetsProvenance.effectiveWeek)})` : ""}.`}
+            {!placeholderTargets && unconfirmedLabels && (
+              <> Except {unconfirmedLabels}, still our estimate pending confirmation.</>
+            )}
+            {" "}Office-level chase is on the next screen.
           </div>
         </div>
       )}
