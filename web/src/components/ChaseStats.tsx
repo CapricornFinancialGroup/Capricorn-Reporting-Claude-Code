@@ -19,9 +19,15 @@ import { clockTime, num, shortDate, signed, statusLabel } from "../format.js";
 import type { DayView } from "../types.js";
 import { StatusPill } from "./StatusPill.js";
 
-/** A tracked-but-untargeted companion measure, shown as a quiet second line. Exists for Existing
- *  Client Cases: it has no target, so it gets no chart, so removing the tiles would have deleted it
- *  from the board outright — and Capricorn asked for it explicitly on 2026-08-17. */
+/** A tracked-but-untargeted companion measure, shown as a quiet second line.
+ *
+ *  CURRENTLY UNUSED, on purpose. It was built for Existing Client Cases — no target, so no chart, so
+ *  removing the tiles would have deleted it from the board outright. Capricorn then ruled that the
+ *  lead chase should read as new clients ONLY, and confirmed on 2026-08-19 that the objection is to
+ *  that measure appearing as its own figure alongside Leads. So nothing passes a companion today.
+ *
+ *  Kept rather than deleted because the need it answers is real and recurring: the next tracked,
+ *  untargeted measure will hit exactly the same problem. Do not re-attach one to Leads. */
 export interface TrackedCompanion {
   label: string;
   today: number | null;

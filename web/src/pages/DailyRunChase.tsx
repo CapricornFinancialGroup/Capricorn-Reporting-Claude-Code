@@ -9,8 +9,9 @@
 //
 // Charts are TARGETED measures only: a week chase drawn for a measure with no target would be an
 // actual line against an empty pace line, which reads as catastrophically behind rather than as
-// untargeted. That leaves Existing Client Cases with no chart and, now, no tile — so it rides along as
-// the tracked companion on New Client Leads, the measure it is the other half of.
+// untargeted. That leaves Existing Client Cases with no chart and no tile, and — since 2026-08-19 —
+// no companion line under Leads either: Capricorn want the lead chase to read as new clients only.
+// It is still counted and still reported on Funnel Health. See the note beside `chased` below.
 //
 // The Office Leaderboard was removed from this screen the same day. Office-level chase is Screen 2's
 // entire job (OfficeRunChase), which shows every office against every KPI rather than a table this
@@ -18,7 +19,7 @@
 
 import { usePayload } from "../api.js";
 import { paceChart } from "../charts.js";
-import { ChaseStats, type TrackedCompanion } from "../components/ChaseStats.js";
+import { ChaseStats } from "../components/ChaseStats.js";
 import { EChart } from "../components/EChart.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { Ticker } from "../components/Ticker.js";
@@ -33,17 +34,16 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   // beyond the ones TS still can't see through the closure.
   const chased = (data?.kpis ?? []).filter((k) => k.targeted && k.pace != null);
 
-  // Existing Client Cases: tracked, untargeted, chartless. Attached to New Client Leads because they
-  // are the two halves of the same intake — a case opened for a brand-new client vs one opened for a
-  // client already on file (Capricorn 2026-08-17, "eg - Remos").
-  const existing = (data?.kpis ?? []).find((k) => k.key === "existingCases");
-  const companion: TrackedCompanion | null = existing
-    ? {
-        label: existing.label,
-        today: data?.today ? (data.today.counts.existingCases ?? 0) : null,
-        wtd: existing.wtd,
-      }
-    : null;
+  // Existing Client Cases is deliberately NOT surfaced here. It was split out of Leads on
+  // 2026-08-17 so the remortgage/repeat-client book could be reported separately; Capricorn then
+  // ruled the lead chase should read as new clients only ("just be Client Added ie. New Client
+  // only" — Kyle, 2026-08-18), and confirmed on 2026-08-19 that the objection is specifically to it
+  // appearing as its own figure ALONGSIDE LEADS. It rode along under the leads chart as a tracked
+  // companion for a day; that is the placement the ruling is about, so it is gone.
+  //
+  // The measure itself is untouched: still counted, still in this payload, still reported on Funnel
+  // Health, and still inside any total that legitimately includes both halves of intake. Only the
+  // leads presentation drops it.
 
   // Which targets on screen are still OURS rather than Capricorn's. This caveat used to sit under the
   // leaderboard; it outlived the table because the point it makes — that no import route supplies a
@@ -148,7 +148,6 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                   weeklyTarget={k.weeklyTarget}
                   wtd={k.wtd}
                   today={data.today ? { count: data.today.counts[k.key] ?? 0, loadedAt: data.today.loadedAt } : null}
-                  companion={k.key === "leads" ? companion : null}
                 />
               </div>
             ))}
