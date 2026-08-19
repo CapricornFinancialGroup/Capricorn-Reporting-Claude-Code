@@ -771,7 +771,13 @@ button { font: inherit; }
 .lb-rank { font-size: 11px; font-weight: 800; color: var(--text-secondary); text-align: right; font-variant-numeric: tabular-nums; }
 .lb-first .lb-rank { color: #B7791F; }
 .lb-who { min-width: 0; }
-.lb-who b { display: block; font-size: 12.5px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* DIRECT CHILD ONLY. As `.lb-who b` this also caught the <b> inside .lb-detail — the sub-line's own
+   figure — and made it display:block at 12.5px, which pushed it onto a second line that .lb-detail's
+   `height: 13px; overflow: hidden` then clipped away completely. Every sub-line rendered its label and
+   swallowed its number: "REFERRED" with nothing after it, which is the exact "a figure with no noun"
+   failure 61bb96f set out to fix, inverted into a noun with no figure. The label survived only because
+   it is a <span>. */
+.lb-who > b { display: block; font-size: 12.5px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* The shorthand spells the measure out — "8 referred · 28% of clients · sold by Jack ×2". The
    previous screen used "Apps"/"Refs" and nobody could tell what they meant. */
 .lb-detail {
@@ -784,7 +790,9 @@ button { font: inherit; }
   font-size: 8px; font-weight: 800; letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--text-secondary); opacity: 0.75;
 }
-.lb-detail b { font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+/* Explicitly inline and at the sub-line's own size, so no future name-level rule can promote it to a
+   block and clip it out of the row again. */
+.lb-detail b { display: inline; font-size: inherit; line-height: inherit; font-weight: 800; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .lb-hi { color: var(--green); font-weight: 800; }
 .lb-lo { color: var(--red); font-weight: 800; }
 .lb-value {
