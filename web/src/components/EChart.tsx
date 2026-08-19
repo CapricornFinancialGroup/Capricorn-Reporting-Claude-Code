@@ -40,10 +40,13 @@ export function EChart({ option, height = 300, onClick }: Props) {
     chart.current = instance;
     const resize = () => instance.resize();
     window.addEventListener("resize", resize);
-    // The canvas is sized at init and on window resize only, so a chart whose CARD grows without the
-    // window changing keeps its old canvas: Market Momentum's half-width chart drew at its preferred
-    // 560px and left the bottom third of a 1080 wall card blank. Observe the container instead — the
-    // canvas is positioned inside it by ECharts, so resizing cannot feed back into the box and loop.
+    // A window listener alone is not enough: ECharts sizes its canvas once, at init, and a chart's CARD
+    // changes height WITHOUT the window changing. Two ways that showed up, fixed independently on two
+    // branches and reconciled here: the office table gaining a row squeezed the chart row above it and
+    // the canvas spilled its axis labels over the card below; and Market Momentum's half-width chart
+    // drew at its preferred 560px, leaving the bottom third of a 1080 wall card blank. Observing the
+    // container catches every such relayout — and ECharts positions the canvas INSIDE the observed box,
+    // so resizing cannot feed back into it and loop.
     const observer = new ResizeObserver(resize);
     observer.observe(el.current);
     return () => {

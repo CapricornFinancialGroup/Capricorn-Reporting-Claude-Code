@@ -95,7 +95,7 @@ export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageP
               <span>Mortgages Written vs Referrals</span>
               <span className="card-sub">the gap is the unreferred opportunity · indicative</span>
             </div>
-            <div className="grow">
+            <div className="chart-box">
               <EChart height={560} option={applicationsReferralsGapChart(data.applicationsReferralsGap)} />
             </div>
           </div>

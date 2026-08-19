@@ -19,12 +19,17 @@ export interface StoredTargets {
   parsed: ParsedTargets;
   uploadedBy: string;
   uploadedAt: string;
-  /** Which figures this upload (plus everything carried forward into it) supplies — so a restart
-   *  rebuilds the Targets page's per-figure provenance instead of silently losing it. Absent on
-   *  blobs written before 2026-08-18; the store treats that as "unknown", never as "none". */
-  captured?: CapturedMap;
-  /** The blended-source note shown on the Targets page, so it survives a restart too. */
+  /** Persisted so a RESTART does not quietly launder a partial import into "all Capricorn's targets".
+   *  Both were in-memory only until 2026-08-19: the board would state the caveat until App Service
+   *  recycled, then drop it and claim every figure came from the upload. Optional because blobs
+   *  written before then have neither — see the legacy floor in unconfirmedFrom().
+   *
+   *  `captured` is the per-figure map, stored rather than its inverse: it is the source of truth, and
+   *  the still-ours list the board reads is derived from it (store.unconfirmedFrom). Storing both would
+   *  let a blob contradict itself. Absent = "this blob predates per-figure provenance", which is NOT
+   *  the same as "nothing was captured" and must not be flattened into it. */
   note?: string;
+  captured?: CapturedMap;
 }
 
 let credential: DefaultAzureCredential | undefined;
@@ -44,16 +49,22 @@ export async function uploadTargetsBlob(
   parsed: ParsedTargets,
   uploadedBy: string,
   uploadedAt: string,
-  captured?: CapturedMap,
-  note?: string,
+  opts: {
+    note?: string;
+    captured?: CapturedMap;
+    /** Extension for the audit artefact. Not every activation comes from a workbook — the leads
+     *  form posts JSON — and filing that under `.xlsx` would leave an audit trail that lies about
+     *  what was submitted. */
+    rawExt?: string;
+  } = {},
 ): Promise<void> {
   const container = containerClient(storageAccount);
   await container.createIfNotExists();
   const stamp = uploadedAt.replace(/[:.]/g, "-");
-  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt, captured, note };
+  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt, note: opts.note, captured: opts.captured };
   const json = Buffer.from(JSON.stringify(stored, null, 2));
 
-  await container.getBlockBlobClient(`raw/${stamp}.xlsx`).uploadData(rawWorkbook);
+  await container.getBlockBlobClient(`raw/${stamp}.${opts.rawExt ?? "xlsx"}`).uploadData(rawWorkbook);
   await container.getBlockBlobClient(`parsed/${stamp}.json`).uploadData(json, {
     blobHTTPHeaders: { blobContentType: "application/json" },
   });

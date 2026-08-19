@@ -21,7 +21,18 @@ describe("store — seeded from placeholders, zero behaviour change before any u
     expect(getDailyTargets()).toEqual(DAILY_TARGETS);
     expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
     expect(getWrittenWeeklyTargets()).toEqual(WRITTEN_WEEKLY_TARGET);
-    expect(getTargetsProvenance()).toEqual({ source: "placeholder", effectiveWeek: null, uploadedBy: null, uploadedAt: null, captured: noneCaptured() });
+    // Before any upload NO target is Capricorn's. Asserted exhaustively over BOTH the stored per-figure
+    // map and the list derived from it, rather than loosened: the Targets page reads the map and the
+    // run-chase footers word their "except X" caveat off the list, so a figure silently dropping out of
+    // either would have the wall claim a number is Capricorn's while it is still ours.
+    expect(getTargetsProvenance()).toEqual({
+      source: "placeholder",
+      effectiveWeek: null,
+      uploadedBy: null,
+      uploadedAt: null,
+      captured: noneCaptured(),
+      unconfirmed: ["leads", "applications", "referrals", "sales"],
+    });
     expect(getLastParsed()).toBeNull();
   });
 });
@@ -52,8 +63,10 @@ describe("store — activateTargets", () => {
       uploadedBy: "arman@capricornfinancial.co.uk",
       uploadedAt: "2026-07-06T09:00:00.000Z",
       note: undefined,
-      // No `captured` argument = this upload asserts nothing about which figures it supplied.
+      // No `captured` argument = this upload asserts nothing about which figures it supplied, so every
+      // targeted KPI stays ours and the derived list says so.
       captured: noneCaptured(),
+      unconfirmed: ["leads", "applications", "referrals", "sales"],
     });
     expect(getLastParsed()).toBe(parsed);
   });
@@ -103,6 +116,41 @@ describe("store — activateTargets", () => {
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-04T09:00:00.000Z");
     expect(getDailyTargets().leads).toBe(10 * OFFICES.length);
     expect(getDailyTargets().applications).toBe(2 * OFFICES.length);
+  });
+
+  // main's twin of the above, kept because it asserts the DERIVED list rather than the map — the two
+  // are what the board and the footers read respectively, and they must agree. Expressed on the
+  // captured model: the Datarails file supplies everything except Leads.
+  it("derives the unconfirmed list so an upload cannot claim a target it never supplied", () => {
+    const parsed: ParsedTargets = {
+      effectiveWeek: "2026-07-06",
+      offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }])),
+      writtenWeekly: { mortgage: 200_000, insurance: 50_000 },
+    };
+    // The real case this exists for: an import lands, so source flips to "upload", but Leads was never
+    // in the file and is still our headcount estimate. Both facts have to survive together.
+    activateTargets(parsed, "kyle@capricornfinancial.co.uk", "2026-08-18T08:12:36.127Z", "Sales & Referrals from Datarails import", {
+      applications: true,
+      referrals: true,
+      sales: true,
+      written: true,
+    });
+    expect(getTargetsProvenance().source).toBe("upload");
+    expect(getTargetsProvenance().unconfirmed).toEqual(["leads"]);
+  });
+
+  // A blob written before per-figure provenance existed: the map is unknown, and the derived list must
+  // fall back to the honest FLOOR of ["leads"] rather than claiming every figure is Capricorn's. This
+  // is the assertion that stops a restart laundering a partial import.
+  it("floors the unconfirmed list at leads when the stored map predates provenance", () => {
+    const parsed: ParsedTargets = {
+      effectiveWeek: "2026-07-06",
+      offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5 }])),
+      writtenWeekly: { mortgage: 200_000, insurance: 50_000 },
+    };
+    activateTargets(parsed, "kyle@capricornfinancial.co.uk", "2026-08-18T08:12:36.127Z", undefined, null);
+    expect(getTargetsProvenance().captured).toBeNull();
+    expect(getTargetsProvenance().unconfirmed).toEqual(["leads"]);
   });
 });
 

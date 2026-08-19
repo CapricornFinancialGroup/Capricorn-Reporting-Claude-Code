@@ -67,7 +67,7 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                       );
                     })}
                   </div>
-                  <div className="grow" style={{ minHeight: 90 }}>
+                  <div className="chart-box" style={{ minHeight: 90 }}>
                     <EChart
                       height={110}
                       option={pctPaceChart({
@@ -94,14 +94,16 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
           </div>
 
           <div className="card">
-            {/* Follows the real provenance rather than asserting "placeholder" forever — the
-                unconditional version survived Kyle's upload and made it look like nothing had
-                landed (2026-08-18). */}
+            {/* Follows provenance, like the header pill and the Daily Run Chase note. It was hardcoded
+                and had been false since Kyle's first upload on 2026-08-13 — the twin of this line was
+                fixed on 2026-08-18 and this copy was missed. */}
             <div className="card-title">
               <span>Ranking Strip</span>
-              {meta.targetsProvenance.source === "placeholder" && (
-                <span className="placeholder-note">Targets placeholder pending Capricorn confirmation</span>
-              )}
+              <span className="placeholder-note">
+                {meta.targetsProvenance.source === "placeholder"
+                  ? "Targets placeholder pending Capricorn confirmation"
+                  : `Targets from Capricorn's upload${meta.targetsProvenance.effectiveWeek ? ` · week of ${shortDate(meta.targetsProvenance.effectiveWeek)}` : ""}`}
+              </span>
             </div>
             <div className="rank-strip">
               {data.offices.filter((o) => o.pct != null).map((o) => {

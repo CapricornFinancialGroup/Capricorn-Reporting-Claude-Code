@@ -14,7 +14,9 @@ vi.mock("../../services/targets/blob.js", () => ({
 
 import type { Config } from "../../config.js";
 import { buildApp } from "../app.js";
-import { getWrittenWeeklyTargets, resetTargetsForTest } from "../../services/targets/store.js";
+import { getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets, resetTargetsForTest } from "../../services/targets/store.js";
+import { OFFICES } from "../../domain/offices.js";
+import { OFFICE_DAILY_TARGETS } from "../../domain/targets.js";
 
 const ADMIN = "arman@capricornfinancial.co.uk";
 
@@ -104,5 +106,83 @@ describe("POST /api/targets/import-written — admin gating", () => {
     });
     expect(res.statusCode).toBe(403);
     await app.close();
+  });
+});
+
+/** The Saturday that starts a reporting week (the leads form's own unit). */
+const SATURDAY = "2026-08-15";
+
+function postLeads(app: FastifyInstance, body: unknown, headers: Record<string, string> = {}) {
+  return app.inject({
+    method: "POST",
+    url: "/api/targets/set-leads",
+    payload: body,
+    headers: { "content-type": "application/json", ...headers },
+  });
+}
+
+/** Every office the route insists on, so a test only has to name what it wants to differ. */
+function allOffices(value: number): Record<string, number> {
+  return Object.fromEntries(OFFICES.map((o) => [o.name, value]));
+}
+
+describe("POST /api/targets/set-leads — the only route that can set a leads target", () => {
+  let app: FastifyInstance;
+  beforeAll(async () => { app = await buildApp(testConfig()); });
+  afterAll(async () => { await app.close(); });
+  beforeEach(() => resetTargetsForTest());
+
+  it("writes ONLY leads, leaving every other KPI as it was", async () => {
+    const before = getOfficeDailyTargets()["Hammersmith"];
+    const res = await postLeads(app, { week: SATURDAY, leads: { ...allOffices(10), Hammersmith: 400 } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().ok).toBe(true);
+    const after = getOfficeDailyTargets()["Hammersmith"];
+    // Weekly in, DAILY out — the store divides by 5, same as every other target source.
+    expect(after.leads).toBe(80);
+    expect(after.applications).toBe(before.applications);
+    expect(after.referrals).toBe(before.referrals);
+    expect(after.sales).toBe(before.sales);
+  });
+
+  it("clears leads from `unconfirmed` without confirming anything it did not set", async () => {
+    // Placeholder state lists ALL targeted KPIs as unconfirmed; only leads should leave that list.
+    const res = await postLeads(app, { week: SATURDAY, leads: allOffices(20) });
+    expect(res.statusCode).toBe(200);
+    const p = getTargetsProvenance();
+    expect(p.source).toBe("upload");
+    expect(p.unconfirmed).toEqual(["applications", "referrals", "sales"]);
+  });
+
+  it("rejects a week that is not a Saturday — the reporting week runs Sat–Fri", async () => {
+    const res = await postLeads(app, { week: "2026-08-17", leads: allOffices(20) });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().error).toContain("not a Saturday");
+    // Nothing activated: the placeholder targets must be untouched.
+    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+  });
+
+  it("rejects a missing office rather than silently zeroing it", async () => {
+    const partial = allOffices(20);
+    delete partial["Mayfair"];
+    const res = await postLeads(app, { week: SATURDAY, leads: partial });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().hardErrors.join(" ")).toContain("Mayfair");
+    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+  });
+
+  it("rejects an implausible figure, so a transposed digit cannot reset the board's pacing", async () => {
+    const res = await postLeads(app, { week: SATURDAY, leads: { ...allOffices(20), Hammersmith: 49000 } });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().hardErrors.join(" ")).toContain("plausible maximum");
+    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+  });
+
+  it("403s a non-admin viewer", async () => {
+    const res = await postLeads(app, { week: SATURDAY, leads: allOffices(20) }, {
+      "x-ms-client-principal-name": "someone.else@capricornfinancial.co.uk",
+    });
+    expect(res.statusCode).toBe(403);
+    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
   });
 });

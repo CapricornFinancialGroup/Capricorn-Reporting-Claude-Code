@@ -8,7 +8,7 @@ import { loadConfig } from "./config.js";
 import { buildApp } from "./server/app.js";
 import { logger } from "./services/logger.js";
 import { hydrateFromStorage } from "./services/targets/blob.js";
-import { activateTargets } from "./services/targets/store.js";
+import { activateTargets, unconfirmedFrom } from "./services/targets/store.js";
 import { startSnapshotScheduler } from "./services/snapshots/scheduler.js";
 
 /** Best-effort load of the last-uploaded weekly targets. Storage unconfigured (local dev) or
@@ -19,10 +19,18 @@ async function hydrateTargets(storageAccount: string): Promise<void> {
   try {
     const stored = await hydrateFromStorage(storageAccount);
     if (stored) {
-      // `captured ?? null` — null means "this blob predates per-figure provenance", which the
-      // Targets page renders as unknown rather than asserting every figure is still a placeholder.
-      activateTargets(stored.parsed, stored.uploadedBy, stored.uploadedAt, stored.note, stored.captured ?? null);
-      logger.info("Hydrated weekly targets from storage", { effectiveWeek: stored.parsed.effectiveWeek, uploadedBy: stored.uploadedBy });
+      // `captured ?? null` — null means "this blob predates per-figure provenance", which is NOT the
+      // same as "nothing was captured" and must not be flattened into it: the Targets page renders it
+      // as unknown, and unconfirmedFrom() floors it at ["leads"] rather than guessing. That floor is
+      // load-bearing — without it the first restart after a deploy would have the board claim the
+      // 633/wk leads figure is Capricorn's, when no import route has ever supplied one.
+      const captured = stored.captured ?? null;
+      activateTargets(stored.parsed, stored.uploadedBy, stored.uploadedAt, stored.note, captured);
+      logger.info("Hydrated weekly targets from storage", {
+        effectiveWeek: stored.parsed.effectiveWeek,
+        uploadedBy: stored.uploadedBy,
+        unconfirmed: unconfirmedFrom(captured),
+      });
     }
   } catch (err) {
     logger.warn("Failed to hydrate weekly targets from storage — using placeholders", { err: String(err) });

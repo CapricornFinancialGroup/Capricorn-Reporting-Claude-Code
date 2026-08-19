@@ -19,6 +19,10 @@ export interface TargetsProvenance {
   /** Per-figure: true = Capricorn's own uploaded number, false = still our placeholder. `null` on an
    *  upload made before this was recorded. See TargetsProvenance on the server for why this exists. */
   captured: Record<CapturedTarget, boolean> | null;
+  /** KPIs whose target is NOT from the upload but still one of our derived stand-ins. Leads is the
+   *  standing case — no import route supplies it — so "source: upload" must never be read as "every
+   *  figure here is Capricorn's". See TargetsProvenance on the server. */
+  unconfirmed?: KpiKey[];
 }
 
 export interface Meta {

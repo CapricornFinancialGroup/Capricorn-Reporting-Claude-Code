@@ -1,12 +1,51 @@
-// Scrolling live-feed ticker (navy bar, strawman bottom strip). Content is duplicated for a
-// seamless loop; speed honours Conor's 2026-07-07 "speed up 2x" note and Capricorn's 2026-08-18
-// "25% quicker again" (~6.75-15s, vs ~9-20s before it and ~18-40s originally).
+// Scrolling live-feed ticker (navy bar, strawman bottom strip). Content is duplicated so the loop is
+// seamless: translateX(-50%) travels exactly one of the two copies.
+//
+// Speed is derived from a MEASURED content width and a target px/s, not from a per-item guess. The
+// old form was `max(6.75, min(15, items * 0.6))`, which had two faults that hid each other: the 15s
+// ceiling meant a full 53-item feed scrolled roughly twice as fast as the per-item figure intended,
+// and the track's CSS width bug (see .ticker-track) meant it never scrolled past item two anyway, so
+// no amount of tuning the duration would have been visible. Capricorn's "speed it up" notes of
+// 2026-07-07 and 2026-08-18 were both aimed at a strip that was, in fact, stuck.
+
+import { useEffect, useRef, useState } from "react";
 
 import { EMPTY_FILTERS, usePayload, type Mode } from "../api.js";
 import type { LiveFeedPayload } from "../types.js";
 
+/**
+ * Scroll speed in px/s — THE number to tune if the wall reads too fast or too slow. Because the
+ * duration is computed from this and the real content width, perceived speed stays put whether the
+ * feed holds 12 items or 53; only the loop's LENGTH changes.
+ *
+ * 150px/s puts a ~437px item fully past a fixed point in ~2.9s and keeps it on screen ~14s.
+ */
+const TICKER_PX_PER_SEC = 150;
+
+/** Fallback duration for the single frame before the track has been measured. */
+const UNMEASURED_SECS = 60;
+
 export function Ticker({ mode, refreshMs }: { mode: Mode; refreshMs: number }) {
   const { data } = usePayload<LiveFeedPayload>("live-feed", EMPTY_FILTERS, mode, refreshMs);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [anim, setAnim] = useState<{ secs: number; delay: number } | null>(null);
+  const count = data?.items.length ?? 0;
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || count === 0) return;
+    // scrollWidth spans BOTH copies, so one copy is exactly the distance -50% covers.
+    const oneCopy = el.scrollWidth / 2;
+    if (oneCopy <= 0) return;
+    const secs = Math.max(8, Math.round(oneCopy / TICKER_PX_PER_SEC));
+    // A NEGATIVE delay phased off the wall clock. The kiosk rotates every 20s and React unmounts this
+    // component on each rotation, which restarted the animation at item 1 — with a loop longer than
+    // the dwell, the tail of the feed would never be reached at all. Seeding the phase from absolute
+    // time makes the strip continuous across rotations: each visit resumes where the clock says it
+    // should be, so successive visits show successive slices instead of replaying the opening.
+    setAnim({ secs, delay: (Date.now() / 1000) % secs });
+  }, [count, data?.dayLabel]);
+
   if (!data || data.items.length === 0) return null;
 
   const items = data.items.map((it, i) => (
@@ -17,16 +56,19 @@ export function Ticker({ mode, refreshMs }: { mode: Mode; refreshMs: number }) {
       </span>
     </div>
   ));
-  // Scale the loop duration with content so density doesn't change perceived speed (halved vs the
-  // original pass for Conor's "2x faster" ask, then a further 25% off on Capricorn's 2026-08-18
-  // review — the bounds move with the multiplier, otherwise a short or long feed clamps straight
-  // back to the old speed and the change only shows on mid-length feeds).
-  const secs = Math.max(6.75, Math.min(15, data.items.length * 0.6));
+
   return (
     <div className="ticker-wrap">
       <div className="ticker-label">Latest Activity · {data.dayLabel}</div>
       <div className="ticker-outer">
-        <div className="ticker-track" style={{ ["--ticker-secs" as string]: `${secs}s` }}>
+        <div
+          ref={trackRef}
+          className="ticker-track"
+          style={{
+            ["--ticker-secs" as string]: `${anim?.secs ?? UNMEASURED_SECS}s`,
+            animationDelay: anim ? `-${anim.delay.toFixed(2)}s` : "0s",
+          }}
+        >
           {items}
           {items}
         </div>

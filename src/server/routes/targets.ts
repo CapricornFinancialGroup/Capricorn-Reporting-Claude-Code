@@ -20,15 +20,17 @@
 import ExcelJS from "exceljs";
 import type { FastifyInstance } from "fastify";
 import type { Config } from "../../config.js";
-import { UNASSIGNED } from "../../domain/offices.js";
+import { OFFICES, UNASSIGNED } from "../../domain/offices.js";
+import { weekDayIndex } from "../../services/reporting/pacing.js";
 import { isTargetsAdmin, resolveCsm } from "../../services/auth.js";
 import { logger } from "../../services/logger.js";
 import { adviserRoster } from "../../services/reporting/advisers.js";
 import { tzToday } from "../../services/reporting/pace.js";
 import { run } from "../../services/reporting/query.js";
+import { shiftDays } from "../../services/reporting/trends.js";
 import { uploadTargetsBlob } from "../../services/targets/blob.js";
 import { parseDatarailsWorkbook, type AdviserRosterEntry } from "../../services/targets/parseDatarails.js";
-import { parseTargetsWorkbook, runSoftChecks, type ParsedTargets } from "../../services/targets/parse.js";
+import { PLAUSIBLE_MAX, parseTargetsWorkbook, runSoftChecks, type ParsedTargets } from "../../services/targets/parse.js";
 import { parseWrittenTargetsWorkbooks } from "../../services/targets/parseWrittenTargets.js";
 import { buildBlankTemplate } from "../../services/targets/template.js";
 import {
@@ -88,7 +90,7 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     try {
       // Persist THEN activate — never the other order, so a failed blob write can't leave the UI
       // claiming success while nothing durable happened.
-      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, outcome.data, uploadedBy, uploadedAt, mergeCaptured(captured) ?? undefined);
+      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, outcome.data, uploadedBy, uploadedAt, { captured: mergeCaptured(captured) ?? undefined });
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Upload validated but could not be saved — please try again." });
@@ -200,7 +202,7 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
       written: writtenImported,
     };
     try {
-      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, merged, uploadedBy, uploadedAt, mergeCaptured(captured) ?? undefined, note);
+      await uploadTargetsBlob(config.targets.storageAccount, rawBuffer, merged, uploadedBy, uploadedAt, { captured: mergeCaptured(captured) ?? undefined, note });
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Import validated but could not be saved — please try again." });
@@ -271,13 +273,122 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
     const captured: Partial<CapturedMap> = { written: true };
     try {
       // Store the mortgage workbook as the audit artefact (the pair share a week + provenance row).
-      await uploadTargetsBlob(config.targets.storageAccount, mortgageBuffer, merged, uploadedBy, uploadedAt, mergeCaptured(captured) ?? undefined, note);
+      await uploadTargetsBlob(config.targets.storageAccount, mortgageBuffer, merged, uploadedBy, uploadedAt, { captured: mergeCaptured(captured) ?? undefined, note });
     } catch (err) {
       logger.error("Targets blob write failed", { err: String(err) });
       return reply.code(502).send({ error: "Import validated but could not be saved — please try again." });
     }
     activateTargets(merged, uploadedBy, uploadedAt, note, captured);
     logger.info("Written targets import activated", { effectiveWeek: merged.effectiveWeek, uploadedBy });
+
+    return reply.send({ ok: true, softWarnings, provenance: getTargetsProvenance() });
+  });
+  /**
+   * Set the LEADS target, and only the leads target.
+   *
+   * Exists because there was no way at all for Capricorn to set one. Their Datarails export carries
+   * no lead figures — thirteen sheets of written/paid/par and product-line case counts, none of them
+   * leads — so `import-datarails` lists Leads as unchanged unconditionally, and the two-sheet manual
+   * template that DOES have a Leads column was never wired to the frontend. The 633/wk on the wall
+   * was therefore our own headcount placeholder, permanently, described on screen as "a fixed group
+   * target". This is the route that unfixes it.
+   *
+   * Deliberately narrow. Routing this through the full-workbook upload would mean re-typing
+   * Applications, Referrals, Sales and Revenue to change one number — the very figures Datarails
+   * supplies — and since that upload REPLACES state, a stale hand-typed column would silently
+   * overwrite real imported ones.
+   */
+  app.post("/api/targets/set-leads", async (request, reply) => {
+    const viewer = resolveCsm(request.headers, config.devUserEmail);
+    if (!viewer) {
+      return reply.code(401).send({ error: "Not authenticated." });
+    }
+    if (!isTargetsAdmin(viewer.email, config.targets.adminEmails)) {
+      return reply.code(403).send({ error: "Not authorized to set targets." });
+    }
+    if (!config.targets.storageAccount) {
+      return reply.code(503).send({ error: "Targets storage isn't configured on this environment." });
+    }
+
+    const body = (request.body ?? {}) as { week?: unknown; leads?: unknown };
+    const weekSaturday = typeof body.week === "string" ? body.week.trim() : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekSaturday)) {
+      return reply.code(400).send({ error: "A valid week (YYYY-MM-DD, the Saturday the reporting week starts) is required." });
+    }
+    if (weekDayIndex(weekSaturday) !== 0) {
+      return reply.code(400).send({ error: `${weekSaturday} is not a Saturday — the reporting week runs Sat–Fri.` });
+    }
+    if (typeof body.leads !== "object" || body.leads === null) {
+      return reply.code(400).send({ error: "A `leads` object of office → weekly target is required." });
+    }
+    const submitted = body.leads as Record<string, unknown>;
+
+    // Validate BEFORE touching state: a half-applied target set is worse than a rejected one.
+    const hardErrors: string[] = [];
+    const known = new Set(OFFICES.map((o) => o.name));
+    for (const name of Object.keys(submitted)) {
+      if (!known.has(name)) hardErrors.push(`Unknown office "${name}".`);
+    }
+    const weekly: Record<string, number> = {};
+    for (const office of OFFICES) {
+      const raw = submitted[office.name];
+      if (raw == null || raw === "") {
+        hardErrors.push(`"${office.name}" is missing a Leads figure.`);
+        continue;
+      }
+      const n = typeof raw === "number" ? raw : Number(String(raw).replace(/,/g, "").trim());
+      if (!Number.isFinite(n) || n < 0) {
+        hardErrors.push(`"${office.name}" Leads must be a number ≥ 0.`);
+        continue;
+      }
+      // Same ceiling the workbook parser applies, so a transposed digit can't land a 6330/wk target.
+      if (n > PLAUSIBLE_MAX.leads) {
+        hardErrors.push(`"${office.name}" Leads (${n}) exceeds the plausible maximum of ${PLAUSIBLE_MAX.leads}/wk.`);
+        continue;
+      }
+      weekly[office.name] = n;
+    }
+    if (hardErrors.length > 0) {
+      return reply.code(422).send({ error: "Validation failed.", hardErrors, softWarnings: [] });
+    }
+
+    const today = tzToday(new Date(), config.reporting.timeZone);
+    const base = getCurrentAsParsedTargets(today);
+    const merged: ParsedTargets = {
+      effectiveWeek: shiftDays(weekSaturday, 2), // Saturday → the Monday that starts its working week
+      writtenWeekly: base.writtenWeekly,
+      offices: Object.fromEntries(
+        Object.entries(base.offices).map(([office, values]) => [
+          office,
+          { ...values, leads: weekly[office] ?? values.leads },
+        ]),
+      ),
+    };
+
+    const softWarnings = runSoftChecks(merged, getLastParsed(), today);
+    // Leads, and ONLY leads, is now Capricorn's. A positive one-key assertion rather than a rewritten
+    // still-ours list: `mergeCaptured` ORs onto live provenance, so whatever an earlier workbook
+    // supplied stays supplied and this route cannot mark Applications or Revenue as confirmed on the
+    // way past. That stickiness is the reason provenance is stored per-figure at all.
+    const captured: Partial<CapturedMap> = { leads: true };
+    const total = Object.values(weekly).reduce((a, b) => a + b, 0);
+    const uploadedBy = viewer.email;
+    const uploadedAt = new Date().toISOString();
+    const note = `Leads target set by hand (week of ${weekSaturday}): ${total}/wk across ${OFFICES.length} offices. Applications/Protection/Revenue unchanged.`;
+    // The submitted figures ARE the audit artefact — there is no workbook behind this one.
+    const artefact = Buffer.from(JSON.stringify({ week: weekSaturday, leads: weekly, setBy: uploadedBy }, null, 2));
+    try {
+      await uploadTargetsBlob(config.targets.storageAccount, artefact, merged, uploadedBy, uploadedAt, {
+        note,
+        captured: mergeCaptured(captured) ?? undefined,
+        rawExt: "json",
+      });
+    } catch (err) {
+      logger.error("Targets blob write failed", { err: String(err) });
+      return reply.code(502).send({ error: "Validated but could not be saved — please try again." });
+    }
+    activateTargets(merged, uploadedBy, uploadedAt, note, captured);
+    logger.info("Leads target set", { effectiveWeek: merged.effectiveWeek, uploadedBy, total });
 
     return reply.send({ ok: true, softWarnings, provenance: getTargetsProvenance() });
   });

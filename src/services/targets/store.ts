@@ -7,7 +7,7 @@
 // does `dailyTarget * 5` to get back to weekly — that idiom doesn't change, only its source does.
 
 import { OFFICES } from "../../domain/offices.js";
-import { DAILY_TARGETS, KPI_KEYS, OFFICE_DAILY_TARGETS, WRITTEN_WEEKLY_TARGET, type KpiTargets, type WrittenTargets } from "../../domain/targets.js";
+import { DAILY_TARGETS, KPI_KEYS, OFFICE_DAILY_TARGETS, TARGETED_KPI_KEYS, WRITTEN_WEEKLY_TARGET, type KpiKey, type KpiTargets, type WrittenTargets } from "../../domain/targets.js";
 import type { ParsedTargets } from "./parse.js";
 
 /** The figures an upload can carry. Not `KpiKey`: `written` is the Revenue target (£, business-wide)
@@ -41,7 +41,41 @@ export interface TargetsProvenance {
    *  `null` = an upload that predates this field (nothing durable records which figures it set), so
    *  the page falls back to `note` rather than guessing. */
   captured: CapturedMap | null;
+  /** The INVERSE of `captured`, narrowed to the per-office KPIs: which targets on the board are still
+   *  our own stand-ins. Derived, never stored — `captured` is the single source of truth, and two
+   *  independently-written copies of "whose figure is this" is exactly how a board starts contradicting
+   *  itself. Provided because most consumers want the negative form: the run-chase footers name the
+   *  exceptions ("except New Client Leads, still our estimate"), and the set-leads route needs to know
+   *  what it must NOT mark as confirmed.
+   *
+   *  Excludes `written`, which is not a `KpiKey` — the Revenue target is business-wide and is reported
+   *  by the Targets page's own source row, not by the KPI footers.
+   *
+   *  Leads is the standing case: NEITHER import route supplies it (the Datarails route lists "Leads"
+   *  as unchanged unconditionally), so the 633/wk on the wall has never been Capricorn's — it is our
+   *  headcount estimate, calibrated when "lead" still meant any mortgage case rather than a new client.
+   *  See NEW_CLIENT_LEAD_BASIS. */
+  unconfirmed: KpiKey[];
 }
+
+/** `captured` → the still-ours KPI list. `null` (a blob written before per-figure provenance existed)
+ *  yields ["leads"]: not a guess but the honest FLOOR, since no import route has ever supplied a leads
+ *  target, so any pre-existing upload left that figure as ours. Without this floor the first restart
+ *  after a deploy would have the board claim 633/wk is Capricorn's number. */
+export function unconfirmedFrom(captured: CapturedMap | null): KpiKey[] {
+  if (captured === null) return ["leads"];
+  // Every TARGETED_KPI_KEY is also a CapturedTarget today. Looked up rather than cast so that adding a
+  // targeted KPI which the upload cannot carry reports it as unconfirmed — the safe direction — instead
+  // of reading `undefined` off the map and quietly calling it Capricorn's.
+  return TARGETED_KPI_KEYS.filter((k) => {
+    const target = CAPTURED_TARGETS.find((t) => t === k);
+    return target === undefined || captured[target] !== true;
+  });
+}
+
+/** Provenance as HELD IN STATE and persisted: `unconfirmed` is absent because it is derived from
+ *  `captured` at read time, and storing a second copy is what lets the two disagree. */
+export type StoredProvenance = Omit<TargetsProvenance, "unconfirmed">;
 
 interface TargetsState {
   officeDaily: Record<string, KpiTargets>;
@@ -49,7 +83,7 @@ interface TargetsState {
   /** WEEKLY written targets, £ — Mortgage + Insurance (the dashboard's "Revenue"). Kept weekly, not
    *  daily: written business is charted per week (Market Momentum), not paced day-by-day. */
   writtenWeekly: WrittenTargets;
-  provenance: TargetsProvenance;
+  provenance: StoredProvenance;
   /** The full weekly upload, kept for the next upload's week-over-week swing check. */
   lastParsed: ParsedTargets | null;
 }
@@ -166,7 +200,8 @@ export function getWrittenWeeklyTargets(): WrittenTargets {
 }
 
 export function getTargetsProvenance(): TargetsProvenance {
-  return state.provenance;
+  // Derived on READ rather than stored alongside, so `captured` and `unconfirmed` cannot disagree.
+  return { ...state.provenance, unconfirmed: unconfirmedFrom(state.provenance.captured) };
 }
 
 /** The last successfully-activated upload, for the next upload's swing check. Null before the

@@ -80,11 +80,12 @@ function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode 
           </span>
         )}
       </div>
-      {/* A flex COLUMN, so the chart can grow past its preferred height. `.grow` is a plain block by
-          default and a block child cannot flex — which left the chart drawing at 560px and the bottom
-          third of a 1080 wall card empty. Column, not row: in a row the chart's height would be the
-          cross axis, where an explicit height beats `stretch` and nothing grows. */}
-      <div className="grow" style={{ display: "flex", flexDirection: "column", minHeight: 0 }}>
+      {/* `.chart-box`, not `.grow`: a chart must be able to grow PAST its preferred height, and `.grow`
+          is a plain block, whose child cannot flex — which left this chart at 560px with the bottom
+          third of a 1080 wall card empty. `.chart-box` is the flex column for exactly this, added on
+          main in 1ca6dd0 for the same bug seen elsewhere; it is deliberately not a modifier on `.grow`,
+          which is also applied to grid rows where `display: flex` would break the columns. */}
+      <div className="chart-box">
         {/* A PREFERRED height, flexed down inside the card (see EChart). It is set generously because
             this screen is now two panels rather than eight: on the dashboard, where `.dash-main` is
             not a flex column, the page is only as tall as its content, so the chart's own height is
