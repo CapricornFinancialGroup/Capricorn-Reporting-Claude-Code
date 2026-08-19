@@ -72,7 +72,7 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
             />
           )}
 
-          <LeagueBoards boards={data.boards} />
+          <LeagueBoards boards={data.boards} mode={mode} />
 
           <div className="placeholder-note">
             * Written commission, for the dates shown above, is <em>mortgage commission</em> (the procuration fee

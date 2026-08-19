@@ -10,26 +10,39 @@
 // The REFERRED board is what links the two populations, and it is the one that answers Conor's
 // question: who is doing well on their own numbers but not on the activity that should follow?
 //
-// TWO DESIGN CONSTRAINTS, BOTH FROM THE ROOM THIS IS READ IN.
+// THE CONNECTING LINES, AND WHY THEY WORK THIS WAY.
 //
-//  1. The office TVs have no mouse. So every cross-reference is PRINTED on the row — "8 referred ·
-//     28% of clients · sold by Jack ×2". That printed text is now the ONLY cross-reference.
+// Curved wires between Referred and Sales were drawn for every pair, permanently, with a spotlight
+// touring the board. Kyle, 2026-08-18: "too messy and if static doesn't really present well — lets
+// remove the 'link' for now please." He was right about the symptom. Drawing forty-odd wires at once
+// is unreadable, and a static thicket of them says nothing.
 //
-//     There were also curved lines drawn between the Referred and Sales columns, with a spotlight
-//     touring the board to light one adviser's lines at a time. Removed 2026-08-18 on Kyle's
-//     instruction: "The link between Protection Referred and Protection Sales is too messy and if
-//     static doesn't really present well — lets remove the 'link' for now please." He is right about
-//     why: the lines were drawn from a DERIVED relationship (see the footnote on the Referred
-//     column — Smartr holds no referral event, so the link is inferred from the client), and a
-//     confident-looking wire between two named people implies a precision the underlying data does
-//     not have. The spotlight went with them: without lines to light, it only dimmed rows at random.
-//     The relationship itself is unchanged and still on screen, in words, where it can be qualified.
-//  2. Words, not initials. The previous version of this screen used "Apps" and "Refs", the two
-//     labels retired for being wrong, and nobody could tell what they meant. Every number here says
-//     what it is: written, referred, sold.
+// They are back in the only form that answers that:
+//
+//   Dashboard — OFF by default, behind a button. Nobody is made to look at them.
+//   Wall      — ON, but never more than ONE mortgage adviser's links at a time, a different adviser
+//               each time the screen comes round. One name, two or three lines, legible across a room.
+//
+// The spotlight is bound to the links: dimming rows with nothing drawn between them is what made the
+// old tour meaningless once the wires were pulled, so if links are off, nothing dims.
+//
+// A caveat that has not changed: the relationship is DERIVED from the client, not recorded (Smartr
+// holds no referral event — see the footnote on the Referred column). A confident-looking wire
+// implies more precision than the data has, which is exactly why it is opt-in and why the words on
+// each row, where the inference can be qualified, remain the primary cross-reference.
+//
+// Words, not initials. This screen used "Apps" and "Refs" until 2026-08-13 — the two labels retired
+// for being wrong — and nobody could tell what they meant. Every number says what it is.
 
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { isRotating, type Mode } from "../api.js";
 import type { BoardRow, LeagueBoards as Boards } from "../types.js";
 import { gbpCompact, num, shortDate } from "../format.js";
+
+/** Which adviser the wall highlights. Module-level so it ADVANCES each time the screen rotates back
+ *  into view — the kiosk unmounts the page between turns, so component state would reset to the same
+ *  person forever. */
+let wallTurn = 0;
 
 function rateClass(rate: number | null): string {
   if (rate == null) return "";
@@ -38,14 +51,18 @@ function rateClass(rate: number | null): string {
   return "";
 }
 
-/** One row. `detail` is the spelled-out shorthand — the only thing a wall viewer gets. */
-function Row({ row, detail, unit }: {
+function Row({ row, detail, unit, lit, dim }: {
   row: BoardRow;
   detail: React.ReactNode;
   unit: string;
+  lit: boolean;
+  dim: boolean;
 }) {
   return (
-    <div className={`lb-row${row.rank === 1 ? " lb-first" : ""}`} data-name={row.name}>
+    <div
+      className={`lb-row${row.rank === 1 ? " lb-first" : ""}${lit ? " lb-lit" : ""}${dim ? " lb-dim" : ""}`}
+      data-name={row.name}
+    >
       <span className="lb-rank">{row.rank}</span>
       <span className="lb-who">
         <b>{row.name}</b>
@@ -64,7 +81,72 @@ function partnerText(row: BoardRow): string {
   return row.partners.map((p) => `${p.name.split(" ")[0]} ×${p.n}`).join(", ");
 }
 
-export function LeagueBoards({ boards }: { boards: Boards }) {
+export function LeagueBoards({ boards, mode }: { boards: Boards; mode?: Mode }) {
+  const wall = isRotating(mode ?? "dashboard");
+  // Advisers whose referrals someone converted — the only ones a line has both ends for.
+  const linkable = boards.referred.filter((r) => r.partners.length > 0);
+
+  // On the wall the links are always on and always narrowed to one adviser. On the dashboard they
+  // start off, and turning them on shows all of them (there is a mouse to explore with).
+  const [showLinks, setShowLinks] = useState(wall);
+  const [spotlight, setSpotlight] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!wall || linkable.length === 0) return;
+    const pick = linkable[wallTurn % linkable.length];
+    wallTurn += 1;
+    setSpotlight(pick.name);
+  }, [wall, linkable]);
+
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const svgRef = useRef<SVGSVGElement | null>(null);
+
+  useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const svg = svgRef.current;
+    if (!wrap || !svg) return;
+    const paint = () => {
+      if (!showLinks) { svg.innerHTML = ""; return; }
+      const box = wrap.getBoundingClientRect();
+      svg.setAttribute("viewBox", `0 0 ${box.width} ${box.height}`);
+      const find = (col: string, name: string) =>
+        wrap.querySelector<HTMLElement>(`[data-col="${col}"] [data-name="${CSS.escape(name)}"]`);
+      const parts: string[] = [];
+      for (const r of boards.referred) {
+        if (spotlight && r.name !== spotlight) continue;
+        const a = find("referred", r.name);
+        if (!a) continue;
+        for (const p of r.partners) {
+          const b = find("sold", p.name);
+          if (!b) continue;
+          const ra = a.getBoundingClientRect();
+          const rb = b.getBoundingClientRect();
+          const x1 = ra.right - box.left;
+          const y1 = ra.top + ra.height / 2 - box.top;
+          const x2 = rb.left - box.left;
+          const y2 = rb.top + rb.height / 2 - box.top;
+          const mid = (x1 + x2) / 2;
+          parts.push(
+            `<path d="M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}" fill="none" ` +
+              `stroke="currentColor" stroke-width="${1.4 + p.n * 0.9}" stroke-linecap="round" opacity="0.85"/>`,
+          );
+        }
+      }
+      svg.innerHTML = parts.join("");
+    };
+    paint();
+    window.addEventListener("resize", paint);
+    return () => window.removeEventListener("resize", paint);
+  }, [boards, showLinks, spotlight]);
+
+  // Rows only dim when there is something drawn to dim them against.
+  const focused = showLinks ? spotlight : null;
+  const partnersOf = (name: string) =>
+    boards.referred.find((r) => r.name === name)?.partners.map((p) => p.name) ?? [];
+  const inFocus = (name: string) => focused != null && (name === focused || partnersOf(focused).includes(name));
+  const isLit = (name: string) => focused != null && inFocus(name);
+  const isDim = (name: string) => focused != null && !inFocus(name);
+
   const attributionPct = boards.attribution.pct == null ? null : Math.round(boards.attribution.pct * 100);
 
   return (
@@ -77,9 +159,26 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
         <span className="lb-strip-note">
           A single week ranks on one or two cases; four weeks ranks on behaviour.
         </span>
+        {wall
+          ? spotlight && (
+              <span className="lb-spot">Referrals shown for <b>{spotlight}</b></span>
+            )
+          : linkable.length > 0 && (
+              <button
+                type="button"
+                className={`lb-links-btn${showLinks ? " on" : ""}`}
+                aria-pressed={showLinks}
+                onClick={() => setShowLinks((v) => !v)}
+                title="Draw the referral links between Protection Referred and Protection Sales. Off by default: the relationship is spelled out on each row in words, which is the version that can carry its caveat."
+              >
+                {showLinks ? "Hide links" : "Show links"}
+              </button>
+            )}
       </div>
 
-      <div className="lb-wrap">
+      <div className="lb-wrap" ref={wrapRef}>
+        <svg className="lb-wires" ref={svgRef} aria-hidden="true" />
+
         <section className="card lb-col" data-col="written">
           <div className="card-title">
             <span className="league-panel-title blue">Mortgages Written</span>
@@ -91,6 +190,8 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
                 key={r.name}
                 row={r}
                 unit="written"
+                lit={isLit(r.name)}
+                dim={isDim(r.name)}
                 detail={
                   <>
                     <b className={rateClass(r.rate)}>{r.referred}</b> referred
@@ -115,6 +216,8 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
                 key={r.name}
                 row={r}
                 unit="referred"
+                lit={isLit(r.name)}
+                dim={isDim(r.name)}
                 detail={
                   <>
                     from <b>{r.written}</b> written
@@ -142,6 +245,8 @@ export function LeagueBoards({ boards }: { boards: Boards }) {
                 key={r.name}
                 row={r}
                 unit="sold"
+                lit={isLit(r.name)}
+                dim={isDim(r.name)}
                 detail={<><b>{gbpCompact(r.commission)}</b> commission</>}
               />
             ))}

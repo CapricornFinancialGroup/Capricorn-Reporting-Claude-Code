@@ -684,11 +684,35 @@ button { font: inherit; }
 }
 .lb-strip-window { font-size: 12px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .lb-strip-note { font-size: 10.5px; color: var(--text-secondary); }
-/* The referral wires, the spotlight tour and its pause button were removed 2026-08-18 (Kyle: "lets
-   remove the 'link' for now") — see the header of components/LeagueBoards.tsx. .lb-wrap keeps its
-   positioning context: the columns are still a three-up grid, there is just nothing drawn over it. */
+/* The referral wires came off on 2026-08-18 (Kyle: "too messy and if static doesn't really present
+   well — lets remove the 'link' for now") and came back on 2026-08-19 in the form that answers that
+   objection rather than reversing it: OFF by default and behind a button on the dashboard, and on the
+   wall never more than ONE adviser's links at a time. Drawing all of them at once was the thing that
+   did not present well; a single highlighted adviser is legible from across a room. */
 .lb-wrap { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; min-height: 0; flex: 1; }
+.lb-wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; overflow: visible; color: var(--blue); }
 .lb-col { position: relative; z-index: 1; min-height: 0; }
+
+/* Link toggle — dashboard only. The wall has no mouse, so it never renders there. */
+.lb-links-btn {
+  margin-left: auto; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; padding: 2px 9px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface); color: var(--text-secondary);
+}
+.lb-links-btn:hover { border-color: var(--text-secondary); color: var(--text-primary); }
+.lb-links-btn.on { background: var(--navy); border-color: var(--navy); color: #fff; }
+
+/* Spotlight. Only ever applied when links are showing — dimming rows with nothing drawn between
+   them was the failure mode that made the tour meaningless when the wires were pulled. */
+.lb-dim { opacity: 0.3; }
+.lb-lit { background: rgba(29, 78, 216, 0.09); box-shadow: inset 3px 0 0 var(--blue); }
+.lb-row { transition: background 160ms ease, opacity 160ms ease; }
+@media (prefers-reduced-motion: reduce) { .lb-row { transition: none; } }
+/* Names the adviser the wall is currently showing, so a viewer knows what the lines belong to. */
+.lb-spot {
+  font-size: 10.5px; font-weight: 700; color: var(--blue); white-space: nowrap;
+}
+.lb-spot b { font-weight: 800; }
 .lb-rows { display: flex; flex-direction: column; }
 
 .lb-row {
