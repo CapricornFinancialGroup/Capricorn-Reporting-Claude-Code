@@ -19,3 +19,8 @@ dist/
 # the live lake to answer one question, then dead. Ignored so the next one cannot ride along in a
 # `git add -A`; anything worth keeping belongs in src/ with a test, not a tmp- prefix.
 tmp-*.ts
+
+# Same reasoning, different drawer: .scratch/ holds ad-hoc query runners pointed at the live lake
+# (q.mts, an 11-line mssql harness for spot-checks). Useful and worth keeping on disk, but it is
+# scaffolding rather than the product, and it was sitting one `git add -A` away from being committed.
+.scratch/
