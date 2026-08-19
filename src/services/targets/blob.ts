@@ -44,16 +44,22 @@ export async function uploadTargetsBlob(
   parsed: ParsedTargets,
   uploadedBy: string,
   uploadedAt: string,
-  note?: string,
-  unconfirmed?: KpiKey[],
+  opts: {
+    note?: string;
+    unconfirmed?: KpiKey[];
+    /** Extension for the audit artefact. Not every activation comes from a workbook — the leads
+     *  form posts JSON — and filing that under `.xlsx` would leave an audit trail that lies about
+     *  what was submitted. */
+    rawExt?: string;
+  } = {},
 ): Promise<void> {
   const container = containerClient(storageAccount);
   await container.createIfNotExists();
   const stamp = uploadedAt.replace(/[:.]/g, "-");
-  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt, note, unconfirmed };
+  const stored: StoredTargets = { parsed, uploadedBy, uploadedAt, note: opts.note, unconfirmed: opts.unconfirmed };
   const json = Buffer.from(JSON.stringify(stored, null, 2));
 
-  await container.getBlockBlobClient(`raw/${stamp}.xlsx`).uploadData(rawWorkbook);
+  await container.getBlockBlobClient(`raw/${stamp}.${opts.rawExt ?? "xlsx"}`).uploadData(rawWorkbook);
   await container.getBlockBlobClient(`parsed/${stamp}.json`).uploadData(json, {
     blobHTTPHeaders: { blobContentType: "application/json" },
   });

@@ -55,7 +55,7 @@ const KPI_HEADER: Record<KpiKey, string> = {
 // Soft-warning ceilings — generous multiples of the current placeholder scale (domain/targets.ts),
 // not a real business limit. A weekly figure above this reads as a data-entry slip worth flagging,
 // not something to hard-block on (it might genuinely be right).
-const PLAUSIBLE_MAX: KpiTargets = { leads: 3000, applications: 600, referrals: 300, sales: 300, existingCases: 3000 };
+export const PLAUSIBLE_MAX: KpiTargets = { leads: 3000, applications: 600, referrals: 300, sales: 300, existingCases: 3000 };
 const PLAUSIBLE_MAX_REVENUE = 2_000_000;
 const SWING_MULTIPLE = 5;
 const FAR_FROM_NOW_DAYS = 14;
