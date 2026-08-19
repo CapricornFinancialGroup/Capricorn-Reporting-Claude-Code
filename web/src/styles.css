@@ -327,6 +327,14 @@ button { font: inherit; }
 .ticker-outer { overflow: hidden; flex: 1; }
 .ticker-track {
   display: flex; align-items: center; white-space: nowrap;
+  /* width MUST size to content, not to the container. `display: flex` makes this a block-level box,
+     so inside .ticker-outer (a plain overflow:hidden block) its width defaulted to the container's
+     1669px while its content ran to 41,650px. translateX(-50%) resolves against the element's OWN
+     width, so the track travelled 835px — about 1.9 items — and snapped back. The wall showed the
+     first four items of the feed on a loop and the other ~49 were never once displayed
+     (Capricorn 2026-08-19: "I am not seeing 47 of them"). With max-content, -50% is exactly one of
+     the two duplicated copies, which is what makes the loop seamless. */
+  width: max-content;
   animation: ticker-scroll var(--ticker-secs, 12s) linear infinite; will-change: transform;
 }
 .ticker-item {
