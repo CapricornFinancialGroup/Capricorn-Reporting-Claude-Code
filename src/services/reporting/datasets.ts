@@ -40,7 +40,12 @@ import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
 import { completeThrough, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
-import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
+import {
+  protectionCommissionByAdviser,
+  revenueByAdviser,
+  type AdviserProtectionCommission,
+  type AdviserRevenue,
+} from "./advisers.js";
 import { referredProtectionSales, type ReferredSale } from "./referrals.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
 import * as tickerQ from "./ticker.js";
@@ -1111,13 +1116,28 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   // Weeks: an explicit range → whole ISO weeks spanning [from, to]; else rolling 13 weeks.
   const weekStarts = weekStartsFor(asOf, f.from, 13);
   const from = weekStarts[0];
+  // THE HEADLINE WEEK, computed BEFORE the fetch because the commission league is queried for exactly
+  // this window. Reference the last week that has genuinely ENDED (its Saturday start is before THIS
+  // reporting week) AND is fully data-loaded (Friday <= dataAsOf) — not the last bucket, which is
+  // usually mid-week: treating an in-progress week as complete understates the actual against a
+  // full-week target (~23% of a week-in-progress vs the true ~45%). Doing it here is what makes the
+  // graph's last actual point and the league's rows the SAME week by construction rather than by
+  // coincidence — the two halves of this screen now have to add up to each other.
+  const currentWeekStart = weekStartOf(tzToday(new Date(), config.reporting.timeZone));
+  let completeIdx = 0;
+  for (let i = weekStarts.length - 1; i >= 0; i--) {
+    if (weekStarts[i] < currentWeekStart && shiftDays(weekStarts[i], 6) <= asOf) { completeIdx = i; break; }
+  }
+  const leagueWindow = { from: weekStarts[completeIdx], to: shiftDays(weekStarts[completeIdx], 6) };
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
-    const [leads, apps, refs, revenue, protWritten] = await Promise.all([
+    const [leads, apps, refs, revenue, protWritten, mortByAdviser, protByAdviser] = await Promise.all([
       q<DailyCount>(config, kpiDaily("leads", from, asOf)),
       q<DailyCount>(config, kpiDaily("applications", from, asOf)),
       q<DailyCount>(config, kpiDaily("referrals", from, asOf)),
       q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(from, asOf)),
       q<momentumQ.ProtectionWrittenDaily>(config, momentumQ.protectionWrittenDaily(from, asOf)),
+      q<AdviserRevenue>(config, revenueByAdviser(leagueWindow.from, leagueWindow.to)),
+      q<AdviserProtectionCommission>(config, protectionCommissionByAdviser(leagueWindow.from, leagueWindow.to)),
     ]);
 
     const weekIndex = (d: string): number => weekStarts.indexOf(weekStartOf(d));
@@ -1393,18 +1413,14 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
           : "Holding steady — measures tracking the quarter average.";
 
     // Written vs target (Kyle 2026-07-14/15): Mortgage shown target-vs-actual; Insurance carried but
-    // hidden on the board until its actual is sourced. Reference the last week that has genuinely
-    // ENDED (its Saturday start is before THIS reporting week) AND is fully data-loaded (Friday ≤
-    // dataAsOf) — not `li`. Otherwise the in-progress week (e.g. mid-Friday) reads as complete and
-    // understates the actual against a full-week target (~23% of a week-in-progress vs the true ~45%).
-    const currentWeekStart = weekStartOf(tzToday(new Date(), config.reporting.timeZone));
-    let completeIdx = 0;
-    for (let i = weekStarts.length - 1; i >= 0; i--) {
-      if (weekStarts[i] < currentWeekStart && shiftDays(weekStarts[i], 6) <= asOf) { completeIdx = i; break; }
-    }
+    // hidden on the board until its actual is sourced. `completeIdx` — the last week that has both
+    // ENDED and fully loaded — is computed above the fetch, because the commission league is queried
+    // for the same window.
     const writtenTargets = getWrittenWeeklyTargets();
     const writtenTargetCombined = writtenTargets.mortgage + writtenTargets.insurance;
-    const writtenWindow = windowOf(completeIdx);
+    // Same object as the league's window on purpose: one week, one definition, no way for the two
+    // halves of the screen to drift onto different dates.
+    const writtenWindow = leagueWindow;
     const writtenBlock = {
       weekLabel: weeks[completeIdx],
       weekFrom: writtenWindow.from,
@@ -1420,6 +1436,66 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
        *  W30 read £266.3k/133 on 28 Jul and £299.6k/147 on 29 Jul. The board must say "provisional"
        *  rather than imply a closed week is final (Kyle 2026-07-28). */
       provisional: shiftDays(writtenWindow.to, INPUT_LAG_SETTLE_DAYS) > asOf,
+    };
+
+    // ------------------------------------------------------------------ commission league (top 10)
+    //
+    // The right-hand half of this screen: the ten advisers who earned the most commission in the SAME
+    // week the graph's last actual point plots (Luke, 2026-08-19 — "advisers' top 10 in terms of
+    // commission in that time period … the graph will show the total business commission for that
+    // week").
+    //
+    // ALL commission, not a product line. Mortgage, protection and general insurance are added
+    // together and never split — "we'll call it mortgages, and that can be either protection,
+    // mortgages, or general insurance. It doesn't actually matter which." The same ruling removed the
+    // mortgage/protection split from the graph's footer, so there is now exactly ONE money basis on
+    // the page: written commission. Nothing on this screen can be reconciled against anything else on
+    // this screen and come out different, which is the whole point.
+    //
+    // `total` is taken from `combW` — the graph's own series — rather than re-summed from the adviser
+    // rows, so the number under the league is by definition the number the graph draws. The rows and
+    // the total come from different queries on the same basis and should agree to the penny; if they
+    // ever don't, the visible share percentage is the thing that says so.
+    const TOP_N = 10;
+    const earnerBy = new Map<string, { name: string; commission: number; cases: number }>();
+    let unattributed = 0;
+    const credit = (username: string | null, fullName: string | null, commission: number | null, cases: number) => {
+      const name = fullName?.trim() || username?.trim() || "";
+      // Cases with no adviser on file: real commission, but not a person, so it cannot hold a place on
+      // a league OF people. Carried out separately rather than silently dropped — the rows have to be
+      // able to account for the firm total printed beneath them.
+      if (!name) {
+        unattributed += commission ?? 0;
+        return;
+      }
+      const row = earnerBy.get(name) ?? { name, commission: 0, cases: 0 };
+      row.commission += commission ?? 0;
+      row.cases += cases;
+      earnerBy.set(name, row);
+    };
+    for (const r of mortByAdviser) credit(r.username, r.fullName, r.commission, r.cases);
+    for (const r of protByAdviser) credit(r.username, r.fullName, r.commission, r.cases);
+    const earners = [...earnerBy.values()]
+      .filter((r) => r.commission > 0)
+      .sort((a, b) => b.commission - a.commission || a.name.localeCompare(b.name));
+    const leagueBlock = {
+      weekLabel: weeks[completeIdx],
+      weekFrom: leagueWindow.from,
+      weekTo: leagueWindow.to,
+      rows: earners.slice(0, TOP_N).map((r, i) => ({
+        rank: i + 1,
+        name: r.name,
+        commission: Math.round(r.commission),
+        cases: r.cases,
+      })),
+      /** Whole-firm written commission for the same week — the value the graph plots for it. */
+      total: Math.round(combW[completeIdx] ?? 0),
+      /** Everyone who earned commission in the week, so "top 10" says what it is the top 10 OF. */
+      earners: earners.length,
+      /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */
+      unattributed: Math.round(unattributed),
+      /** Same input-lag caveat as the graph — a just-closed week is still filling. */
+      provisional: writtenBlock.provisional,
     };
 
     return {
@@ -1439,6 +1515,8 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
         referralRatePct: refRateW.map((v) => (v == null ? null : round(v, 1))),
       },
       written: writtenBlock,
+      /** Top 10 commission earners for the same week `written` reports — the league beside the graph. */
+      league: leagueBlock,
       /** Combined weekly written target, £k — the reference line on the Weekly Written trend. */
       writtenTargetCombinedK: round(writtenTargetCombined / 1000, 1),
       kpis,

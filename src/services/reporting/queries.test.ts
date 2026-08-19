@@ -6,7 +6,7 @@ import { mortgageStageCounts } from "./funnel.js";
 import { CLIENT_FIRST_CASE_CTE, kpiDaily, kpiDailyByAdviser, KPI_SPECS } from "./kpis.js";
 import { protectionWrittenDaily, revenueDaily } from "./momentum.js";
 import { applicationEvents, leadEvents, referralEvents, saleEvents } from "./ticker.js";
-import { revenueByAdviser } from "./advisers.js";
+import { protectionCommissionByAdviser, revenueByAdviser } from "./advisers.js";
 import { KPI_KEYS } from "../../domain/targets.js";
 import type { BuiltQuery } from "./query.js";
 
@@ -198,6 +198,40 @@ describe("momentum + league builders", () => {
     expect(q.text).toContain("dbo.protectioncase");
     expect(q.text).toContain("GROUP BY CAST(f.ApplicationDate AS date)");
     expect(q.text).toContain("ProductCommission");
+  });
+
+  // The Momentum commission league is queried per adviser but sits BESIDE the firm graph, so its two
+  // halves must be on the same basis as the daily series that graph plots. Verified against the live
+  // lake for W33 (8–14 Aug 2026): mortgage £228,973.40 and protection £43,099.23 by adviser, identical
+  // to the same figures by day, £272,072.63 combined either way. These assertions are what keep the
+  // pair aligned when one side is edited.
+  it("the per-adviser commission builders match the daily series they are shown beside", () => {
+    const mortgage = revenueByAdviser("2026-08-08", "2026-08-14");
+    const daily = revenueDaily("2026-08-08", "2026-08-14");
+    expect(mortgage.text).toContain("WorkflowStatusPreOfferProcessingDate");
+    expect(daily.text).toContain("WorkflowStatusPreOfferProcessingDate");
+
+    const protection = protectionCommissionByAdviser("2026-08-08", "2026-08-14");
+    const protectionDaily = protectionWrittenDaily("2026-08-08", "2026-08-14");
+    expectConventions(protection);
+    expect(protection.text).toContain("dbo.protectioncase");
+    expect(protection.text).toContain("f.ApplicationDate");
+    // Same status gate as the daily series — a wider or narrower one here would put the league's rows
+    // out of step with the total printed under them.
+    for (const q of [protection, protectionDaily]) {
+      expect(q.text).toContain("WorkflowStatusId IN ('60', '65', '70', '105', '120')");
+    }
+    expect(protection.text).toMatch(/SUM\(COALESCE\(f\.ProductCommission, 0\)\) AS commission/);
+    // Credited to the case's PRIMARY adviser. The recipient of a commission split is not in the share
+    // (PBI 91379), so there is no second credit to give — see SPLIT_RECIPIENT_SOURCE.
+    expect(protection.text).toContain("adv.UserAccountKey = f.PrimaryAdviserUserAccountKey");
+    expect(protection.text).not.toContain("SplitCommission");
+  });
+
+  // Cases are counted per adviser so a league row can say what is behind the money.
+  it("both per-adviser builders return a case count", () => {
+    expect(revenueByAdviser("2026-08-08", "2026-08-14").text).toContain("COUNT(*) AS cases");
+    expect(protectionCommissionByAdviser("2026-08-08", "2026-08-14").text).toContain("COUNT(*) AS cases");
   });
 
   // vw_total_written_by_product holds LOAN VALUE / POLICY AMOUNT, not commission (verified live

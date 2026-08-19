@@ -295,6 +295,31 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
       "number, so both move together once the definition is settled. The 30% target predates all of it.",
   },
   {
+    key: "commission-league",
+    label: "Top 10 Commission Earners",
+    definition:
+      "The ten advisers who earned the most commission in the week shown — the same week, and the same " +
+      "money, as the Weekly Written graph beside it. Every product line counts: mortgage, protection and " +
+      "general insurance commission are added together, not split.",
+    calculation:
+      "Commission on business written in the week, summed per adviser and ranked. Mortgage: product " +
+      "commission on cases reaching 'Pre-offer Processing' in the week. Protection: product commission " +
+      "on cases submitted in the week. Client fees are NOT included. Cases with no adviser on file hold " +
+      "no place in the league but remain inside the week's total, which is printed beneath it.",
+    source: "mortgagecase.ProductCommission + protectioncase.ProductCommission, by PrimaryAdviserUserAccountKey",
+    reconcilesTo: "Total Written Report (usp_GetTotalProductReport) at FIRM level, not per adviser",
+    owner: "Kyle Van Der Net",
+    frequency: "Weekly (Sat–Fri), reported for the last COMPLETE week",
+    status: "indicative",
+    note:
+      "The week's TOTAL reconciles on the same basis as Weekly Written. An individual ROW may not: a " +
+      "commission SPLIT credits the case's primary adviser in full here, while the platform divides it " +
+      "and emits a second row for the recipient — which is how Michael Ngoka appears on Kyle's report " +
+      "with £13,948 of protection commission on cases he was not primary adviser for. The recipient " +
+      "field (tblSplitCommission.ToAdviserId) is not in the data share; PBI 91379 asks for it. Labelled " +
+      "\"mortgages\" on the board at Capricorn's request even though it counts all product lines.",
+  },
+  {
     key: "pace",
     label: "% of Pace",
     definition:

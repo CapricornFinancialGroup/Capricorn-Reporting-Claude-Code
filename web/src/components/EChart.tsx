@@ -40,7 +40,14 @@ export function EChart({ option, height = 300, onClick }: Props) {
     chart.current = instance;
     const resize = () => instance.resize();
     window.addEventListener("resize", resize);
+    // The canvas is sized at init and on window resize only, so a chart whose CARD grows without the
+    // window changing keeps its old canvas: Market Momentum's half-width chart drew at its preferred
+    // 560px and left the bottom third of a 1080 wall card blank. Observe the container instead — the
+    // canvas is positioned inside it by ECharts, so resizing cannot feed back into the box and loop.
+    const observer = new ResizeObserver(resize);
+    observer.observe(el.current);
     return () => {
+      observer.disconnect();
       window.removeEventListener("resize", resize);
       instance.dispose();
       chart.current = null;

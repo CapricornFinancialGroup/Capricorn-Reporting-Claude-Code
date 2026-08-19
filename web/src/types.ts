@@ -334,6 +334,21 @@ export interface MarketMomentumPayload {
     clientFees: number;
     provisional: boolean;
   };
+  /** Top 10 commission earners for the SAME week `written` reports — the league beside the graph.
+   *  All commission, product lines added together and never split (2026-08-19). */
+  league: {
+    weekLabel: string;
+    weekFrom: string;
+    weekTo: string;
+    rows: Array<{ rank: number; name: string; commission: number; cases: number }>;
+    /** Whole-firm written commission for the week — the value the graph plots for it. */
+    total: number;
+    /** Everyone who earned commission in the week, so "top 10" states what it is the top 10 of. */
+    earners: number;
+    /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */
+    unattributed: number;
+    provisional: boolean;
+  };
   /** Combined weekly written target, £k — reference line on the Weekly Written trend. */
   writtenTargetCombinedK: number;
   kpis: MomentumKpi[];
