@@ -192,16 +192,17 @@ export const ADVISER_OFFICE: Record<string, string> = {
   "arandeep.purewal@capricornfinancialmortgages.co.uk": "Mayfair", // Team Manny (name as ruled)
   "aran.purewal@capricornfinancialmortgages.co.uk": "Mayfair", // Team Manny (actual login)
   "emelia@capricornint.co.uk": "Singapore",
-  // Ruled by Luke 2026-08-19, the last name on the Unassigned card. She is not in the 2026-07-06
-  // Datarails export because she started after it: UserAccountKey 3111467, first lead 20 May 2026,
-  // 64 cases and still writing today — a genuinely new adviser rather than the usual stale-login
-  // miss, which is why no re-keying fixes her.
+  // CONFIRMED Hammersmith 2026-08-19. The last name on the Unassigned card, and the one adviser the
+  // 2026-07-06 Datarails export never had: UserAccountKey 3111467, 68 cases, of which 65 are 2026
+  // (from 2 Feb) — effectively a new adviser, not the usual stale-login miss, so no re-keying fixes
+  // her. The three older cases (2015, 2024, 2025, one each) are reassignments and say nothing about
+  // her tenure; do not read the 2015 date as a start date, as one reading of it here already did.
   //
-  // RULED, NOT DERIVED. The lake has no office column, and her own case history does not decide it:
-  // she works the Dexters / Marsh & Parsons / Keatons / Jacksons / Frank Harris referral feed, which
+  // RULED, NOT DERIVED. The lake has no office column and her case history does not decide it: she
+  // works the Dexters / Marsh & Parsons / Keatons / Jacksons / Frank Harris referral feed, which
   // Hammersmith and Mayfair both sell into (46.9% vs 55.4% of each office's 2026 cases use those
-  // same agencies — a wash, and the per-negotiator overlaps only track office size). Recorded here
-  // so the next person does not re-run that analysis expecting it to answer. Worth Kyle confirming.
+  // same agencies — a wash, and the per-negotiator overlaps only track office size). Recorded so the
+  // next person does not re-run that analysis expecting it to answer.
   "denisa.ahmetaj@capricornfinancialmortgages.co.uk": "Hammersmith",
 };
 
