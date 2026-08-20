@@ -15,6 +15,9 @@
 // `status` is deliberately part of the contract. Half of the July/August email traffic came from
 // figures that were presented as settled when they were not, so a metric that is indicative or
 // disputed says so wherever it appears, rather than only in a README nobody on Capricorn's side reads.
+// It is shown as a badge inside the ⓘ panel. It no longer colours the ⓘ button itself — eleven of
+// nineteen metrics are indicative or open, so that painted most of the board's buttons red and turned
+// a "read me" affordance into an alarm (Capricorn, 2026-08-20).
 
 /** How much confidence the board is claiming for a figure. Rendered as a badge on the tile. */
 export type MetricStatus =
@@ -43,7 +46,18 @@ export interface MetricDefinition {
   /** How often the figure changes. */
   frequency: string;
   status: MetricStatus;
-  /** Why the status is what it is; the caveat a reader needs. Omitted when genuinely clean. */
+  /**
+   * The caveat a reader needs in order to read TODAY's figure correctly — a scope, an exclusion, a
+   * limit. Omitted when genuinely clean.
+   *
+   * NOT a change history. These notes accumulated one for every argument the metric had been through
+   * ("called X until 28 Jul", "the board read 378 against their 291", "correcting an earlier error of
+   * ours") until the panel was more changelog than dictionary. Capricorn, 2026-08-20: "take away the
+   * running commentary of why we've got them there. Just provide factual information about what that
+   * tile means rather than the justification of what happened." Git holds the history. The test for
+   * whether a sentence belongs here is whether someone reading the number on screen right now would
+   * get it wrong without it.
+   */
   note?: string;
 }
 
@@ -83,15 +97,11 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "agreed",
     note:
-      "Changed 2026-08-17 on Capricorn's ruling: \"a new lead is actually a new client added to the " +
-      "system\". It previously counted every case created, which is why the board read 378 for Sat 8 – " +
-      "Wed 12 Aug against 291 on the report the team ran at 17:00 on the 12th — their report dates a " +
-      "lead by when the CLIENT was created, so it never sees a lead for an existing client. On the new " +
-      "basis that week is 315 new clients plus 61 existing-client cases. Two differences to their " +
-      "report remain by design: it is scoped to the advisers whoever ran it can see (the board is " +
-      "group-wide, both entities), and it requires a live mortgage product attached. Excludes the " +
-      "~4,100 leads bulk-dated 1 Jul 2026 by the CFM migration. TARGET IS ON THE OLD BASIS: the 633/wk " +
-      "was set by headcount against the wider count and runs ~16% above this one — awaiting Kyle.",
+      "Group-wide: both Capricorn entities, every adviser. A Lead Flow Report run in the platform is " +
+      "scoped to the advisers the person running it can see, and requires a live mortgage product " +
+      "attached, so it will read lower. Excludes the ~4,100 leads bulk-dated 1 Jul 2026 by the CFM " +
+      "migration. The 633/week target was set against a wider count that included existing-client " +
+      "cases, so it sits about 16% above what this measures.",
   },
   {
     key: "existingCases",
@@ -109,10 +119,9 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "open",
     note:
-      "Added 2026-08-17 alongside the New Client Leads change, so splitting lead flow by client novelty " +
-      "does not simply hide the remortgage book. NO TARGET — Capricorn have not set one, so the tile " +
-      "shows the figure and its trend with no ahead/behind verdict attached. Ran 61 in Sat 8 – Wed 12 " +
-      "Aug and 82–250 a week across the previous quarter, the peaks tracking remortgage batches.",
+      "No target set, so this carries no ahead/behind verdict — the figure and its trend only. Counts " +
+      "cases rather than clients, so one client bringing two remortgages counts twice. Typically runs " +
+      "80–250 a week, the peaks tracking remortgage batches.",
   },
   {
     key: "applications",
@@ -129,11 +138,9 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "agreed",
     note:
-      "Called \"Applications\" until 2026-07-28, which misled: it counts business written, not " +
-      "applications submitted to a lender. Until 2026-07-29 it also used a different date field that " +
-      "sits 1–21 days earlier, which is why the board and the Total Written Report disagreed. 6.4% of " +
-      "cases have never been given this status and are therefore excluded — by us and by Capricorn's " +
-      "own report, which requires it.",
+      "6.4% of mortgage cases have never been given this status and are therefore not counted — here " +
+      "or on Capricorn's own report, which requires it too. Group-wide: a Total Written Report run " +
+      "inside one entity covers that entity alone and will read lower.",
   },
   {
     key: "referrals",
@@ -149,16 +156,10 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "open",
     note:
-      "Naming history matters here. Until 2026-07-30 this tile read \"Protection Referrals\" over a figure " +
-      "taken from a cross-sell table that was counting PaymentShield home-insurance QUOTE attempts and " +
-      "currency-exchange referrals — not protection at all — and the wrong number went unnoticed for " +
-      "weeks because ~24/wk sat next to a 25/wk target. The source was corrected to protection cases " +
-      "opened and the tile renamed \"Protection Opportunities\" so it could not be read as a referral " +
-      "count. Capricorn asked for their own wording back on 2026-08-17, so the label is \"Protection " +
-      "Referrals\" again over the CORRECTED figure. The platform's own referral definition (an insurance " +
-      "adviser assigned to the lead) resolves on 3 of 1,839 cases and remains unusable, so a true " +
-      "referral count is still not available. TARGET IS NOT VALID: the 25/week was set against the old " +
-      "wrong number; cases opened run ~48/week. Awaiting Kyle's ruling on definition and target.",
+      "A true referral count is not available from the platform: its own referral field (an insurance " +
+      "adviser assigned to the lead) is populated on 3 of 1,839 cases. Protection cases opened is the " +
+      "closest measure that exists. The 25/week target was set against a different, narrower figure; " +
+      "cases opened run around 48/week, so the RAG verdict on this tile is not meaningful yet.",
   },
   {
     key: "sales",
@@ -173,16 +174,9 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "agreed",
     note:
-      "Now on Kyle's own basis. Sat 25–31 Jul measured £68,951 of protection commission on 4 Aug, " +
-      "against the c.£69K he quoted — and £64,341.82 on 10 Aug, from the same query over the same " +
-      "closed week, because two cases left the data. A week's figure is a measurement, not a " +
-      "constant: the Reconciliation screen carries each week's full history and flags movement that " +
-      "input lag does not explain. It previously keyed on WrittenDate, which gave £48,969 — the " +
-      "difference is cases Capricorn counts as submitted that carry no written date yet. Correcting " +
-      "an earlier error of ours: we had warned that adopting this basis would remove ~£400k of " +
-      "protection commission. It does not. That warning came from reading a sparsely-populated " +
-      "workflow date column as though it were the case status; by status, 220 of 248 recent cases " +
-      "qualify, not 22 of 227.",
+      "A closed week's figure is a measurement, not a constant — cases are entered late, and cases " +
+      "already counted are sometimes removed, so the same week re-queried a fortnight later can differ " +
+      "in either direction. The Reconciliation screen holds every value each week has reported.",
   },
   {
     key: "offers",
@@ -196,9 +190,8 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "agreed",
     note:
-      "Until 2026-07-30 this read mortgagecase.OfferIssueDate, which is empty on 97% of cases — July " +
-      "showed 66 offers against a true 526. The funnel appeared to collapse between written and offer; " +
-      "it does not.",
+      "Offers arrive weeks after the business is written, so in a one-week window this stage reads low " +
+      "against the written figure above it — that is the lag, not a drop-off in the funnel.",
   },
   {
     key: "written",
@@ -215,12 +208,10 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Weekly (Sat–Fri), reported for the last COMPLETE week",
     status: "indicative",
     note:
-      "Mortgage reconciles: 25–27 Jul = £110,689 against Kyle's £112,083 report run mid-morning on the " +
-      "28th, with four advisers matching to the penny. Client fees were silently included until " +
-      "2026-07-28, which inflated this against their report. ENTITY SCOPE is the remaining gap and it " +
-      "is not an error on either side: this figure covers the Capricorn GROUP, while a Total Written " +
-      "Report run inside Capricorn Financial Mortgages covers that entity alone. Sat 25–31 Jul is " +
-      "£413,541 group against £381,559 for CFM only. The Reconciliation screen shows both, per week.",
+      "Covers the Capricorn GROUP. A Total Written Report run inside one entity covers that entity " +
+      "alone: for Sat 25–31 Jul that is £413,541 group against £381,559 for CFM. Both are shown per " +
+      "week on the Reconciliation screen. A week within a fortnight of its end is marked provisional " +
+      "and can still move in either direction.",
   },
   {
     key: "revenue",
@@ -241,14 +232,9 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily (week to date)",
     status: "indicative",
     note:
-      "Called \"Est. Revenue\" and computed as commission + client fees until 2026-08-10, when Kyle " +
-      "ruled: \"Please can we completely separate the Client Fee – as our written report does not " +
-      "capture the client fee.\" Adding the fee in made this wider than anything Capricorn reports, " +
-      "so it could never tie to their Total Written Report — it guaranteed a gap on every comparison. " +
-      "The fee is still shown, beside the total rather than inside it. It is an adviser-entered field: " +
-      "£300 on 626 cases and £200 on 326 over 90 days (his purchase/remortgage policy, being followed), " +
-      "but 710 of 1,925 written cases — 37% — carry no fee at all, which is a control question for " +
-      "Capricorn rather than a reporting one.",
+      "Client fees sit beside this total, not inside it, so it stays on the same basis as Capricorn's " +
+      "Total Written Report. The fee is adviser-entered and 37% of written cases carry none, so the " +
+      "figure shown beside the total understates what was actually charged.",
   },
   {
     key: "total-lending",
@@ -274,8 +260,8 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     status: "indicative",
     note:
       "A mean, not a median, so two or three large cases move it noticeably in a week — read the trend " +
-      "rather than any single week's figure. It also inherits the 6.4% of mortgage cases excluded from " +
-      "Mortgages Written, since it divides by that same count.",
+      "rather than a single week. Divides by the Mortgages Written count, so it inherits that measure's " +
+      "6.4% exclusion.",
   },
   {
     key: "attach-rate",
@@ -289,10 +275,9 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Weekly (Sat–Fri)",
     status: "open",
     note:
-      "Two problems, both inherited from Protection Referrals. The numerator is the metric awaiting " +
-      "Kyle's ruling, and the denominator differs from the platform's, which uses offers (115 in W30) " +
-      "rather than written (174). Correcting the denominator alone would just produce a different wrong " +
-      "number, so both move together once the definition is settled. The 30% target predates all of it.",
+      "Not comparable with the platform's referrals report, which divides by mortgage OFFERS rather " +
+      "than mortgages written — a smaller denominator, so a higher percentage. The numerator carries " +
+      "the Protection Referrals caveat, and the 30% target was set against neither basis.",
   },
   {
     key: "commission-league",
@@ -312,12 +297,10 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Weekly (Sat–Fri), reported for the last COMPLETE week",
     status: "indicative",
     note:
-      "The week's TOTAL reconciles on the same basis as Weekly Written. An individual ROW may not: a " +
-      "commission SPLIT credits the case's primary adviser in full here, while the platform divides it " +
-      "and emits a second row for the recipient — which is how Michael Ngoka appears on Kyle's report " +
-      "with £13,948 of protection commission on cases he was not primary adviser for. The recipient " +
-      "field (tblSplitCommission.ToAdviserId) is not in the data share; PBI 91379 asks for it. Labelled " +
-      "\"mortgages\" on the board at Capricorn's request even though it counts all product lines.",
+      "The week's TOTAL reconciles; an individual ROW may not. Where commission is SPLIT, this credits " +
+      "the case's primary adviser in full, while the platform divides it and gives the recipient their " +
+      "own row — so a split case can put up to a few thousand pounds against the wrong name here. The " +
+      "recipient field is not in the data share. Headed \"mortgages\" but counts every product line.",
   },
   {
     key: "pace",
@@ -334,8 +317,9 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "indicative",
     note:
-      "Only as meaningful as the targets underneath it, and no target file has been uploaded yet — every " +
-      "target on the board is currently a placeholder derived from trailing averages.",
+      "Only as meaningful as the targets underneath it. Each screen states whose targets it is using; " +
+      "where a measure has no Capricorn target the figure beneath is our estimate, and the pace over " +
+      "it inherits that. Measured through the last COMPLETE day, so it does not dip every morning.",
   },
 ];
 

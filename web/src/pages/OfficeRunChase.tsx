@@ -29,18 +29,26 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
-          <div className="card" style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", padding: "8px 14px" }}>
-            <span className="card-title" style={{ marginBottom: 0 }}>% to Weekly Target Pace <span className="card-sub">fixed office order · rank #1-{data.offices.length} by pace shown on each tile</span></span>
-            <span className="asof">Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · data as of {shortDate(data.dataAsOf)} · expected {data.week.expectedPct}%</span>
-          </div>
+          {/* ONE LINE, not a title card above a definitions strip.
+              The card that used to sit here held the words "% to Weekly Target Pace", a wide gap, and
+              a right-aligned as-of stamp. Capricorn, 2026-08-20: "we have a thing at the top that says
+              percent to weekly target pace, but then it has a big space. I think we need to look at
+              whether that is actually providing us any real information." Mostly it was not — the page
+              is titled by the wall header and by the dashboard nav, and "data as of" is already stamped
+              in the app header. What was worth keeping is the week and the expected %, which is the bar
+              every tile is judged against, so those move to the right of this line. Two rows of
+              chrome become one, and the height goes to the six tiles.
 
-          {/* One definitions strip rather than an ⓘ on all 4 KPIs × every office card — same reach,
-              without 28 triggers competing with the numbers. */}
-          <div className="funnel-defs" style={{ borderTop: "none", paddingTop: 0, marginTop: 0 }}>
+              The definitions live here rather than as an ⓘ on all 4 KPIs × every office card — same
+              reach, without 28 triggers competing with the numbers. */}
+          <div className="funnel-defs office-defs">
             {[["leads", "Leads"], ["applications", "Mortgages Written"], ["referrals", "Protection Referrals"],
               ["sales", "Protection Sales"], ["pace", "% of Pace"]].map(([key, label]) => (
               <span className="funnel-def" key={key}>{label} <MetricInfo metricKey={key} mode={mode} /></span>
             ))}
+            <span className="asof" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
+              Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · expected <b>{data.week.expectedPct}%</b> · rank #1–{data.offices.length} by pace on each tile
+            </span>
           </div>
 
           <div className="row cols-3 grow" style={{ gridAutoRows: "1fr" }}>
@@ -77,9 +85,17 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                       );
                     })}
                   </div>
-                  <div className="chart-box" style={{ minHeight: 90 }}>
+                  {/* A PREFERRED height, flexed down inside the card (see EChart). 110 was costing
+                      the DASHBOARD its graphs: `.dash-main` is not a flex column, so the page is only
+                      as tall as its content and `.chart-box` has no slack to hand the canvas — it
+                      drew at exactly 110px while 368px of the window sat empty below the page. The
+                      wall was never affected (its cards are 477px and give the chart 320 regardless),
+                      which is why "the graphs at the bottom … look very small" (Capricorn 2026-08-20)
+                      is true on one surface and not the other. 220 doubles the dashboard graph and
+                      still leaves the page inside a 1080 window; the wall is unchanged. */}
+                  <div className="chart-box" style={{ minHeight: 150 }}>
                     <EChart
-                      height={110}
+                      height={220}
                       option={pctPaceChart({
                         days: o.chart.days,
                         actualPct: o.chart.actualPct,

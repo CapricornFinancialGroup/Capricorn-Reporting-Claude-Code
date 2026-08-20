@@ -5,9 +5,17 @@
 // differs from another."
 //
 // Content comes from ONE registry (src/domain/metrics.ts) served as the `definitions` dataset, so the
-// tile, the Glossary and any written dictionary cannot drift apart. The panel deliberately leads with
-// the plain-English definition and shows the status badge and caveat prominently: most of the
-// July/August email traffic was about figures presented as settled when they weren't.
+// tile, the Glossary and any written dictionary cannot drift apart. The panel leads with the
+// plain-English definition, then how the figure is calculated and where it comes from.
+//
+// WHAT THE PANEL IS FOR, since it drifted: it answers "what does this number mean?" and nothing else.
+// It spent its first fortnight also carrying the CHANGE HISTORY of each metric — what the tile used to
+// be called, which figure it used to show, whose ruling moved it — because each of those had just been
+// argued about. Capricorn, 2026-08-20: "take away the running commentary of why we've got them there.
+// Just provide factual information about what that tile means rather than the justification of what
+// happened." The history is in git and in the commit messages, which is where a reader who wants it
+// should look; a definition panel is not a changelog. What survives in `note` is only what changes how
+// today's figure should be read — a scope, an exclusion, a limit.
 
 import { useEffect, useState } from "react";
 import { EMPTY_FILTERS, usePayload, type Mode } from "../api.js";
@@ -28,7 +36,8 @@ export function MetricDetail({ m }: { m: MetricDefinition }) {
   return (
     <>
       <div className="mi-def">{m.definition}</div>
-      {m.note && <div className={`mi-note mi-note-${m.status}`}>{m.note}</div>}
+      {/* No status in the class — see .mi-note. */}
+      {m.note && <div className="mi-note">{m.note}</div>}
       <dl className="mi-fields">
         <dt>Calculation</dt><dd>{m.calculation}</dd>
         <dt>Source</dt><dd className="mi-mono">{m.source}</dd>
@@ -63,9 +72,10 @@ export function MetricInfo({ metricKey, mode }: { metricKey: string; mode: Mode 
   if (!m) return null;
   return (
     <>
+      {/* No status in the class: the trigger is one neutral colour on every metric. See .mi-trigger. */}
       <button
         type="button"
-        className={`mi-trigger mi-trigger-${m.status}`}
+        className="mi-trigger"
         aria-label={`What does ${m.label} mean?`}
         title={`What does ${m.label} mean?`}
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}

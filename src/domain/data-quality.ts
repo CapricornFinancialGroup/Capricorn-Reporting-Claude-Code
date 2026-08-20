@@ -36,16 +36,26 @@ export const MIGRATION_EXCLUSIONS: MigrationExclusion[] = [
  * climbing. Presenting a just-closed week as final produced Kyle's 2026-07-28 challenge. Anything
  * inside this window is flagged `provisional` so the board says so on its face.
  *
- * ⚠ UNVERIFIED on the current basis. Both figures above were measured while the board keyed on
- * `WrittenDate`, which the platform backdates. MORTGAGE_WRITTEN_DATE (below) is a workflow
- * status-change date, recorded when the status actually moves, so it should be materially more
- * stable — but that has NOT been observed across snapshots yet. Keeping the flag is the cautious
- * choice. `services/snapshots/` is now recording exactly this: once a fortnight of history has
- * accumulated, read the settle curve off the Reconciliation screen and shorten this if the drift is
- * small. Do NOT shorten it on judgement again — that is what this constant already is.
+ * NOW VERIFIED on the current basis, and the answer is DO NOT SHORTEN IT. The figures above were
+ * measured while the board keyed on `WrittenDate`, which the platform backdates; MORTGAGE_WRITTEN_DATE
+ * (below) is a workflow status-change date recorded when the status actually moves, and the
+ * expectation was that it would prove materially more stable. It has not. Read off the week snapshots
+ * on 2026-08-20, covering every closed week observed since 10 Aug:
  *
- * 14 days ≈ the point the distribution above has substantially settled (~70% within 7 days). It is
- * a judgement call on Capricorn's behalf, not a measured threshold — revisit with Kyle.
+ *   25–31 Jul   mortgage commission £413,540.51 → £414,283.12 across six observations, the last of
+ *               them on 19 Aug — day 19, i.e. AFTER this window closes. Protection cases 28 → 29.
+ *   1–7 Aug     mortgage cases 167 → 166, mortgage commission −£981.74, protection commission
+ *               £21,650.93 → £20,064.71 (−7.3%), client fees −£301. Every figure DOWN.
+ *   8–14 Aug    mortgage commission −£219.93, client fees −£200. Both DOWN.
+ *
+ * Two conclusions. First, 14 days is if anything too short, not too long. Second, the movement is not
+ * only late entry arriving — three of the four measures on the 1–7 Aug week FELL, which is business
+ * leaving a closed week (see services/snapshots/history.ts). A `reduced` severity exists for exactly
+ * that and it is firing on real data.
+ *
+ * 14 days ≈ the point the lag distribution above has substantially settled (~70% within 7 days). It
+ * remains a judgement call rather than a threshold read off a settle curve; what has changed is that
+ * the cautious direction is now the evidenced one.
  */
 export const INPUT_LAG_SETTLE_DAYS = 14;
 

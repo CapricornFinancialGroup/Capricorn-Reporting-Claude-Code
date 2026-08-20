@@ -21,6 +21,7 @@ import { usePayload } from "../api.js";
 import { paceChart } from "../charts.js";
 import { ChaseStats } from "../components/ChaseStats.js";
 import { EChart } from "../components/EChart.js";
+import { MetricInfo } from "../components/MetricInfo.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { Ticker } from "../components/Ticker.js";
 import { shortDate, signed } from "../format.js";
@@ -59,16 +60,25 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
         <div className="screen">
           <Ticker mode={mode} refreshMs={refreshMs} />
 
-          {/* Weekly progress indicator — where the team SHOULD be by end of each day. The bars mark
-              days closed off, not attainment: Capricorn read them as progress and asked why they
-              always agreed with "expected" (2026-08-18). They always did, and always would — the
-              expected figure is by construction the cumulative share at the last complete day, i.e.
-              the label printed under the last filled bar. The strip now says what it is, and the
-              expected read is paired with the blended ACTUAL so the two can genuinely differ. */}
+          {/* Where the team SHOULD be by end of each day. The bars mark days closed off, not
+              attainment: Capricorn read them as progress and asked why they always agreed with
+              "expected" (2026-08-18). They always did, and always would — the expected figure is by
+              construction the cumulative share at the last complete day, i.e. the label printed under
+              the last filled bar. The expected read is paired with the blended ACTUAL so the two can
+              genuinely differ.
+
+              TITLED FOR WHAT THE PERCENTAGES ARE. It said "This Week", which named the window and left
+              the numbers unexplained — so they got read as the thing at the top of the page: "the bar
+              with the weighted leads … needs to be clear that it's actually looking at leads per day"
+              (Capricorn, 2026-08-20). They are not leads, and not any single measure: each figure is
+              the share of the WEEK'S TARGET due by the end of that day, averaged over the four
+              targeted measures (BLENDED_CUMULATIVE_SHARES). The title now says so, including the count
+              of measures — because "per day" alone would have left the same wrong reading available. */}
           <div className="card" style={{ flexDirection: "row", alignItems: "center", gap: 14, padding: "8px 14px" }}>
             <span className="card-title" style={{ marginBottom: 0, whiteSpace: "nowrap" }}>
-              This Week{" "}
+              Target Pace per Day{" "}
               <span className="card-sub">
+                % of the weekly target due by end of each day, all 4 targeted measures ·{" "}
                 {shortDate(data.week.start)} – {shortDate(data.week.end)} · bars = days closed off
               </span>
             </span>
@@ -86,8 +96,11 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                         style={{ width: done ? "100%" : "0%", background: done ? "var(--navy)" : undefined }}
                       />
                     </div>
+                    {/* Whole numbers. The payload carries two decimals and printing them gave a row
+                        reading "3.25% 4.13% 24.1% 44.07%" — ragged, and precision the day curve does
+                        not have (the weekend shares are observed off a single week). */}
                     <div style={{ fontSize: 9, color: "var(--text-secondary)", marginTop: 2, fontVariantNumeric: "tabular-nums" }}>
-                      {data.week.cumulativeSharesPct[i]}%
+                      {Math.round(data.week.cumulativeSharesPct[i])}%
                     </div>
                   </div>
                 );
@@ -125,7 +138,11 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
             {chased.map((k) => (
               <div className="card" key={k.key}>
                 <div className="card-title">
-                  <span>{k.label} — week chase</span>
+                  {/* The ⓘ lived on the five KPI tiles and went with them on 2026-08-19, which left
+                      the page carrying the four headline measures with no route to their definitions
+                      at all — an audit of every screen on 2026-08-20 found this one on zero triggers.
+                      Back on the chart title, where the measure is named. */}
+                  <span>{k.label} — week chase <MetricInfo metricKey={k.key} mode={mode} /></span>
                   <StatusPill
                     status={k.pace!.status}
                     label={k.pace!.status === "on_pace" ? "On Pace" : `${k.pace!.status === "ahead" ? "Ahead" : "Behind"} ${signed(k.pace!.aheadBehind)}`}

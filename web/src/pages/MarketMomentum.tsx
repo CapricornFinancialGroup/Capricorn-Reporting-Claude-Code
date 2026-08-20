@@ -26,10 +26,29 @@ import type { MarketMomentumPayload } from "../types.js";
 import type { Mode } from "../api.js";
 import { Load, type PageProps } from "./common.js";
 
-/** Input lag: cases reach the platform ~6 days after they were written, so a just-closed week is
- *  still filling. Both panels carry the same chip because they are the same week's money. */
+/**
+ * Both panels carry the same chip because they are the same week's money.
+ *
+ * KEPT, AND NOW SAYS WHAT IT MEANS. Capricorn asked on 2026-08-20 to drop it "unless you can tell me
+ * why we need to have provision on there". The week snapshots (services/snapshots, recording since
+ * 10 Aug) answer that: every closed week observed has moved after it closed, and two of the three
+ * moved DOWN, which is business leaving a week rather than late entry arriving.
+ *
+ *   25–31 Jul   mortgage commission £413,540 → £414,283, still climbing on 19 Aug (day 19, i.e.
+ *               AFTER the 14-day settle window), protection cases 28 → 29
+ *   1–7 Aug     mortgage cases 167 → 166, protection commission £21,651 → £20,065 (−7.3%),
+ *               client fees −£301 — every one of them DOWN
+ *   8–14 Aug    mortgage commission −£220, client fees −£200
+ *
+ * So the chip is load-bearing: a figure quoted from a just-closed week can be wrong by several
+ * thousand pounds within a fortnight. The old wording claimed figures "will rise", which the same
+ * evidence contradicts — the movement goes both ways, and saying otherwise would have made a
+ * downward revision look like a bug.
+ */
 const PROVISIONAL_TITLE =
-  "Cases are entered on the platform about 6 days after the date they were written, so this week is still filling and its figures will rise.";
+  "This week is not final. Business written is entered on the platform days later, and cases already " +
+  "counted are sometimes removed, so the figures can still move in EITHER direction — every closed " +
+  "week tracked so far has moved, by up to 7%. The Reconciliation screen holds each week's history.";
 
 export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<MarketMomentumPayload>("market-momentum", filters, mode, refreshMs);
