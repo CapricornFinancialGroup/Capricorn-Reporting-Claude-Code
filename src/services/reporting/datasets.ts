@@ -849,6 +849,51 @@ interface BoardRow {
  * the data entry; referred measures who introduces the business. See services/reporting/referrals.ts
  * for how the credit is derived, and its caveats.
  */
+/** Conversion rate as the ROUNDED percentage the row prints. Tie-breaking on the unrounded ratio
+ *  would hand two rows both showing "21% converted" different ranks — the same "these numbers are
+ *  arguing with each other" failure as the shared ranks it replaces, just harder to spot. */
+function conversionPct(a: { written: number; referred: number }): number {
+  return a.written > 0 ? Math.round((a.referred / a.written) * 100) : 0;
+}
+
+/**
+ * Competition ranking on `pick` — zeroes excluded, biggest first, capped at `limit`.
+ *
+ * `tie` both ORDERS level rows and SEPARATES their ranks. Capricorn asked for the Protection Referred
+ * board to settle its ties on conversion percentage rather than printing three sixth places
+ * (2026-08-19): three advisers on 3 referrals each is a tie on the count, but 100%, 21% and 8% of
+ * their own clients is not a tie on anything that matters. Pass `() => 0` and a board keeps the plain
+ * competition ranking (1,2,2,4) — which is what Mortgages Written and Protection Sales still do,
+ * because two advisers who each wrote 24 have nothing to be separated on.
+ *
+ * A rank is still SHARED when two rows are level on the measure AND on the tie-break. There is
+ * nothing left to tell them apart with, and inventing an order would be a ranking the data cannot
+ * support. `written` is the final comparator only: it fixes the display order inside a shared rank
+ * without ever splitting one, which is why it is not folded into `tie`.
+ */
+export function rankBoard<T extends { written: number }>(
+  rows: readonly T[],
+  pick: (a: T) => number,
+  tie: (a: T) => number,
+  limit: number,
+): Array<{ row: T; rank: number }> {
+  const sorted = rows
+    .filter((a) => pick(a) > 0)
+    .slice()
+    .sort((x, y) => pick(y) - pick(x) || tie(y) - tie(x) || y.written - x.written);
+  let prevValue = Number.NaN;
+  let prevTie = Number.NaN;
+  let rank = 0;
+  return sorted.slice(0, limit).map((row, i) => {
+    if (pick(row) !== prevValue || tie(row) !== prevTie) {
+      rank = i + 1;
+      prevValue = pick(row);
+      prevTie = tie(row);
+    }
+    return { row, rank };
+  });
+}
+
 /** Start of the rolling board window ending at `to`. Exported-by-use: `adviserLeague` calls it for
  *  its own default window so the strip above the boards covers exactly the same days. */
 function boardWindowFrom(to: string): string {
@@ -906,13 +951,8 @@ export async function leagueBoards(config: Config, to: string) {
     }
 
     const all = [...people.values()];
-    /** Competition ranking (1,2,2,4) on a chosen measure, zeroes excluded. */
-    const board = (pick: (a: Acc) => number, limit: number): BoardRow[] => {
-      const sorted = all.filter((a) => pick(a) > 0).sort((x, y) => pick(y) - pick(x) || y.written - x.written);
-      let prev = Number.NaN;
-      let rank = 0;
-      return sorted.slice(0, limit).map((a, i) => {
-        if (pick(a) !== prev) { rank = i + 1; prev = pick(a); }
+    const board = (pick: (a: Acc) => number, limit: number, tie: (a: Acc) => number = () => 0): BoardRow[] =>
+      rankBoard(all, pick, tie, limit).map(({ row: a, rank }) => {
         return {
           rank,
           name: a.name,
@@ -921,19 +961,19 @@ export async function leagueBoards(config: Config, to: string) {
           written: a.written,
           referred: a.referred,
           sold: a.sold,
-          rate: a.written > 0 ? Math.round((a.referred / a.written) * 100) : null,
+          rate: a.written > 0 ? conversionPct(a) : null,
           commission: Math.round(a.commission),
           partners: [...a.partners.entries()].map(([n, v]) => ({ name: n, n: v })).sort((p, r2) => r2.n - p.n),
         };
       });
-    };
 
     return {
       window: { from, to, weeks: BOARD_WEEKS },
       /** Honest coverage for the referred board — shown on screen, not hidden. */
       attribution: { attributed, unattributed, pct: round(divide(attributed, attributed + unattributed), 3) },
       written: board((a) => a.written, BOARD_ROWS),
-      referred: board((a) => a.referred, BOARD_ROWS),
+      // The only board with a quality measure to settle its ties with, so the only one that does.
+      referred: board((a) => a.referred, BOARD_ROWS, conversionPct),
       sold: board((a) => a.sold, BOARD_ROWS),
     };
   });

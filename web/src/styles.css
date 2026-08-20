@@ -759,14 +759,22 @@ button { font: inherit; }
 /* Spotlight. Only ever applied when links are showing — dimming rows with nothing drawn between
    them was the failure mode that made the tour meaningless when the wires were pulled. */
 .lb-dim { opacity: 0.3; }
-.lb-lit { background: rgba(29, 78, 216, 0.09); box-shadow: inset 3px 0 0 var(--blue); }
+.lb-lit { background: rgba(29, 78, 216, 0.14); box-shadow: inset 3px 0 0 var(--blue); }
 .lb-row { transition: background 160ms ease, opacity 160ms ease; }
 @media (prefers-reduced-motion: reduce) { .lb-row { transition: none; } }
+/* Dashboard rows respond to the mouse — the pointer says so before anything is hovered, which is how
+   a viewer finds out the highlight exists. It was removed in the 2026-08-19 tidy-up and Capricorn
+   noticed: "I still don't see any highlight ... We used to have that." */
+.lb-hoverable { cursor: pointer; }
+.lb-hoverable:hover { background: rgba(29, 78, 216, 0.14); }
 /* Names the adviser the wall is currently showing, so a viewer knows what the lines belong to. */
 .lb-spot {
   font-size: 10.5px; font-weight: 700; color: var(--blue); white-space: nowrap;
 }
 .lb-spot b { font-weight: 800; }
+/* Says in words what the dashed line says in pixels: that adviser is off the bottom of the other
+   board. Without it the line is a shape people have to guess at, and "broken?" is the wrong guess. */
+.lb-spot-off { font-weight: 600; color: var(--text-secondary); }
 .lb-rows { display: flex; flex-direction: column; }
 
 /* FIXED HEIGHT IS LOAD-BEARING. The connecting lines are drawn between row centres, so if a row in
