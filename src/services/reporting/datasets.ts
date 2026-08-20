@@ -1094,7 +1094,33 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   for (let i = weekStarts.length - 1; i >= 0; i--) {
     if (weekStarts[i] < currentWeekStart && shiftDays(weekStarts[i], 6) <= asOf) { completeIdx = i; break; }
   }
-  const leagueWindow = { from: weekStarts[completeIdx], to: shiftDays(weekStarts[completeIdx], 6) };
+  // THE SUBJECT WEEK — what the two panels are ABOUT. The current one, to date.
+  //
+  // It was `completeIdx`, the last week that had both ended and fully loaded, and Capricorn read that
+  // as the page being stale: "it looks like the market momentum page is basing off week 33 rather than
+  // the current week of 34" (2026-08-20). They are right that it was, and right that it should not be:
+  // every other screen reports the current week, and Kyle asked for this page to as well — "Don't we
+  // want to compare current week to prior week? I'd have current week i.e. WK32 compared to WK31 and
+  // show the difference" (2026-08-07). The KPI tiles were changed then and have led with the current
+  // week ever since; the two panels that survived the 2026-08-19 cut simply never followed, so the
+  // page has been showing a current-week payload through last-week panels.
+  //
+  // The reason it was `completeIdx` is real and is NOT solved by ignoring it: a part-week's written
+  // commission measured against a whole-week target reads as a collapse, and input lag makes that
+  // worse (mean ~6 days, so Wednesday's figure is still arriving on Monday). So the subject moves to
+  // the current week and the COMPARISONS change with it — the prior week truncated to the same
+  // weekday, and a full-week forecast for the one number a full-week target can fairly judge. No
+  // "% of target" is printed against a part week at all.
+  //
+  // `isWeekendOnlyWeek` is the existing guard, kept: from Saturday until Monday's load the current
+  // week is two weekend days, about 6% of a week's business, and leading with that reads as a
+  // collapse three days in every seven (Kyle, 2026-08-10). Those days the last complete week leads,
+  // exactly as before.
+  const subjectIdx = isWeekendOnlyWeek(asOf) ? completeIdx : weekStarts.length - 1;
+  const subjectEnd = shiftDays(weekStarts[subjectIdx], 6);
+  // One window for both halves of the screen, as before: the graph's headline figure and the league's
+  // rows cannot land on different dates because they are the same object.
+  const leagueWindow = { from: weekStarts[subjectIdx], to: subjectEnd < asOf ? subjectEnd : asOf };
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
     const [leads, apps, refs, revenue, protWritten, mortByAdviser, protByAdviser] = await Promise.all([
       q<DailyCount>(config, kpiDaily("leads", from, asOf)),
@@ -1387,29 +1413,65 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // Same object as the league's window on purpose: one week, one definition, no way for the two
     // halves of the screen to drift onto different dates.
     const writtenWindow = leagueWindow;
+    /** The subject week has not finished — so `combined.actual` is a week TO DATE, not a week. */
+    const subjectPartial = writtenWindow.to < subjectEnd;
     const writtenBlock = {
-      weekLabel: weeks[completeIdx],
-      weekFrom: writtenWindow.from,
-      weekTo: writtenWindow.to,
-      mortgage: { actual: Math.round(mortW[completeIdx] ?? 0), target: Math.round(writtenTargets.mortgage) },
-      insurance: { actual: Math.round(insW[completeIdx] ?? 0), target: Math.round(writtenTargets.insurance) },
-      combined: { actual: Math.round(combW[completeIdx] ?? 0), target: Math.round(writtenTargetCombined) },
-      /** Client fees written in the same week — NOT part of "written" (which is commission), shown
+      weekLabel: weeks[subjectIdx],
+      weekFrom: weekStarts[subjectIdx],
+      /** The week's Friday, so the label always describes a WEEK... */
+      weekTo: subjectEnd,
+      /** ...and this is the last day actually counted. Equal to `weekTo` on a finished week. */
+      throughDay: writtenWindow.to,
+      partial: subjectPartial,
+      mortgage: { actual: Math.round(mortW[subjectIdx] ?? 0), target: Math.round(writtenTargets.mortgage) },
+      insurance: { actual: Math.round(insW[subjectIdx] ?? 0), target: Math.round(writtenTargets.insurance) },
+      combined: { actual: Math.round(combW[subjectIdx] ?? 0), target: Math.round(writtenTargetCombined) },
+      /**
+       * The prior week truncated to the SAME weekday — the only fair comparison for a part week, and
+       * the one Kyle asked for (2026-08-07). Null on a finished week, where the prior full week is the
+       * comparison and the graph beside it already draws that.
+       */
+      priorSameDay: subjectPartial ? (writtenLtd[subjectIdx - 1] ?? null) : null,
+      priorWeekLabel: subjectIdx > 0 ? weeks[subjectIdx - 1] : null,
+      /**
+       * Full-week estimate for a part week. This — NOT the week-to-date actual — is the figure the
+       * whole-week target can fairly be set against, which is why the target percentage on screen
+       * hangs off it. Same value the graph's dashed segment ends on, so the number under the chart and
+       * the point on it are the same thing.
+       */
+      forecast: subjectPartial ? writtenForecastTotal : null,
+      /**
+       * The last week that has both ended and loaded, kept alongside whenever it is not the subject.
+       * It is the only figure on this screen comparable with a Total Written Report, which is run for
+       * finished periods — so moving the subject to the current week must not take it off the page.
+       */
+      lastComplete:
+        subjectIdx !== completeIdx
+          ? {
+              weekLabel: weeks[completeIdx],
+              weekFrom: weekStarts[completeIdx],
+              weekTo: shiftDays(weekStarts[completeIdx], 6),
+              actual: Math.round(combW[completeIdx] ?? 0),
+              provisional: shiftDays(shiftDays(weekStarts[completeIdx], 6), INPUT_LAG_SETTLE_DAYS) > asOf,
+            }
+          : null,
+      /** Client fees written in the same window — NOT part of "written" (which is commission), shown
        *  so the gap to a fees-inclusive figure like Est. Revenue is explicit, not mysterious. */
-      clientFees: Math.round(feeW[completeIdx] ?? 0),
+      clientFees: Math.round(feeW[subjectIdx] ?? 0),
       /** Cases written whose WrittenDate falls in the week but were input later. Mean input lag is
-       *  ~6 days and 22% of written £ arrives 8+ days late, so a just-closed week keeps climbing:
-       *  W30 read £266.3k/133 on 28 Jul and £299.6k/147 on 29 Jul. The board must say "provisional"
-       *  rather than imply a closed week is final (Kyle 2026-07-28). */
-      provisional: shiftDays(writtenWindow.to, INPUT_LAG_SETTLE_DAYS) > asOf,
+       *  ~6 days and 22% of written £ arrives 8+ days late, so a week keeps climbing after it closes
+       *  — and, per the snapshot history, sometimes falls. The board must say "provisional" rather
+       *  than imply the figure is final (Kyle 2026-07-28). */
+      provisional: shiftDays(subjectEnd, INPUT_LAG_SETTLE_DAYS) > asOf,
     };
 
     // ------------------------------------------------------------------ commission league (top 10)
     //
-    // The right-hand half of this screen: the ten advisers who earned the most commission in the SAME
-    // week the graph's last actual point plots (Luke, 2026-08-19 — "advisers' top 10 in terms of
+    // The right-hand half of this screen: the ten advisers who earned the most commission over the
+    // SAME window the graph's headline reports (Luke, 2026-08-19 — "advisers' top 10 in terms of
     // commission in that time period … the graph will show the total business commission for that
-    // week").
+    // week"). That window is now the CURRENT week to date — see `subjectIdx` — so the league is who
+    // is earning it this week, not who earned it last week.
     //
     // ALL commission, not a product line. Mortgage, protection and general insurance are added
     // together and never split — "we'll call it mortgages, and that can be either protection,
@@ -1445,17 +1507,20 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       .filter((r) => r.commission > 0)
       .sort((a, b) => b.commission - a.commission || a.name.localeCompare(b.name));
     const leagueBlock = {
-      weekLabel: weeks[completeIdx],
+      weekLabel: weeks[subjectIdx],
       weekFrom: leagueWindow.from,
-      weekTo: leagueWindow.to,
+      weekTo: subjectEnd,
+      /** Last day counted — the rows are "so far this week" while the subject week is running. */
+      throughDay: leagueWindow.to,
+      partial: subjectPartial,
       rows: earners.slice(0, TOP_N).map((r, i) => ({
         rank: i + 1,
         name: r.name,
         commission: Math.round(r.commission),
         cases: r.cases,
       })),
-      /** Whole-firm written commission for the same week — the value the graph plots for it. */
-      total: Math.round(combW[completeIdx] ?? 0),
+      /** Whole-firm written commission over the same window — the value the graph plots for it. */
+      total: Math.round(combW[subjectIdx] ?? 0),
       /** Everyone who earned commission in the week, so "top 10" says what it is the top 10 OF. */
       earners: earners.length,
       /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */

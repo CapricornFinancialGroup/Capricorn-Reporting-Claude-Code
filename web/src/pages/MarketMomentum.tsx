@@ -7,6 +7,17 @@
 // callers of /api/reporting/market-momentum and the Reconciliation screen read them), they are simply
 // no longer drawn here.
 //
+// THE CURRENT WEEK, TO DATE — changed 2026-08-20. Both panels reported the last COMPLETE week, which
+// read as the page being a week behind the rest of the board: "it looks like the market momentum page
+// is basing off week 33 rather than the current week of 34" (Capricorn). The KPI tiles moved to the
+// current week on 2026-08-07 at Kyle's request and these two panels never followed them.
+//
+// What moved with the subject are the COMPARISONS, because a part week cannot be judged the way a
+// whole one can: the week to date is set against the prior week's SAME days, the target percentage is
+// set against the forecast full week rather than against the part-week actual, and the last ended week
+// stays on screen as the figure a Total Written Report can be run against. See `subjectIdx` in
+// datasets.ts for the weekend guard that holds the current week back until Monday is loaded.
+//
 // ONE MONEY BASIS ON THE PAGE, deliberately. Both panels are written COMMISSION for the SAME week:
 // the graph plots the firm total, the league splits that total across the ten advisers who earned the
 // most of it, and the total is printed under the league so the two can be checked against each other
@@ -46,9 +57,10 @@ import { Load, type PageProps } from "./common.js";
  * downward revision look like a bug.
  */
 const PROVISIONAL_TITLE =
-  "This week is not final. Business written is entered on the platform days later, and cases already " +
-  "counted are sometimes removed, so the figures can still move in EITHER direction — every closed " +
-  "week tracked so far has moved, by up to 7%. The Reconciliation screen holds each week's history.";
+  "Not final, for two reasons. The week is still running, so this is business written so far. And " +
+  "business written is entered on the platform days later while cases already counted are sometimes " +
+  "removed, so even after the week closes the figures move in EITHER direction — every closed week " +
+  "tracked so far has moved, by up to 7%. The Reconciliation screen holds each week's history.";
 
 export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<MarketMomentumPayload>("market-momentum", filters, mode, refreshMs);
@@ -79,8 +91,22 @@ function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode 
   const { written } = data;
   const vsQ = data.kpis.find((k) => k.key === "written")?.vsQuarterPct ?? null;
   const targetK = Math.round(written.combined.target / 1000);
-  const pct = written.combined.target > 0 ? Math.round((written.combined.actual / written.combined.target) * 100) : null;
+  // THE TARGET PERCENTAGE HANGS OFF THE FORECAST WHILE THE WEEK IS RUNNING, not off the week-to-date
+  // actual. A whole-week target can only fairly judge a whole-week figure: £160k of a £436k target
+  // through Wednesday is 37%, which reads as a collapse and is simply the wrong comparison. Input lag
+  // makes it worse than pro-rating would suggest — Wednesday's written commission is still arriving
+  // the following Monday — so the forecast, which is built from recent actual daily rates, is the
+  // honest full-week number. Once the week finishes, actual IS the full-week figure and is used.
+  const judged = written.partial ? written.forecast : written.combined.actual;
+  const pct = written.combined.target > 0 && judged != null
+    ? Math.round((judged / written.combined.target) * 100)
+    : null;
   const cls = pct == null ? "on_pace" : pct >= 100 ? "ahead" : pct >= 80 ? "on_pace" : "behind";
+  // Like-for-like against the prior week's same days — the comparison Kyle asked for (2026-08-07) and
+  // the only one that is fair on a part week.
+  const lfl = written.priorSameDay != null && written.priorSameDay > 0
+    ? Math.round(((written.combined.actual - written.priorSameDay) / written.priorSameDay) * 100)
+    : null;
   return (
     <div className="card">
       <div className="card-title">
@@ -120,27 +146,57 @@ function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode 
           })}
         />
       </div>
+      {/* Every figure here is comparable with something real, and says which. The week to date is
+          compared with the same days of the week before; the target percentage is compared with the
+          forecast full week; and the last ENDED week is kept on screen because it is the only figure
+          on this page a Total Written Report can be run against. */}
       <div className="mcl-total">
         <span>
           <strong>
-            {written.weekLabel} · {shortDate(written.weekFrom)} – {shortDate(written.weekTo)}:
+            {written.weekLabel}
+            {written.partial ? ` to ${shortDate(written.throughDay)}` : ` · ${shortDate(written.weekFrom)} – ${shortDate(written.weekTo)}`}:
           </strong>{" "}
-          {gbpCompact(written.combined.actual)} / {gbpCompact(written.combined.target)}
+          {gbpCompact(written.combined.actual)}
+          {lfl != null && written.priorWeekLabel && (
+            <>
+              {" "}
+              <span className={lfl >= 0 ? "val-green" : "val-amber"}>
+                {lfl >= 0 ? "+" : "−"}{Math.abs(lfl)}%
+              </span>{" "}
+              <span style={{ opacity: 0.7 }}>vs {written.priorWeekLabel} same days</span>
+            </>
+          )}
         </span>
+        {written.partial && written.forecast != null && (
+          <span style={{ opacity: 0.8 }}>
+            forecast {gbpCompact(written.forecast)} / {gbpCompact(written.combined.target)}
+          </span>
+        )}
+        {!written.partial && <span style={{ opacity: 0.8 }}>of {gbpCompact(written.combined.target)}</span>}
         {pct != null && <span className={`pill ${cls}`}>{pct}%</span>}
         <span style={{ marginLeft: "auto", opacity: 0.65, fontSize: 10.5 }}>
-          all written commission · client fees {gbpCompact(written.clientFees)} excluded
+          {written.lastComplete && (
+            <>
+              last full week {written.lastComplete.weekLabel} {gbpCompact(written.lastComplete.actual)} ·{" "}
+            </>
+          )}
+          commission only · client fees {gbpCompact(written.clientFees)} excluded
         </span>
       </div>
     </div>
   );
 }
 
-/** Top 10 commission earners for the same week the graph reports.
+/** Top 10 commission earners over the same window the graph's headline reports — the CURRENT week to
+ *  date, so this is who is earning it now rather than who earned it last week.
  *
- *  The total beneath is the graph's own figure for that week, so the rows and the chart beside them
+ *  The total beneath is the graph's own figure for that window, so the rows and the chart beside them
  *  are checkable against each other without leaving the screen — that is the reason the total is
  *  printed at all.
+ *
+ *  A part-week ranking moves around, and that is the point of a momentum screen; the ordering firms up
+ *  as the week fills. What it must not do is imply completeness, hence "so far" in the subtitle and the
+ *  provisional chip.
  *
  *  Caveat that cannot be fixed here: per-adviser protection commission does not match the platform's
  *  Total Written Report while commission SPLITS are missing from the data share — a split case credits
@@ -161,11 +217,18 @@ function CommissionLeague({ data, mode }: { data: MarketMomentumPayload; mode: M
           </span>
         )}
         <span className="card-sub">
-          {league.weekLabel} · {shortDate(league.weekFrom)} – {shortDate(league.weekTo)}
+          {league.partial
+            ? `${league.weekLabel} so far · ${shortDate(league.weekFrom)} – ${shortDate(league.throughDay)}`
+            : `${league.weekLabel} · ${shortDate(league.weekFrom)} – ${shortDate(league.weekTo)}`}
         </span>
       </div>
+      {/* The empty state is reachable early in a week now that the subject is the current one, so it
+          must not read as "nobody earned anything this week" when it means "not yet". */}
       {league.rows.length === 0 ? (
-        <div className="mcl-empty">No commission recorded in {league.weekLabel}.</div>
+        <div className="mcl-empty">
+          No commission recorded in {league.weekLabel}
+          {league.partial ? ` yet — up to ${shortDate(league.throughDay)}` : ""}.
+        </div>
       ) : (
         <div className="mcl-rows">
           {league.rows.map((r) => (
@@ -182,9 +245,17 @@ function CommissionLeague({ data, mode }: { data: MarketMomentumPayload; mode: M
           ))}
         </div>
       )}
+      {/* "the figure on the graph" was true while both halves reported a finished week — the graph's
+          last ACTUAL point and this total were the same number. On a part week they are not: the graph
+          plots a dashed FORECAST at the current week, so the week-to-date total these rows add up to
+          appears nowhere on it. It now points at the figure it actually equals, which is the headline
+          under the graph — still checkable by eye, without claiming a match that isn't there. */}
       <div className="mcl-total">
         <span>
-          <strong>{league.weekLabel} total {gbpCompact(league.total)}</strong> — the figure on the graph
+          <strong>
+            {league.weekLabel} {league.partial ? "so far" : "total"} {gbpCompact(league.total)}
+          </strong>{" "}
+          — {league.partial ? "the headline under the graph" : "the figure on the graph"}
         </span>
         {share != null && <span className="pill muted">top 10 = {share}%</span>}
         <span style={{ marginLeft: "auto", opacity: 0.65, fontSize: 10.5 }}>

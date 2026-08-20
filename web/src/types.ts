@@ -298,28 +298,53 @@ export interface MarketMomentumPayload {
     avgCaseSizeK: Array<number | null>;
     referralRatePct: Array<number | null>;
   };
-  /** Written business vs target for the latest COMPLETE week (£), split by product + combined.
-   *  "Written" is COMMISSION; `clientFees` is carried alongside, never folded in. */
+  /** Written business for the CURRENT week to date (£), split by product + combined. "Written" is
+   *  COMMISSION; `clientFees` is carried alongside, never folded in. Falls back to the last complete
+   *  week only while the current one is weekend-only — see `subjectIdx` in datasets.ts. */
   written: {
     weekLabel: string;
     weekFrom: string;
+    /** The week's Friday — the label always describes a whole week. */
     weekTo: string;
+    /** The last day actually counted; equal to `weekTo` once the week has finished. */
+    throughDay: string;
+    /** True while the week is still running, i.e. `combined.actual` is a week TO DATE. */
+    partial: boolean;
     mortgage: { actual: number; target: number };
     insurance: { actual: number; target: number };
     combined: { actual: number; target: number };
+    /** The prior week through the SAME weekday — the fair comparison for a part week. Null when the
+     *  subject week has finished. */
+    priorSameDay: number | null;
+    priorWeekLabel: string | null;
+    /** Full-week estimate for a part week. The target percentage hangs off THIS, not off the
+     *  week-to-date actual, because only a full-week figure can be judged by a full-week target. */
+    forecast: number | null;
+    /** The last ENDED week, present whenever it is not the subject: the only figure on this screen
+     *  comparable with a Total Written Report, which is run for finished periods. */
+    lastComplete: {
+      weekLabel: string;
+      weekFrom: string;
+      weekTo: string;
+      actual: number;
+      provisional: boolean;
+    } | null;
     clientFees: number;
     provisional: boolean;
   };
-  /** Top 10 commission earners for the SAME week `written` reports — the league beside the graph.
+  /** Top 10 commission earners over the SAME window `written` reports — the league beside the graph.
    *  All commission, product lines added together and never split (2026-08-19). */
   league: {
     weekLabel: string;
     weekFrom: string;
     weekTo: string;
+    /** Last day counted — the rows are "so far this week" while the week is running. */
+    throughDay: string;
+    partial: boolean;
     rows: Array<{ rank: number; name: string; commission: number; cases: number }>;
-    /** Whole-firm written commission for the week — the value the graph plots for it. */
+    /** Whole-firm written commission for the window — the value the graph plots for it. */
     total: number;
-    /** Everyone who earned commission in the week, so "top 10" states what it is the top 10 of. */
+    /** Everyone who earned commission in the window, so "top 10" states what it is the top 10 of. */
     earners: number;
     /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */
     unattributed: number;
