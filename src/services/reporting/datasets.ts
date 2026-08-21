@@ -99,10 +99,21 @@ async function dataAsOf(config: Config): Promise<string> {
 /** When the lake was actually last loaded — MAX(_etl_modified), the ETL's own watermark.
  *
  *  The share is NOT a nightly build, despite what the README claimed until 2026-08-04. It loads FIVE
- *  times a day, ~07:50 / 11:10 / 14:15 / 17:10 / 20:10 UTC (verified: 5 distinct load stamps on each
- *  of 1, 2 and 3 Aug 2026). So business written at 3pm reaches the board at the 17:10 load, roughly two
- *  hours later — not the next morning. Surfaced so the header can state the truth instead of a cadence
- *  nobody had checked. */
+ *  times a day. Surfaced so the header can state the truth instead of a cadence nobody had checked.
+ *
+ *  THE TIMES, IN LONDON, measured off the distinct load stamps for 1–21 Aug 2026 (n≈85):
+ *
+ *    08:21–09:07   11:58–12:51   14:53–15:33   17:51–18:29   20:49–21:22
+ *
+ *  Stated as UTC here until 2026-08-21 ("~07:50 / 11:10 / …"), which was correct — and useless, because
+ *  the user-facing copy in domain/metrics.ts repeated those numbers with no timezone on them while every
+ *  other clock on the board is Europe/London. Through BST that reads an hour early, so Kyle looked at
+ *  11:21 expecting the 11:10 load to have landed when the real second load of the day arrives closer to
+ *  12:20 (2026-08-21). The copy now gives London times and says the times drift.
+ *
+ *  They do drift, and loads are occasionally MISSED: 20 Aug ran four loads, not five, and 21 Aug opened
+ *  with a one-off 06:21 outside every normal window. So the header's job is not to promise a schedule —
+ *  it is to stamp the load actually being displayed. */
 export async function lastRefreshAt(config: Config): Promise<string | null> {
   return cached("last-refresh-at", 60_000, async () => {
     const rows = await q<{ at: unknown }>(config, {

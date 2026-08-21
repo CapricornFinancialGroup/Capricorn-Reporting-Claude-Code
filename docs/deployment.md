@@ -100,11 +100,15 @@ its header comments once the repo is on its permanent GitHub home.
 - **Change targets / office mapping**: edit `src/domain/targets.ts` / `offices.ts`, redeploy (a PR
   is the audit trail) — or, since 2026-07-08, an authorized admin can upload a new weekly targets
   workbook directly from the dashboard's "Targets" tab (see below) without a code change at all.
-- **Data freshness**: the lakehouse reloads FIVE times a day, ~07:50 / 11:10 / 14:15 / 17:10 /
-  20:10 UTC (verified against MAX(_etl_modified) on 2026-08-04 — the previous "~03:15 daily" note
-  was wrong and had propagated onto the board as "overnight refresh");
-  every screen stamps `Data as of <date>`. If the stamp is stale ≥2 days, the upstream
-  `LoadGoldCapricornShare` notebook (Smartr Fabric, PBI 90576) is the place to look.
+- **Data freshness**: the lakehouse reloads FIVE times a day. Measured off the distinct
+  `MAX(_etl_modified)` stamps for 1–21 Aug 2026, in **London** time: `08:21–09:07`, `11:58–12:51`,
+  `14:53–15:33`, `17:51–18:29`, `20:49–21:22`. State them as London on anything user-facing — they
+  were documented as UTC without a timezone until 2026-08-21, which reads an hour early through BST
+  and had the CFO expecting a load at 11:10 that actually arrives after noon. The times drift ±30min
+  and loads are sometimes MISSED (20 Aug: four loads; 21 Aug opened with a one-off 06:21), so never
+  promise a schedule — stamp the load. Every screen stamps `Data as of <date>`, which is a different
+  thing again: the last COMPLETE day, deliberately not advancing intraday. If the stamp is stale ≥2
+  days, the upstream `LoadGoldCapricornShare` notebook (Smartr Fabric, PBI 90576) is where to look.
 - **Env var reference**: see `.env.example` — all app settings are set by the Bicep; `PACING_MODE`
   is reserved (`mtd` today; `drip` would replay the latest day across a synthetic working day if
   Capricorn ever wants the intraday illusion).

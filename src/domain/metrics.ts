@@ -65,9 +65,11 @@ export interface MetricDefinition {
 export const DATA_CADENCE = {
   /** Plain-English answer to "is this live?" — asked three times between 2026-07-28 and 08-03. */
   summary:
-    "Not real-time, but not nightly either. The data share reloads FIVE times a day — around 07:50, " +
-    "11:10, 14:15, 17:10 and 20:10 — so business written at 3pm reaches the board at the 17:10 load, " +
-    "about two hours later. The header shows the exact time of the last load.",
+    "Not real-time, but not nightly either. The data share reloads FIVE times a day, London time: " +
+    "roughly 08:30, 12:20, 15:10, 18:10 and 21:00 — but the exact time drifts by up to half an hour " +
+    "either side, and a load is occasionally missed. So business written at 3pm reaches the board at " +
+    "the early-evening load, about two hours later. Between loads nothing changes, however many times " +
+    "the page is refreshed: the header shows the time of the load you are actually looking at.",
   /** Why the chase measures through the last COMPLETE day even though today is partly loaded. */
   asOfRule:
     "Target comparisons are measured through the last COMPLETE day. Today is only partly loaded until " +
@@ -77,7 +79,7 @@ export const DATA_CADENCE = {
     "separate \"Today so far\" count, stamped with the load that produced it. It has no target beside " +
     "it on purpose — a part-day measured against a whole-day target would drift behind all morning " +
     "and recover by evening.",
-  refresh: "5× daily (≈07:50, 11:10, 14:15, 17:10, 20:10), screens poll every 60s",
+  refresh: "5× daily (≈08:30, 12:20, 15:10, 18:10, 21:00 London), screens poll every 60s",
 } as const;
 
 export const METRIC_DEFINITIONS: MetricDefinition[] = [
