@@ -1608,10 +1608,26 @@ export interface FeedItem {
 
 export async function liveFeed(config: Config, _f: ReportFilters) {
   return cached("ds-live-feed", ttl(config), async () => {
-    const core = await chaseCore(config);
-    // Source events from the latest WORKING day (a weekend anchor has almost no activity). The
-    // lake reloads 5× daily, so this is honestly "latest activity", not live-now.
-    const asOf = core.ctx.latestDay;
+    const [core, today] = await Promise.all([chaseCore(config), todaySoFar(config)]);
+    /**
+     * TODAY, once today has anything to show.
+     *
+     * This read `core.ctx.latestDay` — the last COMPLETE day — so on a Friday lunchtime a strip
+     * headed "Latest Activity" was listing Thursday's business while today's was already loaded.
+     * Capricorn, 2026-08-21: "surely that is basing it on the latest data, so it should be as of
+     * today." Right, and the complete-day rule has no business here: the rule exists so a part-day is
+     * never measured against a whole day's TARGET, and a feed of individual events measures nothing.
+     * It just names things that happened.
+     *
+     * The fallback stays, because it is not about targets either — a weekend or a pre-dawn Monday has
+     * almost no activity, and an empty strip on a wall reads as a broken board. So: today when today
+     * has events, otherwise the last working day, and `dayLabel` says which. Thin is fine — at the
+     * morning load the lake holds ~1.5% of a day (dayRecordedShare), so early on this is a handful of
+     * events and the milestone lines carry the strip.
+     */
+    const todayCount = today ? sum(KPI_KEYS.map((k) => today.counts[k])) : 0;
+    const showToday = today != null && todayCount > 0;
+    const asOf = showToday ? today.date : core.ctx.latestDay;
     const [apps, leads, refs, sales] = await Promise.all([
       q<tickerQ.ApplicationEvent>(config, tickerQ.applicationEvents(asOf, 15)),
       q<tickerQ.LeadEvent>(config, tickerQ.leadEvents(asOf, 12)),
@@ -1679,12 +1695,19 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
           accent: pace.status === "ahead" ? "green" : "none",
         });
       }
-      const latestN = dayTotal(core.daily[k], asOf);
+      // The day count behind the events. `core.daily` stops at the last COMPLETE day, so when the
+      // strip is on today it has to come from the today query instead — otherwise this line silently
+      // disappears every morning (latestN would be 0), taking the day's headline count with it.
+      const latestN = showToday ? today.counts[k] : dayTotal(core.daily[k], asOf);
       if (latestN > 0) {
         milestones.push({
           kind: "milestone",
           icon: "🎯",
-          text: `${latestN} ${KPI_LABELS[k].toLowerCase()} on ${dayLabel}`,
+          // "so far today" rather than the date: the number is still climbing, and printing it against
+          // a date makes it look like the day's finished figure.
+          text: showToday
+            ? `${latestN} ${KPI_LABELS[k].toLowerCase()} so far today`
+            : `${latestN} ${KPI_LABELS[k].toLowerCase()} on ${dayLabel}`,
           accent: "none",
         });
       }

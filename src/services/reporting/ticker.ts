@@ -1,4 +1,6 @@
-// Live-feed ticker — real events from the latest complete day in the lake.
+// Live-feed ticker — real events from the freshest day the lake holds any for, which is TODAY once
+// today has anything (see liveFeed). Not the board's last-complete-day: these are named events, not
+// figures measured against a target, so there is nothing for a part-day to be unfair to.
 //
 // PII rule: adviser names, lenders, introducer companies and £ values only — the ticker NEVER
 // joins the client table (no client PII on an office wall).

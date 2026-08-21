@@ -373,6 +373,9 @@ export interface FeedItem {
 }
 
 export interface LiveFeedPayload {
+  /** The day the EVENTS are from — today once today has any, otherwise the last working day. NOT the
+   *  board's `dataAsOf`, which is the last complete day: a feed of events has no target to be measured
+   *  against, so it is not held back to complete days. */
   dataAsOf: string;
   dayLabel: string;
   items: FeedItem[];
