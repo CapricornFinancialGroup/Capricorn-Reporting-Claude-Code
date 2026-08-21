@@ -40,6 +40,18 @@ export function paceChart(opts: {
    *  team beating a target of nothing, which is exactly the false verdict `targeted` exists to stop. */
   targetPace: number[] | null;
   projection: Array<number | null> | null;
+  /**
+   * TODAY, STILL FILLING. A two-point series — the last complete day's cumulative, then that plus
+   * what today has recorded so far — drawn dotted in the hero colour so the chase reaches the day it
+   * is actually on. Capricorn, 2026-08-21: "we should be reflecting the progress throughout the day …
+   * maybe use the through the day as a dotted line."
+   *
+   * DOTTED IS LOAD-BEARING, not decoration. At the morning load the ETL holds ~1.5% of the day
+   * (dayRecordedShare), so a solid continuation would show the line flattening against a climbing
+   * pace line every morning — the 2026-07-30 false collapse, redrawn. Dotted, and stopping short of
+   * the pace line, reads as "not in yet" rather than "not done".
+   */
+  today: Array<number | null> | null;
   behind: boolean;
   nowLabel?: string;
 }): EChartsOption {
@@ -95,7 +107,15 @@ export function paceChart(opts: {
                 symbol: "none",
                 silent: true,
                 lineStyle: { color: "rgba(100,116,139,0.35)", type: "dashed", width: 1 },
-                label: { formatter: "NOW", color: AXIS_TEXT, fontSize: 8, position: "insideEndTop" },
+                // "NOW" until 2026-08-21, when the dotted today segment started being drawn PAST this
+                // marker — at which point a line labelled "now" sitting a day behind the end of the
+                // data is worse than no label. It marks where the judged, complete data stops.
+                label: {
+                  formatter: opts.nowLabel ?? "COMPLETE",
+                  color: AXIS_TEXT,
+                  fontSize: 8,
+                  position: "insideEndTop",
+                },
                 // Must use the same formatter as the axis data above, or the marker matches nothing.
                 data: [{ xAxis: weekdayShort(opts.days[nowIdx]) }],
               }
@@ -111,6 +131,21 @@ export function paceChart(opts: {
             connectNulls: false,
             lineStyle: { width: 1.5, type: "dashed" as const, color: PROJECTION_GREY },
             z: 2,
+          }]
+        : []),
+      // Above the actual (z:4) so the join is visible where they meet, and symbol-ended so today's
+      // point is a point rather than a line that trails off ambiguously.
+      ...(opts.today
+        ? [{
+            name: "Today so far",
+            type: "line" as const,
+            data: opts.today,
+            showSymbol: true,
+            symbolSize: 5,
+            connectNulls: true,
+            lineStyle: { width: 2, type: "dotted" as const, color: hero },
+            itemStyle: { color: hero },
+            z: 4,
           }]
         : []),
     ],

@@ -11,6 +11,7 @@
 
 import type { Config } from "../../config.js";
 import {
+  dayRecordedShare,
   INPUT_LAG_SETTLE_DAYS,
   MORTGAGE_WRITTEN_DATE,
   PROTECTION_WRITTEN_DATE,
@@ -37,7 +38,7 @@ import { EMPTY_FILTERS, type ReportFilters } from "./filters.js";
 import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
-import { chaseStatus, computePace, tzToday, type ChaseStatus, type Pace } from "./pace.js";
+import { chaseStatus, computePace, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
 import { completeThrough, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 import {
@@ -132,6 +133,15 @@ export interface TodaySoFar {
   /** The load that produced them, so the number carries its own age. */
   loadedAt: string | null;
   counts: Record<KpiKey, number>;
+  /**
+   * Share of a day's business the ETL has typically COPIED by this load (0–1) — see dayRecordedShare.
+   *
+   * What makes today judgeable. Multiply a day's target by this and you get what should be on the
+   * board right now, as opposed to what should have happened by close of play. At the morning load
+   * that is 1.5% of the day, which is why comparing today's raw count with a whole day's target reads
+   * as a collapse every morning. Null when there is no load stamp to place on the curve.
+   */
+  recordedShare: number | null;
 }
 
 /**
@@ -155,7 +165,10 @@ async function todaySoFar(config: Config): Promise<TodaySoFar | null> {
       lastRefreshAt(config),
     ]);
     const counts = Object.fromEntries(KPI_KEYS.map((k) => [k, sum(rows[k].map((r) => r.n))])) as Record<KpiKey, number>;
-    return { date: today, loadedAt, counts };
+    const recordedShare = dayRecordedShare(
+      loadedAt ? tzHour(new Date(loadedAt), config.reporting.timeZone) : null,
+    );
+    return { date: today, loadedAt, counts, recordedShare };
   });
 }
 

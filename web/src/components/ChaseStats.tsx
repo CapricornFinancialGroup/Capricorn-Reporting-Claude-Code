@@ -6,14 +6,22 @@
 //
 // IT KEEPS THE ONE DISTINCTION THE TILES EXISTED TO PROTECT.
 //
-//   TODAY SO FAR — a live part-day count. No target, no gap, no verdict, ever. Comparing four hours
-//                  against a whole day's target is the 2026-07-30 bug that marked Capricorn down by a
-//                  full day's target every morning and let it "recover" by evening.
-//   LAST COMPLETE DAY — the only figure that can honestly be judged against a day target, so it is
-//                  the one that carries the comparison, the gap and the pill, explicitly dated.
+//   TODAY SO FAR — a live part-day count, compared against the share of a day that is actually IN by
+//                  this load, never against a whole day's target. That last comparison is the
+//                  2026-07-30 bug which marked Capricorn down by a full day's target every morning
+//                  and let them "recover" by evening.
+//   LAST COMPLETE DAY — the only figure that can be judged against a whole day target, so it is the
+//                  one that carries the day comparison, the gap and the pill, explicitly dated.
 //
 // Losing that separation is the single way this strip could do real damage, so the two figures are
 // visually distinct and both are labelled with what they are.
+//
+// TODAY IS NOW JUDGED — carefully. It used to carry no comparison at all, which was safe and not what
+// Capricorn wanted: "we should be reflecting the progress throughout the day" (2026-08-21). The thing
+// that makes it possible is `recordedShare` (see dayRecordedShare): the ETL holds ~1.5% of a day at
+// the morning load, 11% by lunchtime, 63% by the evening one. So the expectation today is measured
+// against is the day's target × that share — what should be ON THE BOARD now, not what should have
+// happened by close of play. Same number of hours on both sides of the comparison.
 
 import { clockTime, num, shortDate, signed, statusLabel } from "../format.js";
 import type { DayView } from "../types.js";
@@ -38,8 +46,9 @@ export function ChaseStats({ day, weeklyTarget, wtd, today, companion }: {
   day: DayView;
   weeklyTarget: number;
   wtd: number;
-  /** Today's part-day count + the load that produced it. Null at weekends and before meta loads. */
-  today?: { count: number; loadedAt: string | null } | null;
+  /** Today's part-day count, the load that produced it, and the share of a day that load typically
+   *  holds — the last of which is what lets today be compared with anything. */
+  today?: { count: number; loadedAt: string | null; recordedShare: number | null } | null;
   companion?: TrackedCompanion | null;
 }) {
   // This strip is only rendered under a chase chart, i.e. for a TARGETED measure, so a missing target
@@ -51,16 +60,41 @@ export function ChaseStats({ day, weeklyTarget, wtd, today, companion }: {
   const gapClass = dayGap > 0 ? "val-green" : dayGap < 0 ? "val-amber" : "val-blue";
   const wtdPct = weeklyTarget > 0 ? Math.round((wtd / weeklyTarget) * 100) : 0;
 
+  // What should be recorded by now: the day's target scaled by the share of a day this load holds.
+  // Withheld entirely when there is no share (no load stamp) or no day target — a verdict against an
+  // unknown denominator is worse than none. Rounded, and only shown once it reaches 1: "0 of 0
+  // expected" is noise, and at the morning load a small KPI's expectation genuinely is under one.
+  const todayExpected =
+    today && today.recordedShare != null && dayTarget > 0
+      ? Math.round(dayTarget * today.recordedShare)
+      : null;
+  const todayGap = today && todayExpected != null ? today.count - todayExpected : null;
+  const todayGapClass = todayGap == null ? "" : todayGap > 0 ? "val-green" : todayGap < 0 ? "val-amber" : "val-blue";
+
   return (
     <div className="chase-stats">
       <div className="chase-stats-row">
-        {/* Today, unjudged. Deliberately first and largest: at 20:00 on a Monday the complete day is
-            Sunday, and putting a stale zero weekend in the biggest type is what had Kyle reading the
-            board as broken (2026-08-10). */}
+        {/* Today. Deliberately first and largest: at 20:00 on a Monday the complete day is Sunday, and
+            putting a stale zero weekend in the biggest type is what had Kyle reading the board as
+            broken (2026-08-10). */}
         <div className="chase-stat">
-          <div className="chase-stat-label">Today so far</div>
-          <div className="chase-stat-big" title="Today is still in progress, so it is NOT judged against any target — those comparisons use complete days only. A running count from the most recent data load.">
+          <div className="chase-stat-label">
+            Today so far{todayExpected != null && todayExpected >= 1 ? " · vs recorded pace" : ""}
+          </div>
+          <div
+            className="chase-stat-big"
+            title={
+              todayExpected != null && todayExpected >= 1
+                ? `A running count from the most recent load. Compared with what should be RECORDED by now — the day's target scaled by the share of a day the data share typically holds at this load (about 1.5% at the morning load, 11% by lunchtime, 63% by the evening one). It is NOT compared with the whole day's target: a part-day against a full day reads as behind all morning and recovers by evening.`
+                : "A running count from the most recent data load. No comparison yet — at this load the share of a day that has reached the data warehouse is too small for the expectation to be worth printing."
+            }
+          >
             {today ? num(today.count) : "—"}
+            {todayExpected != null && todayExpected >= 1 && (
+              <span className="chase-stat-vs">
+                {" "}vs {num(todayExpected)} <span className={todayGapClass}>{signed(todayGap ?? 0)}</span>
+              </span>
+            )}
             {today?.loadedAt && <span className="chase-stat-age"> · {clockTime(today.loadedAt)}</span>}
           </div>
         </div>

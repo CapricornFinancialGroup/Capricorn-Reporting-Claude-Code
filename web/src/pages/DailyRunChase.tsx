@@ -25,8 +25,36 @@ import { MetricInfo } from "../components/MetricInfo.js";
 import { StatusPill } from "../components/StatusPill.js";
 import { Ticker } from "../components/Ticker.js";
 import { shortDate, signed } from "../format.js";
-import type { DailyRunChasePayload } from "../types.js";
+import type { DailyRunChasePayload, KpiKey } from "../types.js";
 import { Load, type PageProps } from "./common.js";
+
+/**
+ * The dotted "today" segment: two points, the last complete day's cumulative and that plus what today
+ * has recorded so far. Returns null when there is nothing honest to draw — no today block (weekend),
+ * today outside this week's days, or no complete day to grow from.
+ *
+ * The week's cumulative is taken from the chart's OWN last non-null actual rather than from `wtd`, so
+ * the dotted segment cannot start anywhere other than where the solid line ends. They are the same
+ * figure, but only one of them is what the eye will measure against.
+ */
+function todaySeries(
+  days: string[],
+  actual: Array<number | null>,
+  today: DailyRunChasePayload["today"],
+  key: KpiKey,
+): Array<number | null> | null {
+  if (!today) return null;
+  const todayIdx = days.indexOf(today.date);
+  if (todayIdx < 0) return null;
+  let lastIdx = -1;
+  for (let i = 0; i < actual.length; i++) if (actual[i] != null) lastIdx = i;
+  if (lastIdx < 0 || lastIdx >= todayIdx) return null;
+  const from = actual[lastIdx] as number;
+  const out: Array<number | null> = days.map(() => null);
+  out[lastIdx] = from;
+  out[todayIdx] = from + (today.counts[key] ?? 0);
+  return out;
+}
 
 export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
@@ -156,6 +184,7 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                       actual: k.chart.actual,
                       targetPace: k.chart.targetPace,
                       projection: k.chart.projection,
+                      today: todaySeries(k.chart.days, k.chart.actual, data.today, k.key),
                       behind: k.pace!.status === "behind",
                     })}
                   />
@@ -164,7 +193,15 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                   day={k.day}
                   weeklyTarget={k.weeklyTarget}
                   wtd={k.wtd}
-                  today={data.today ? { count: data.today.counts[k.key] ?? 0, loadedAt: data.today.loadedAt } : null}
+                  today={
+                    data.today
+                      ? {
+                          count: data.today.counts[k.key] ?? 0,
+                          loadedAt: data.today.loadedAt,
+                          recordedShare: data.today.recordedShare,
+                        }
+                      : null
+                  }
                 />
               </div>
             ))}

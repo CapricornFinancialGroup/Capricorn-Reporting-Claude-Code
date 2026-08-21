@@ -92,7 +92,14 @@ export interface DailyRunChasePayload {
   /** Total mortgage value written this chase week (SUM(MortgageValue)) — not commission revenue. */
   /** TODAY's part-day counts, held apart from the chase so pace maths stays on complete days.
    *  Null at weekends. `loadedAt` is the load that produced them — the share reloads 5× daily. */
-  today: { date: string; loadedAt: string | null; counts: Record<KpiKey, number> } | null;
+  today: {
+    date: string;
+    loadedAt: string | null;
+    counts: Record<KpiKey, number>;
+    /** Share of a day's business the data share typically HOLDS by this load (0–1) — the denominator
+     *  that makes a part-day comparable. See dayRecordedShare in domain/data-quality.ts. */
+    recordedShare: number | null;
+  } | null;
   week: {
     start: string;
     end: string;

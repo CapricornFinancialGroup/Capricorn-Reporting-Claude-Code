@@ -52,3 +52,11 @@ export function computePace(target: number, current: number, fraction: number): 
 export function tzToday(now: Date, tz: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now); // en-CA → ISO-ish
 }
+
+/** Hour-of-day (0–23) of an instant in the reporting timezone. Used to place a lake load on the
+ *  intraday arrival curve (dayRecordedShare) — the load stamps are UTC and the curve is London, which
+ *  is a one-hour error through BST and exactly the confusion the cadence copy caused. */
+export function tzHour(at: Date, tz: string): number {
+  const h = new Intl.DateTimeFormat("en-GB", { timeZone: tz, hour: "2-digit", hour12: false }).format(at);
+  return parseInt(h, 10);
+}

@@ -284,3 +284,54 @@ export const PROTECTION_OPPORTUNITY_NOTE = "protectioncase.CreatedDate — see d
  * for the same reason — Capricorn have not set one.
  */
 export const NEW_CLIENT_LEAD_BASIS = "first case across mortgage/protection/GI — see docstring" as const;
+
+/**
+ * HOW MUCH OF A DAY'S BUSINESS IS ACTUALLY RECORDED BY EACH LOAD.
+ *
+ * Today's count is not "today's business so far" — it is "today's business the ETL has copied so
+ * far", and those are very different numbers. This is the curve that lets today be judged at all.
+ *
+ * Measured 2026-08-21 over 18 business days (LeadDate 27 Jul – 20 Aug, deleted excluded): for each
+ * day, what share of the day's eventual case count carried a load stamp from each of that day's five
+ * loads. Per-load increments averaged 1.5% / 9.8% / 22.0% / 29.7% / 25.5%, so cumulatively:
+ *
+ *   after the ~08:45 load    1.5%      ← the morning load holds almost nothing
+ *   after the ~12:20 load   11.3%
+ *   after the ~15:10 load   33.3%
+ *   after the ~18:10 load   63.0%
+ *   after the ~21:00 load   88.5%
+ *   arriving on later days  11.5%      ← input lag; see INPUT_LAG_SETTLE_DAYS
+ *
+ * This is why "today so far" cannot be compared with a whole day's target, and why the board refused
+ * to try (2026-07-30: a part-day against a full-day target marked Capricorn down by a day's target
+ * every morning). Kyle's 06:21 load on 21 Aug showed ONE lead against a ~75-lead day — 1.4%, exactly
+ * where this curve says it should be.
+ *
+ * With the curve, today CAN be judged: against the share of the day that is actually in. Capricorn,
+ * 2026-08-21: "we should be reflecting the progress throughout the day."
+ *
+ * Keyed on the LOAD's London hour, with boundaries between the observed load windows (08:21–09:07,
+ * 11:58–12:51, 14:53–15:33, 17:51–18:29, 20:49–21:22) rather than on the clock — a load that runs
+ * late still carries its own load's worth of business, not the next one's.
+ */
+const DAY_LOAD_SHARES: Array<{ fromHour: number; share: number }> = [
+  { fromHour: 0, share: 0.015 },
+  { fromHour: 11, share: 0.113 },
+  { fromHour: 14, share: 0.333 },
+  { fromHour: 17, share: 0.630 },
+  { fromHour: 20, share: 0.885 },
+];
+
+/**
+ * Share of a day's eventual business expected to be RECORDED by the given load (0–1).
+ *
+ * `loadedAt` is the ETL watermark (MAX(_etl_modified)); `hourInZone` resolves it to the reporting
+ * timezone's hour. Returns null when there is no load stamp — better no expectation than one pinned
+ * to a guess about which load we are on.
+ */
+export function dayRecordedShare(hour: number | null): number | null {
+  if (hour == null || !Number.isFinite(hour)) return null;
+  let share = DAY_LOAD_SHARES[0].share;
+  for (const row of DAY_LOAD_SHARES) if (hour >= row.fromHour) share = row.share;
+  return share;
+}
