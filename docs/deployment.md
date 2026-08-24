@@ -100,13 +100,18 @@ its header comments once the repo is on its permanent GitHub home.
 - **Change targets / office mapping**: edit `src/domain/targets.ts` / `offices.ts`, redeploy (a PR
   is the audit trail) — or, since 2026-07-08, an authorized admin can upload a new weekly targets
   workbook directly from the dashboard's "Targets" tab (see below) without a code change at all.
-- **Data freshness**: the lakehouse reloads FIVE times a day. Measured off the distinct
-  `MAX(_etl_modified)` stamps for 1–21 Aug 2026, in **London** time: `08:21–09:07`, `11:58–12:51`,
-  `14:53–15:33`, `17:51–18:29`, `20:49–21:22`. State them as London on anything user-facing — they
-  were documented as UTC without a timezone until 2026-08-21, which reads an hour early through BST
-  and had the CFO expecting a load at 11:10 that actually arrives after noon. The times drift ±30min
-  and loads are sometimes MISSED (20 Aug: four loads; 21 Aug opened with a one-off 06:21), so never
-  promise a schedule — stamp the load. Every screen stamps `Data as of <date>`, which is a different
+- **Data freshness**: the lakehouse reloads FOUR times a day since 2026-08-21 (Capricorn changed the
+  schedule; confirmed 08-24). Measured off the distinct `MAX(_etl_modified)` stamps for 21–24 Aug
+  2026, in **London** time: `05:43–06:22`, `11:12–11:37`, `14:34–15:10`, `17:31–17:43`. It was five
+  through 20 Aug — `08:21–09:07`, `11:58–12:51`, `14:53–15:33`, `17:51–18:29`, `20:49–21:22` (n≈85
+  over 1–21 Aug) — and the intraday shares in `domain/data-quality.ts` were measured against THOSE
+  loads, so they are due a re-measurement from ~11 Sep. State the times as London on anything
+  user-facing — they were documented as UTC without a timezone until 2026-08-21, which reads an hour
+  early through BST and had the CFO expecting a load at 11:10 that actually arrives after noon. The
+  times drift ±30min and loads are sometimes MISSED (20 Aug ran four of its five), so never promise a
+  schedule — stamp the load. Note the last load is now ~17:35, so business entered after it does not
+  land until ~06:00 the next morning; a day is only whole the following day. On a Sunday only the
+  first stamp appears, which is not a missed load — the stamp moves only when rows change. Every screen stamps `Data as of <date>`, which is a different
   thing again: the last COMPLETE day, deliberately not advancing intraday. If the stamp is stale ≥2
   days, the upstream `LoadGoldCapricornShare` notebook (Smartr Fabric, PBI 90576) is where to look.
 - **Env var reference**: see `.env.example` — all app settings are set by the Bicep; `PACING_MODE`
