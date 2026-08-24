@@ -212,6 +212,29 @@ export function officeOf(username: string | null | undefined): string {
   return ADVISER_OFFICE[username.trim().toLowerCase()] ?? UNASSIGNED;
 }
 
+/**
+ * SHARED TEAM INBOXES, which are not people.
+ *
+ * These logins hold real cases — the `cs@` mortgage inbox alone carried 1,131 in 90 days, which Kyle
+ * intends to clear down onto named advisers — but they are queues, not advisers, and they must not
+ * hold a place in a league OF PEOPLE. Surfaced by the 60/40 protection split on 2026-08-24: "Client
+ * Services" came out as the referring mortgage adviser on a £491 share and would have appeared on the
+ * wall's commission league beside real advisers.
+ *
+ * Their money is not discarded — callers route it to the same `unattributed` bucket as a case with no
+ * adviser at all, so it stays inside the firm total and stays visible as a figure that needs a name.
+ */
+export const SHARED_ACCOUNTS = new Set([
+  "cs@capricornfinancial.co.uk", // "Mortgage  Client Services"
+  "cs@capricornfinancialmortgages.co.uk", // "Client Services"
+  "pcs@capricornfinancial.co.uk", // "Protection Client Services"
+]);
+
+/** True when a login is a shared queue rather than an adviser. See SHARED_ACCOUNTS. */
+export function isSharedAccount(username: string | null | undefined): boolean {
+  return username != null && SHARED_ACCOUNTS.has(username.trim().toLowerCase());
+}
+
 /** Conor's fixed display order (2026-07-07: "Office Order"), for screens that should show a
  *  stable roster position rather than reshuffling by performance every refresh (Office Run
  *  Chase). Unknown/unassigned names sort last. */

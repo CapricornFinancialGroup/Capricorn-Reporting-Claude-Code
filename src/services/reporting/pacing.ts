@@ -90,6 +90,15 @@ export function isTradingDay(iso: string): boolean {
   return dow(iso) !== 0; // 0 = Sunday
 }
 
+/** The latest trading day at or before `iso`. Only ever walks back one day, since Sunday is the sole
+ *  non-trading day — written as a loop rather than a special case so it still holds if Capricorn ever
+ *  rules another day out. */
+export function lastTradingDayOnOrBefore(iso: string): string {
+  let d = iso;
+  for (let i = 0; i < 7 && !isTradingDay(d); i++) d = shiftDays(d, -1);
+  return d;
+}
+
 /**
  * Is the reporting week containing `asOf` still nothing but weekend?
  *
@@ -154,9 +163,27 @@ export function weeklyPacing(today: string, dataAsOf: string): WeeklyPacingConte
     dataAsOf < windowStart ? 0 : weekElapsedFraction(inWeek, kpi);
   const fractionByKpi = Object.fromEntries(KPI_KEYS.map((k) => [k, fractionFor(k)])) as Record<KpiKey, number>;
 
-  // Headline day = the most recent day with data. Every day of the week now carries a target share,
-  // so there is no weekend to skip over — Saturday's business gets its own tile.
-  const latestDay = dataAsOf;
+  // Headline day = the most recent TRADING day with data. Saturday gets its own tile (it is a real
+  // trading day, ~38 cases); Sunday does not, and this is where that was missed.
+  //
+  // It was plain `dataAsOf`, and `dataAsOf` is capped at yesterday — so every MONDAY the judged day
+  // was Sunday. Sunday runs ~5 cases against a leads target of 9, so the board opened every week
+  // reporting "0 vs 9 · CRITICAL" for not working on a Sunday. On 2026-08-24 it was worse than that:
+  // at the 05:53 load MAX(LeadDate) was still Saturday, so the tile correctly read Sat 22 — 44 vs 38,
+  // +6 AHEAD. The 11:15 load brought Monday's first fifteen cases, which pushed MAX(LeadDate) to
+  // Monday, which pushed the yesterday-cap onto Sunday, and the tile flipped to 0 vs 9 CRITICAL. More
+  // data arriving made the board worse, which is the opposite of what a refresh is for, and it is what
+  // Kyle was looking at when he asked whether the refresh was broken.
+  //
+  // `isTradingDay` already existed and already said Sunday is not one — "a wall board reading 'Today
+  // so far: 0' on a non-trading day is noise, not information — nobody is writing business, so there
+  // is nothing to be behind on". That rule gated the today figure and was never applied here. Same
+  // reasoning, same rule, now applied to both.
+  //
+  // Only the JUDGED DAY moves. `fraction` and the week-to-date still measure through `dataAsOf`, so
+  // Sunday's business (whatever there is of it) still counts towards the week — it just stops being
+  // handed a day target it was never going to meet.
+  const latestDay = lastTradingDayOnOrBefore(dataAsOf);
   const latestDayIndex = weekDayIndex(latestDay);
 
   return {

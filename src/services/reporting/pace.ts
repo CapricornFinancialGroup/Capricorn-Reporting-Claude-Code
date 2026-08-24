@@ -20,7 +20,19 @@ export function chaseStatus(current: number, expected: number): ChaseStatus {
   const ratio = current / expected;
   if (ratio >= 1) return "ahead";
   if (ratio >= 0.9) return "on_pace";
-  if (ratio < 0.6) return "critical";
+  // CRITICAL ALSO HAS TO BE MORE THAN A COUPLE OF CASES SHORT, not just a low ratio.
+  //
+  // On a small expectation the ratio bands stop being a scale. At expected = 1 the only reachable
+  // outcomes are ratio 0 and ratio 1 — critical or ahead, with no "behind" in between — so one case
+  // decides between the board's loudest word and its best one. On 2026-08-24 that put two CRITICALs on
+  // the wall for a Saturday with 0 protection referrals against a target of 1, sitting next to leads
+  // and mortgages both +6 ahead.
+  //
+  // Stated as a SHORTFALL rather than a floor on `expected`, because that is the thing that actually
+  // matters and it scales by itself: you are in crisis when you are at least two whole cases short AND
+  // below 60%. One-and-a-half cases short of two is not a crisis; twenty of a hundred is. The miss is
+  // still reported — it reads "behind", with the figures printed beside it — it just stops shouting.
+  if (ratio < 0.6 && expected - current >= 2) return "critical";
   return "behind";
 }
 

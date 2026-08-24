@@ -12,6 +12,7 @@ import { pctPaceChart, STATUS_COLOR } from "../charts.js";
 import { EChart } from "../components/EChart.js";
 import { MetricInfo } from "../components/MetricInfo.js";
 import { StatusPill } from "../components/StatusPill.js";
+import { Ticker } from "../components/Ticker.js";
 import { num, shortDate, signed } from "../format.js";
 import type { OfficeRunChasePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
@@ -29,6 +30,12 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
+          {/* One ticker across every rotating screen, not just the first — Kyle, 2026-08-21: "please
+              can the ticker be across all the screens as it rotates." It is the only element on the
+              wall that reads as alive; a viewer who walks up during Office Run Chase or the League
+              should see the same live feed the Daily Run Chase has. Same component, same payload,
+              cached once per refresh, so four copies cost one query. */}
+          <Ticker mode={mode} refreshMs={refreshMs} />
           {/* ONE LINE, not a title card above a definitions strip.
               The card that used to sit here held the words "% to Weekly Target Pace", a wide gap, and
               a right-aligned as-of stamp. Capricorn, 2026-08-20: "we have a thing at the top that says

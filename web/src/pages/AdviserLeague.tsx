@@ -10,6 +10,7 @@ import { usePayload } from "../api.js";
 import { CompareStrip } from "../components/CompareStrip.js";
 import { LeagueBoards } from "../components/LeagueBoards.js";
 import { MetricInfo } from "../components/MetricInfo.js";
+import { Ticker } from "../components/Ticker.js";
 import { gbpCompact, num, pct, shortDate } from "../format.js";
 import type { AdviserLeaguePayload } from "../types.js";
 import { Load, type PageProps } from "./common.js";
@@ -21,6 +22,12 @@ export function AdviserLeague({ filters, compareFilters, mode, refreshMs }: Page
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
+          {/* One ticker across every rotating screen, not just the first — Kyle, 2026-08-21: "please
+              can the ticker be across all the screens as it rotates." It is the only element on the
+              wall that reads as alive; a viewer who walks up during Office Run Chase or the League
+              should see the same live feed the Daily Run Chase has. Same component, same payload,
+              cached once per refresh, so four copies cost one query. */}
+          <Ticker mode={mode} refreshMs={refreshMs} />
           {/* Every dial states its window. These are week-to-date (usually 1–3 trading days), while
               Market Momentum's tiles report the last COMPLETE week — reading one as the other is how
               £24.2k here got compared with £266.3k there (Kyle 2026-07-28). */}

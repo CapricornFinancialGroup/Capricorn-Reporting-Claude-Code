@@ -31,7 +31,17 @@ export interface ReferredSale {
   converter: string | null;
   converterName: string | null;
   sales: number;
+  /** FULL policy commission — 100%, before Capricorn's 60/40 is applied. */
   commission: number | null;
+  /**
+   * The 40% the platform has already carved out for the referring mortgage adviser.
+   *
+   * This is READ, not computed: `protectioncase.SplitCommission` is exactly 40% of ProductCommission
+   * on every split case (verified across all 102 split cases in the 90 days to 2026-08-21). So the
+   * MONEY is Capricorn's own figure; only the RECIPIENT is the inference above. Null/zero on cases
+   * carrying no split at all, where the writing adviser keeps the whole commission.
+   */
+  splitCommission: number | null;
 }
 
 /**
@@ -57,7 +67,8 @@ export function referredProtectionSales(from: string, to: string): BuiltQuery {
                   converter      = pu.Username,
                   converterName  = pu.FullName,
                   sales          = COUNT(*),
-                  commission     = SUM(COALESCE(p.ProductCommission, 0))
+                  commission     = SUM(COALESCE(p.ProductCommission, 0)),
+                  splitCommission = SUM(COALESCE(p.SplitCommission, 0))
              FROM dbo.protectioncase p
              LEFT JOIN dbo.protectioncaseclient pc
                     ON pc.GlobalCaseID = p.GlobalCaseID

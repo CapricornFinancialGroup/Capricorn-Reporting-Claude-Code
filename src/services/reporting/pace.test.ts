@@ -40,4 +40,28 @@ describe("status banding", () => {
     expect(chaseStatus(1, 0)).toBe("ahead");
     expect(chaseStatus(0, 0)).toBe("on_pace");
   });
+
+  // 2026-08-24: a Saturday with 0 protection referrals against a target of 1 was flagged CRITICAL,
+  // beside leads and mortgages both +6 ahead. At an expectation of 1 the bands are not a scale — the
+  // only reachable outcomes are critical and ahead — so one case decided between the board's loudest
+  // word and its best one.
+  it("will not shout CRITICAL when a single case decides the verdict", () => {
+    expect(chaseStatus(0, 1)).toBe("behind");
+    expect(chaseStatus(0, 1.9)).toBe("behind");
+    // Still reports the direction — it is behind, and the figures are printed beside it.
+    expect(chaseStatus(1, 1)).toBe("ahead");
+  });
+
+  it("keeps CRITICAL once the shortfall is two whole cases or more", () => {
+    expect(chaseStatus(0, 2)).toBe("critical"); // two short
+    expect(chaseStatus(1, 3)).toBe("critical"); // two short
+    expect(chaseStatus(0, 9)).toBe("critical"); // the Sunday leads case, had it still been judged
+    expect(chaseStatus(20, 100)).toBe("critical");
+  });
+
+  it("holds at behind while the shortfall is under two cases, however bad the ratio", () => {
+    expect(chaseStatus(1, 2)).toBe("behind"); // 50%, one case short
+    expect(chaseStatus(1, 2.5)).toBe("behind"); // 40%, one and a half short
+    expect(chaseStatus(0, 1.9)).toBe("behind");
+  });
 });

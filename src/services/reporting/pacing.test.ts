@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS, KPI_KEYS } from "../../domain/targets.js";
-import { completeThrough, isTradingDay, isWeekendOnlyWeek, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
+import { completeThrough, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
 // The week is Sat..Fri, so index 0 = Sat, 1 = Sun, 2 = Mon ... 6 = Fri.
 const [SAT, MON, TUE, WED, THU, FRI] = [0, 2, 3, 4, 5, 6];
@@ -235,5 +235,51 @@ describe("isWeekendOnlyWeek", () => {
 
   it("holds on the FOLLOWING Saturday too — each new week starts the guard again", () => {
     expect(isWeekendOnlyWeek("2026-08-15")).toBe(true);
+  });
+});
+
+describe("the judged day is never a Sunday", () => {
+  // The live regression, 2026-08-24. `dataAsOf` is capped at yesterday, so on a Monday it IS Sunday —
+  // and Sunday runs ~5 cases against a leads target of 9. The board opened the week reporting
+  // "0 vs 9 · CRITICAL" for nobody working on a Sunday.
+  it("puts Monday's judged day on Saturday, not Sunday", () => {
+    const ctx = weeklyPacing("2026-08-24", "2026-08-23"); // Mon, dataAsOf = Sun
+    expect(ctx.dataAsOf).toBe("2026-08-23"); // the week still measures through Sunday…
+    expect(ctx.latestDay).toBe("2026-08-22"); // …but Saturday is the day that gets judged
+    expect(ctx.latestDayIndex).toBe(0); // index 0 of Sat..Fri
+  });
+
+  it("leaves Saturday alone — it is a trading day and earns its own tile", () => {
+    const ctx = weeklyPacing("2026-08-23", "2026-08-22"); // Sun, dataAsOf = Sat
+    expect(ctx.latestDay).toBe("2026-08-22");
+    expect(ctx.latestDayIndex).toBe(0);
+  });
+
+  it("leaves every weekday alone", () => {
+    // Tue..Sat dataAsOf values across one week, each already a trading day.
+    for (const [today, asOf, idx] of [
+      ["2026-08-19", "2026-08-18", 3], // Wed, judged Tue
+      ["2026-08-20", "2026-08-19", 4], // Thu, judged Wed
+      ["2026-08-21", "2026-08-20", 5], // Fri, judged Thu
+      ["2026-08-22", "2026-08-21", 6], // Sat, judged Fri
+    ] as Array<[string, string, number]>) {
+      const ctx = weeklyPacing(today, asOf);
+      expect(ctx.latestDay).toBe(asOf);
+      expect(ctx.latestDayIndex).toBe(idx);
+    }
+  });
+
+  it("does not let the weekend skip pull the day out of the loaded window", () => {
+    // `loadStart` has to still reach the judged day, or its rows are never fetched and the tile reads
+    // zero for a different reason entirely.
+    const ctx = weeklyPacing("2026-08-24", "2026-08-23");
+    expect(ctx.loadStart <= ctx.latestDay).toBe(true);
+  });
+
+  it("walks back at most one day, since Sunday is the only non-trading day", () => {
+    expect(lastTradingDayOnOrBefore("2026-08-23")).toBe("2026-08-22"); // Sun -> Sat
+    for (const d of ["2026-08-22", "2026-08-24", "2026-08-25", "2026-08-26", "2026-08-27", "2026-08-28"]) {
+      expect(lastTradingDayOnOrBefore(d)).toBe(d);
+    }
   });
 });

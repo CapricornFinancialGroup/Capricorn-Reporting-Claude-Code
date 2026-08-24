@@ -299,10 +299,12 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Weekly (Sat–Fri), reported for the last COMPLETE week",
     status: "indicative",
     note:
-      "The week's TOTAL reconciles; an individual ROW may not. Where commission is SPLIT, this credits " +
-      "the case's primary adviser in full, while the platform divides it and gives the recipient their " +
-      "own row — so a split case can put up to a few thousand pounds against the wrong name here. The " +
-      "recipient field is not in the data share. Headed \"mortgages\" but counts every product line.",
+      "The week's TOTAL reconciles; an individual ROW may not. Protection is split 60/40 — the writing " +
+      "adviser keeps their share, the 40% goes to the mortgage adviser whose client it was. The 40% is " +
+      "Capricorn's own recorded amount, but the mortgage adviser is identified from the CLIENT because " +
+      "the platform's split-recipient field is not in the data share, so a row can still disagree with " +
+      "the Total Written Report. Where the client has no mortgage the 40% has no recipient and is shown " +
+      "as \"no adviser on file\". Headed \"mortgages\" but counts every product line.",
   },
   {
     key: "pace",

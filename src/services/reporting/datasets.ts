@@ -19,7 +19,7 @@ import {
 } from "../../domain/data-quality.js";
 import { ORGANISATIONS } from "../../domain/firm.js";
 import { DATA_CADENCE, METRIC_DEFINITIONS } from "../../domain/metrics.js";
-import { OFFICES, UNASSIGNED, officeOf, officeOrderIndex } from "../../domain/offices.js";
+import { OFFICES, UNASSIGNED, isSharedAccount, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import { needsExplaining, settleThrough } from "../snapshots/history.js";
 import { closedWeekStarts, loadRevisions, observeWeeks } from "../snapshots/recorder.js";
 import {
@@ -41,12 +41,11 @@ import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
 import { completeThrough, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
-import {
-  protectionCommissionByAdviser,
-  revenueByAdviser,
-  type AdviserProtectionCommission,
-  type AdviserRevenue,
-} from "./advisers.js";
+// `protectionCommissionByAdviser` is deliberately NOT imported any more: it credits a policy's whole
+// commission to its primary adviser, which is the 100%-to-the-protection-adviser behaviour the 60/40
+// replaced. It survives in advisers.ts with its tests because it is the right query for "who wrote
+// this protection", which is a different question from "who earned it".
+import { revenueByAdviser, type AdviserRevenue } from "./advisers.js";
 import { referredProtectionSales, type ReferredSale } from "./referrals.js";
 import { getDailyTargets, getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets } from "../targets/store.js";
 import * as tickerQ from "./ticker.js";
@@ -1136,24 +1135,41 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
   // weekday, and a full-week forecast for the one number a full-week target can fairly judge. No
   // "% of target" is printed against a part week at all.
   //
-  // `isWeekendOnlyWeek` is the existing guard, kept: from Saturday until Monday's load the current
-  // week is two weekend days, about 6% of a week's business, and leading with that reads as a
-  // collapse three days in every seven (Kyle, 2026-08-10). Those days the last complete week leads,
-  // exactly as before.
-  const subjectIdx = isWeekendOnlyWeek(asOf) ? completeIdx : weekStarts.length - 1;
+  // THE WEEKEND GUARD IS GONE, because the thing it guarded against has been fixed properly.
+  //
+  // It sent the subject back to the last complete week whenever the current one held only weekend
+  // days — Saturday, Sunday and Monday, three days in seven — because leading with a weekend read as
+  // a 93% collapse (Kyle, 2026-08-10). But that collapse was an artefact of comparing a part week
+  // against a WHOLE one. Since 2026-08-20 this page does not do that: the week to date is set against
+  // the prior week's same days, and the target percentage hangs off the forecast, never off the
+  // part-week actual. Two weekend days against two weekend days is a fair comparison.
+  //
+  // Leaving the guard in place had a cost Kyle then hit twice: he asked for the current week on
+  // 2026-08-20 and again on 2026-08-21 ("This is meant to be for the current week and a run rate to
+  // target for the week"), and on the Monday morning of the announcement the page was showing W34
+  // again. A guard that makes the page look a week stale on the day it is presented is worse than the
+  // thing it was guarding against.
+  //
+  // Safe because the forecast is not a scale-up. It is actual-so-far PLUS each remaining weekday's own
+  // trailing average (see `writtenForecastTotal`), so from two weekend days it still produces a
+  // sensible full-week estimate rather than multiplying a weekend by three and a half.
+  const subjectIdx = weekStarts.length - 1;
   const subjectEnd = shiftDays(weekStarts[subjectIdx], 6);
   // One window for both halves of the screen, as before: the graph's headline figure and the league's
   // rows cannot land on different dates because they are the same object.
   const leagueWindow = { from: weekStarts[subjectIdx], to: subjectEnd < asOf ? subjectEnd : asOf };
   return cached(`ds-market-momentum:${from}:${asOf}`, ttl(config), async () => {
-    const [leads, apps, refs, revenue, protWritten, mortByAdviser, protByAdviser] = await Promise.all([
+    const [leads, apps, refs, revenue, protWritten, mortByAdviser, protReferred] = await Promise.all([
       q<DailyCount>(config, kpiDaily("leads", from, asOf)),
       q<DailyCount>(config, kpiDaily("applications", from, asOf)),
       q<DailyCount>(config, kpiDaily("referrals", from, asOf)),
       q<momentumQ.RevenueDaily>(config, momentumQ.revenueDaily(from, asOf)),
       q<momentumQ.ProtectionWrittenDaily>(config, momentumQ.protectionWrittenDaily(from, asOf)),
       q<AdviserRevenue>(config, revenueByAdviser(leagueWindow.from, leagueWindow.to)),
-      q<AdviserProtectionCommission>(config, protectionCommissionByAdviser(leagueWindow.from, leagueWindow.to)),
+      // Protection comes through the REFERRAL query rather than protectionCommissionByAdviser, because
+      // the league now applies Capricorn's 60/40 and that needs both ends of each policy: who wrote it
+      // and whose client it was. Same window, same statuses, same population — see `splitProtection`.
+      q<ReferredSale>(config, referredProtectionSales(leagueWindow.from, leagueWindow.to)),
     ]);
 
     const weekIndex = (d: string): number => weekStarts.indexOf(weekStartOf(d));
@@ -1516,7 +1532,11 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       // Cases with no adviser on file: real commission, but not a person, so it cannot hold a place on
       // a league OF people. Carried out separately rather than silently dropped — the rows have to be
       // able to account for the firm total printed beneath them.
-      if (!name) {
+      //
+      // A shared team inbox is the same thing wearing a name: `cs@` resolves to "Client Services",
+      // which would otherwise have taken a place in the wall's commission league off the back of the
+      // 60/40 split. Same bucket, same reason.
+      if (!name || isSharedAccount(username)) {
         unattributed += commission ?? 0;
         return;
       }
@@ -1526,7 +1546,48 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       earnerBy.set(name, row);
     };
     for (const r of mortByAdviser) credit(r.username, r.fullName, r.commission, r.cases);
-    for (const r of protByAdviser) credit(r.username, r.fullName, r.commission, r.cases);
+
+    /**
+     * PROTECTION, SPLIT 60/40 — Kyle, 2026-08-21: "They appear to still be receiving 100% and not the
+     * 60/40? And the 40% needs to be going to the Mortgage Adviser."
+     *
+     * They were receiving 100%, because the league credited `ProductCommission` to the case's primary
+     * adviser and stopped there. Two facts make the split possible now, and it is worth being precise
+     * about which is read and which is inferred:
+     *
+     *   the 40% AMOUNT is read.      `protectioncase.SplitCommission` is populated on 102 of the 309
+     *                               protection cases in the 90 days to 2026-08-21 and is exactly 40%
+     *                               of ProductCommission on every one. Capricorn's own number.
+     *   the RECIPIENT is inferred.   `SplitAdviserUserAccountKey` is populated on 1 of 309, so the
+     *                               platform's recorded recipient is unusable. The mortgage adviser is
+     *                               identified from the CLIENT instead (see referrals.ts), which
+     *                               attributed £14,300 of the £15,709 split in W34 — 91%.
+     *
+     * So: the writing adviser keeps commission MINUS the split, and the split goes to the mortgage
+     * adviser whose client it was. Three cases where it does not:
+     *
+     *   no split on the case      the writing adviser keeps all of it; nothing to hand over.
+     *   self-referral             the protection adviser sourced the client themselves, so there is no
+     *                             referring mortgage adviser and they keep the whole commission.
+     *   no mortgage on the client the 40% is real money with no identifiable recipient. It goes to
+     *                             `unattributed` — inside the firm total printed under the league,
+     *                             absent from the rows — rather than being quietly left with the
+     *                             writing adviser, which would overstate them by exactly the amount
+     *                             the platform has already taken off.
+     *
+     * The FIRM TOTAL is untouched by any of this: it comes from the graph's own series and is 100% of
+     * both legs. This only changes who inside it holds which share.
+     */
+    for (const r of protReferred) {
+      const full = r.commission ?? 0;
+      const split = r.splitCommission ?? 0;
+      const selfReferral = r.originator != null && r.originator === r.converter;
+      const handOver = selfReferral ? 0 : split;
+      credit(r.converter, r.converterName, full - handOver, r.sales);
+      // `credit` already routes a nameless adviser to `unattributed`, which is exactly what an
+      // unidentifiable referrer needs — so the null-originator case needs no special handling here.
+      if (handOver > 0) credit(r.originator, r.originatorName, handOver, 0);
+    }
     const earners = [...earnerBy.values()]
       .filter((r) => r.commission > 0)
       .sort((a, b) => b.commission - a.commission || a.name.localeCompare(b.name));

@@ -32,6 +32,7 @@ import { usePayload } from "../api.js";
 import { momentumForecastChart } from "../charts.js";
 import { EChart } from "../components/EChart.js";
 import { MetricInfo } from "../components/MetricInfo.js";
+import { Ticker } from "../components/Ticker.js";
 import { gbpCompact, num, shortDate } from "../format.js";
 import type { MarketMomentumPayload } from "../types.js";
 import type { Mode } from "../api.js";
@@ -68,6 +69,12 @@ export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
     <Load error={error} data={data}>
       {data && (
         <div className="screen">
+          {/* One ticker across every rotating screen, not just the first — Kyle, 2026-08-21: "please
+              can the ticker be across all the screens as it rotates." It is the only element on the
+              wall that reads as alive; a viewer who walks up during Office Run Chase or the League
+              should see the same live feed the Daily Run Chase has. Same component, same payload,
+              cached once per refresh, so four copies cost one query. */}
+          <Ticker mode={mode} refreshMs={refreshMs} />
           <div className="row cols-2 grow">
             <TotalWritten data={data} mode={mode} />
             <CommissionLeague data={data} mode={mode} />
@@ -265,10 +272,13 @@ function CommissionLeague({ data, mode }: { data: MarketMomentumPayload; mode: M
       </div>
       <div className="lb-foot">
         All written commission for the week, whichever product line earned it — mortgage, protection and general
-        insurance are counted together and not split. Commission is what the lender or provider pays Capricorn;
-        client fees are not included. A commission SPLIT credits the case's primary adviser in full here, because the
-        recipient of a split is not yet in the data share — so an individual row can differ from the platform's
-        Total Written Report even though the week's total does not.
+        insurance counted together. Commission is what the lender or provider pays Capricorn; client fees are not
+        included. <b>Protection is split 60/40</b>: the adviser who wrote the policy keeps their share and the 40% goes
+        to the mortgage adviser whose client it was. The 40% is Capricorn&rsquo;s own recorded figure; the mortgage
+        adviser is identified from the client, since the platform&rsquo;s split-recipient field is not in the data
+        share — so an individual row can still differ from the Total Written Report. Where a client has no mortgage,
+        the 40% has no identifiable recipient and is carried as &ldquo;no adviser on file&rdquo; rather than left with
+        the writing adviser. The week&rsquo;s total is unaffected either way.
       </div>
     </div>
   );
