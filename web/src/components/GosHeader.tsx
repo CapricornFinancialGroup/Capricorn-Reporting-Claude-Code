@@ -28,7 +28,8 @@ import type { TargetsProvenance } from "../types.js";
 
 /** What the header says about the data on screen. */
 export interface Freshness {
-  /** Latest COMPLETE day the figures cover (YYYY-MM-DD). */
+  /** Latest COMPLETE day the figures cover (YYYY-MM-DD) — the boundary target comparisons stop at,
+   *  NOT the freshest data on the board. Today is on the board too; see the header's own note. */
   dataAsOf: string;
   /** ISO time of the lake's last load — the share reloads 5× daily, so this moves through the day. */
   lastRefreshAt?: string | null;
@@ -84,10 +85,21 @@ export function GosHeader({ title, right, freshness, onTargetsClick }: {
         )}
       </div>
       <div className="gos-header-right">
-        <div className="gos-asat" title="Target comparisons measure through the last complete day; the data itself reloads 5× daily.">
-          <div className="gos-asat-value">Data as at {freshness ? asAtLabel(freshness.dataAsOf) : "—"}</div>
-          {/* The load TIME moved next to the clock; this keeps only the cadence caveat. */}
-          <div className="gos-asat-cadence">Refreshes 5× daily · not real-time</div>
+        {/* "COMPLETE TO", not "DATA AS AT".
+            The date here has always been the last COMPLETE day — the boundary target comparisons stop
+            at — but "Data as at Sun 23 Aug" reads as "this is the newest data we hold", and on a Monday
+            that reads as a board a day behind. Kyle asked whether the refresh was broken on that basis
+            three times (2026-08-10, 08-21, 08-24), and since the intraday change on 2026-08-21 it is
+            also plainly untrue: the board holds and shows today — the dotted segment on every chase
+            chart, the "today so far" figure beside it, and the ticker's own date.
+            So the label now names the boundary rather than implying a ceiling, and the second line says
+            today is on here. The load time itself sits next to the clock. */}
+        <div
+          className="gos-asat"
+          title="Two different things. The date is the last day treated as COMPLETE — target comparisons stop there, because a part-day measured against a whole day's target reads as behind all morning and recovers by evening. Today is not missing: it is on the board separately, as the dotted line on each chase chart and the 'today so far' figure, stamped with the load that produced it. The warehouse copy reloads 5× daily."
+        >
+          <div className="gos-asat-value">Complete to {freshness ? asAtLabel(freshness.dataAsOf) : "—"}</div>
+          <div className="gos-asat-cadence">+ today so far · refreshes 5× daily</div>
         </div>
         {/* Targets are config, and until Capricorn uploads their own they are OUR placeholders. A
             "vs target" that nobody can trace is exactly what generates the emails Conor wants to
