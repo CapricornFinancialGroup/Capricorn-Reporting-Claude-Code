@@ -65,11 +65,13 @@ export interface MetricDefinition {
 export const DATA_CADENCE = {
   /** Plain-English answer to "is this live?" — asked three times between 2026-07-28 and 08-03. */
   summary:
-    "Not real-time, but not nightly either. The data share reloads FIVE times a day, London time: " +
-    "roughly 08:30, 12:20, 15:10, 18:10 and 21:00 — but the exact time drifts by up to half an hour " +
-    "either side, and a load is occasionally missed. So business written at 3pm reaches the board at " +
-    "the early-evening load, about two hours later. Between loads nothing changes, however many times " +
-    "the page is refreshed: the header shows the time of the load you are actually looking at.",
+    "Not real-time, but not nightly either. The data share reloads FOUR times a day, London time: " +
+    "roughly 06:00, 11:20, 14:50 and 17:35 — but the exact time drifts by up to half an hour either " +
+    "side, and a load is occasionally missed. So business written at 3pm reaches the board at the " +
+    "late-afternoon load, a couple of hours later, and anything entered after that waits for the " +
+    "early-morning load, which is why a day only reads complete the following morning. Between loads " +
+    "nothing changes, however many times the page is refreshed: the header shows the time of the " +
+    "load you are actually looking at.",
   /** Why the chase measures through the last COMPLETE day even though today is partly loaded. */
   asOfRule:
     "Target comparisons are measured through the last COMPLETE day. Today is only partly loaded until " +
@@ -79,7 +81,7 @@ export const DATA_CADENCE = {
     "separate \"Today so far\" count, stamped with the load that produced it. It has no target beside " +
     "it on purpose — a part-day measured against a whole-day target would drift behind all morning " +
     "and recover by evening.",
-  refresh: "5× daily (≈08:30, 12:20, 15:10, 18:10, 21:00 London), screens poll every 60s",
+  refresh: "4× daily (≈06:00, 11:20, 14:50, 17:35 London), screens poll every 60s",
 } as const;
 
 export const METRIC_DEFINITIONS: MetricDefinition[] = [

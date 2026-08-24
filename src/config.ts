@@ -29,7 +29,7 @@ export interface Config {
     /** Business timezone for the day clock (handles BST automatically via Intl). */
     timeZone: string;
     /** Pacing model: "mtd" (month-to-date, day-grained — the lake is day-grained even though it
-     *  reloads 5× daily, so the chase stays at day resolution). */
+     *  reloads 4× daily, so the chase stays at day resolution). */
     pacingMode: "mtd" | "drip";
     /** Server-side dataset cache TTL (seconds). */
     cacheTtlSeconds: number;
@@ -51,7 +51,7 @@ export interface Config {
      *  so production needs no new App Service setting. Empty = snapshotting disabled and the
      *  reconciliation screen shows live figures with no history, rather than failing. */
     storageAccount: string;
-    /** How often to re-observe the closed weeks, minutes. The lake reloads 5× daily, so anything
+    /** How often to re-observe the closed weeks, minutes. The lake reloads 4× daily, so anything
      *  under ~2h is just polling unchanged data; 30 min keeps the detection tight without cost. */
     intervalMinutes: number;
   };

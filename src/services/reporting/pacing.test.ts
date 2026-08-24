@@ -151,7 +151,7 @@ describe("mtdPacing (month-window screens)", () => {
 // Regression: the 2026-07-30 incident. One lead dated "today" pulled MAX(LeadDate) forward, so the
 // board paced Wednesday's data against Thursday's expectation and reported the firm a full day of
 // target further behind than it was — leads 351 vs an expected 527, applications 40 vs 96, both
-// CRITICAL, headline day showing 1 lead at 11:19. The share reloads 5× daily, so today IS partly
+// CRITICAL, headline day showing 1 lead at 11:19. The share reloads 4× daily, so today IS partly
 // present — which is exactly why the cap is needed: partly present is not complete.
 describe("completeThrough — today is never a complete day, however many times the lake reloads", () => {
   it("caps a MAX(LeadDate) that has run ahead to today", () => {

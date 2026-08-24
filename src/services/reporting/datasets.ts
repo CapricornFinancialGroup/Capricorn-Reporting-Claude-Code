@@ -4,7 +4,7 @@
 //
 // Chase model (Conor's weekly principles, 2026-07-06): the run chase is WEEK-TO-DATE vs weekly
 // targets with weighted days (Mon–Thu 20.83% each, Fri 16.67%), measured through the latest
-// complete day loaded ("data as of" — the lake reloads 5× daily). The week is Capricorn's own Sat–Fri reporting
+// complete day loaded ("data as of" — the lake reloads 4× daily). The week is Capricorn's own Sat–Fri reporting
 // week (`docs/data-dictionary.md`), rolling each Saturday. Funnel volumes remain month-to-date.
 // The pacing seam (pacing.ts) is the single plug-point for a future intraday or drip feed and for
 // the live Team-Targets source when Capricorn provides one.
@@ -98,12 +98,21 @@ async function dataAsOf(config: Config): Promise<string> {
 
 /** When the lake was actually last loaded — MAX(_etl_modified), the ETL's own watermark.
  *
- *  The share is NOT a nightly build, despite what the README claimed until 2026-08-04. It loads FIVE
+ *  The share is NOT a nightly build, despite what the README claimed until 2026-08-04. It loads FOUR
  *  times a day. Surfaced so the header can state the truth instead of a cadence nobody had checked.
  *
- *  THE TIMES, IN LONDON, measured off the distinct load stamps for 1–21 Aug 2026 (n≈85):
+ *  THE TIMES, IN LONDON, off the distinct load stamps for 21–24 Aug 2026 — Capricorn changed the
+ *  schedule on 21 Aug (confirmed 08-24) and it is now four loads, earlier at both ends:
  *
- *    08:21–09:07   11:58–12:51   14:53–15:33   17:51–18:29   20:49–21:22
+ *    05:43–06:22   11:12–11:37   14:34–15:10   17:31–17:43
+ *
+ *  It was five until 20 Aug — 08:21–09:07 / 11:58–12:51 / 14:53–15:33 / 17:51–18:29 / 20:49–21:22
+ *  (n≈85 over 1–21 Aug). Kept on the record because the intraday shares in domain/data-quality.ts
+ *  were measured against those loads and have not yet been re-measured against these.
+ *
+ *  The consequence worth knowing: the last load of the day is now ~17:35, so business entered after
+ *  that does not reach the board until roughly 06:00 the next morning. A day is only really whole the
+ *  following morning — which is exactly when the chase starts judging it.
  *
  *  Stated as UTC here until 2026-08-21 ("~07:50 / 11:10 / …"), which was correct — and useless, because
  *  the user-facing copy in domain/metrics.ts repeated those numbers with no timezone on them while every
@@ -111,9 +120,11 @@ async function dataAsOf(config: Config): Promise<string> {
  *  11:21 expecting the 11:10 load to have landed when the real second load of the day arrives closer to
  *  12:20 (2026-08-21). The copy now gives London times and says the times drift.
  *
- *  They do drift, and loads are occasionally MISSED: 20 Aug ran four loads, not five, and 21 Aug opened
- *  with a one-off 06:21 outside every normal window. So the header's job is not to promise a schedule —
- *  it is to stamp the load actually being displayed. */
+ *  They do drift, and a load is occasionally MISSED — 20 Aug ran four of its five. Sundays show only
+ *  the first stamp, but that is not a missed load: the stamp only moves when rows change, and on a
+ *  Sunday they largely do not. So the header's job is not to promise a schedule — it is to stamp the
+ *  load actually being displayed. (The 06:21 stamp on 21 Aug was read as a one-off at the time; with
+ *  hindsight it was the first run of the new schedule.) */
 export async function lastRefreshAt(config: Config): Promise<string | null> {
   return cached("last-refresh-at", 60_000, async () => {
     const rows = await q<{ at: unknown }>(config, {
@@ -146,7 +157,7 @@ export interface TodaySoFar {
 /**
  * "Today so far" — deliberately OUTSIDE the chase maths.
  *
- * Kyle's and Conor's question is a 3pm one: what has happened today? The lake reloads 5× daily, so we
+ * Kyle's and Conor's question is a 3pm one: what has happened today? The lake reloads 4× daily, so we
  * can answer it — but the chase itself must keep measuring through COMPLETE days. Folding today's
  * part-day into `wtd` is exactly the 2026-07-30 failure in reverse: the actual would carry ~4 hours of
  * a day whose target counts a full one, so every KPI would drift "behind" as the morning wore on and

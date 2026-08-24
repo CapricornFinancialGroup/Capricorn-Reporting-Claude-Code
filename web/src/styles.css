@@ -98,7 +98,7 @@ button { font: inherit; }
 .gos-date { font-size: 12px; font-weight: 500; color: rgba(255, 255, 255, 0.6); letter-spacing: 0.05em; }
 
 /* "Data as at" replaces the old pulsing red LIVE badge. The board reads a warehouse copy that
-   reloads 5× daily; calling that "Live" next to today's date is what made Kyle ask three times
+   reloads 4× daily; calling that "Live" next to today's date is what made Kyle ask three times
    whether the figures were live (Conor 2026-08-04: every screen must state its refresh frequency
    and data date). */
 /* nowrap on both lines: at 320px, with the placeholder-targets pill alongside, "Data as at Sun 16

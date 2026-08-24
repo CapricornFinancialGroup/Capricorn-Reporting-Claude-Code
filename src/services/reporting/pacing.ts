@@ -3,7 +3,7 @@
 //   • weeklyPacing (the run chase, per Conor's 2026-07-06 principles): Capricorn's own Sat–Fri
 //     reporting week (`docs/data-dictionary.md`) containing today (business tz), chased against
 //     the weekly target with WEIGHTED working days (Fri = 80% of a Mon–Thu day). The lake reloads
-//     5× daily but the chase deliberately measures through COMPLETE days only (`completeThrough`),
+//     4× daily but the chase deliberately measures through COMPLETE days only (`completeThrough`),
 //     so early in the week the current week may hold little data yet — that's expected. Today's
 //     partial figure is surfaced SEPARATELY (see `todaySoFar` in datasets.ts), never folded in.
 //     `fraction` (expected-by-now) is measured through the latest current-week day that HAS data,
@@ -72,7 +72,7 @@ export function weekElapsedFraction(iso: string, kpi?: KpiKey): number {
  * 11:19. That is what Kyle saw on 2026-07-30.
  *
  * Today is not a COMPLETE day until its final load of the evening, so cap at yesterday for target
- * comparisons. NOTE the lake reloads 5× daily, so today IS partly available — see the note below on
+ * comparisons. NOTE the lake reloads 4× daily, so today IS partly available — see the note below on
  * showing it separately rather than folding it into the chase. Kept pure and
  * separate from the query so the rule is unit-testable.
  */

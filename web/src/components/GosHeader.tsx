@@ -1,7 +1,7 @@
 // The navy Growth OS header: brand · page title + wall clock · WHICH DATA IS ON SCREEN.
 //
 // The right-hand block used to show today's date and a pulsing red "Live" badge. Both were untrue:
-// the Growth OS reads a warehouse copy that reloads 5× daily, so the figures are never real-time and
+// the Growth OS reads a warehouse copy that reloads 4× daily, so the figures are never real-time and
 // target comparisons run through the last complete day.
 // Showing today's date next to yesterday's numbers, under the word "Live", is why Kyle asked three
 // times whether the board was live (2026-07-28 → 08-03) and why a Monday view of Sunday's data read
@@ -31,7 +31,7 @@ export interface Freshness {
   /** Latest COMPLETE day the figures cover (YYYY-MM-DD) — the boundary target comparisons stop at,
    *  NOT the freshest data on the board. Today is on the board too; see the header's own note. */
   dataAsOf: string;
-  /** ISO time of the lake's last load — the share reloads 5× daily, so this moves through the day. */
+  /** ISO time of the lake's last load — the share reloads 4× daily, so this moves through the day. */
   lastRefreshAt?: string | null;
   /** Where the targets come from — a placeholder is called out, not hidden (Conor 2026-08-04). */
   targetsProvenance?: TargetsProvenance;
@@ -78,7 +78,7 @@ export function GosHeader({ title, right, freshness, onTargetsClick }: {
         {freshness?.lastRefreshAt && (
           <div
             className="gos-refreshed"
-            title="When the warehouse copy behind these figures was last loaded. It reloads 5× daily, so this moves through the day."
+            title="When the warehouse copy behind these figures was last loaded. It reloads 4× daily, so this moves through the day."
           >
             data refreshed at {clockTime(freshness.lastRefreshAt)}
           </div>
@@ -96,10 +96,10 @@ export function GosHeader({ title, right, freshness, onTargetsClick }: {
             today is on here. The load time itself sits next to the clock. */}
         <div
           className="gos-asat"
-          title="Two different things. The date is the last day treated as COMPLETE — target comparisons stop there, because a part-day measured against a whole day's target reads as behind all morning and recovers by evening. Today is not missing: it is on the board separately, as the dotted line on each chase chart and the 'today so far' figure, stamped with the load that produced it. The warehouse copy reloads 5× daily."
+          title="Two different things. The date is the last day treated as COMPLETE — target comparisons stop there, because a part-day measured against a whole day's target reads as behind all morning and recovers by evening. Today is not missing: it is on the board separately, as the dotted line on each chase chart and the 'today so far' figure, stamped with the load that produced it. The warehouse copy reloads 4× daily."
         >
           <div className="gos-asat-value">Complete to {freshness ? asAtLabel(freshness.dataAsOf) : "—"}</div>
-          <div className="gos-asat-cadence">+ today so far · refreshes 5× daily</div>
+          <div className="gos-asat-cadence">+ today so far · refreshes 4× daily</div>
         </div>
         {/* Targets are config, and until Capricorn uploads their own they are OUR placeholders. A
             "vs target" that nobody can trace is exactly what generates the emails Conor wants to

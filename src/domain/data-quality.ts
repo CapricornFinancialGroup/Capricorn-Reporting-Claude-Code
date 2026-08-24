@@ -302,6 +302,27 @@ export const NEW_CLIENT_LEAD_BASIS = "first case across mortgage/protection/GI �
  *   after the ~21:00 load   88.5%
  *   arriving on later days  11.5%      ← input lag; see INPUT_LAG_SETTLE_DAYS
  *
+ * ⚠ THE SCHEDULE CHANGED ON 2026-08-21 (Capricorn, confirmed 08-24): FOUR loads, not five, and the
+ * day starts earlier and ends earlier. Observed stamps 21–24 Aug: 05:43–06:22, 11:12–11:37,
+ * 14:34–15:10, 17:31–17:43 London. The 21:00 load is gone.
+ *
+ * The KEYS below are unchanged, and that is not laziness — the boundary rule is "just below the
+ * earliest observed time of that load", and loads 2/3/4 still open at 11, 14 and 17. What changed:
+ *
+ *   • The 20:00 row is now UNREACHABLE and has been removed. No load lands after 20:00, so a day's
+ *     final on-the-day share is the ~17:35 load at 63%, not 88.5%. The other ~37% arrives on the
+ *     following morning's ~06:00 load or later — the input lag is bigger now, which is why
+ *     INPUT_LAG_SETTLE_DAYS matters more, not less.
+ *   • The first load moved from ~08:45 to ~05:50, i.e. before the business day rather than just
+ *     inside it. Its share can only be lower than 1.5%; the board withholds the comparison whenever
+ *     the expectation rounds below one case, which it does at that load for every office, so the
+ *     stale 1.5% cannot mislead anyone.
+ *   • Loads 2/3/4 land 20–35 min EARLIER in the business day than the loads these shares were
+ *     measured on, so 11.3 / 33.3 / 63.0 now read slightly generous — the board will look marginally
+ *     behind rather than marginally ahead. Erring that way is the right way round, but these want
+ *     RE-MEASURING once there are ~15 business days on the new schedule (i.e. from ~2026-09-11).
+ *     Three days is not a curve.
+ *
  * This is why "today so far" cannot be compared with a whole day's target, and why the board refused
  * to try (2026-07-30: a part-day against a full-day target marked Capricorn down by a day's target
  * every morning). Kyle's 06:21 load on 21 Aug showed ONE lead against a ~75-lead day — 1.4%, exactly
@@ -310,16 +331,15 @@ export const NEW_CLIENT_LEAD_BASIS = "first case across mortgage/protection/GI �
  * With the curve, today CAN be judged: against the share of the day that is actually in. Capricorn,
  * 2026-08-21: "we should be reflecting the progress throughout the day."
  *
- * Keyed on the LOAD's London hour, with boundaries between the observed load windows (08:21–09:07,
- * 11:58–12:51, 14:53–15:33, 17:51–18:29, 20:49–21:22) rather than on the clock — a load that runs
- * late still carries its own load's worth of business, not the next one's.
+ * Keyed on the LOAD's London hour, with boundaries below the observed load windows (05:43–06:22,
+ * 11:12–11:37, 14:34–15:10, 17:31–17:43) rather than on the clock — a load that runs late still
+ * carries its own load's worth of business, not the next one's.
  */
 const DAY_LOAD_SHARES: Array<{ fromHour: number; share: number }> = [
   { fromHour: 0, share: 0.015 },
   { fromHour: 11, share: 0.113 },
   { fromHour: 14, share: 0.333 },
   { fromHour: 17, share: 0.630 },
-  { fromHour: 20, share: 0.885 },
 ];
 
 /**

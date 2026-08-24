@@ -40,8 +40,8 @@ export interface Meta {
    *  server-side regardless of what the nav shows. */
   isTargetsAdmin: boolean;
   dataAsOf: string;
-  /** ISO wall-clock of the lake's last load. The share reloads 5× daily (≈08:30/12:20/15:10/18:10/
-   *  21:00 London, ±30min, occasionally a load is missed), NOT overnight — the header shows this so
+  /** ISO wall-clock of the lake's last load. The share reloads 4× daily (≈06:00/11:20/14:50/17:35
+   *  London, ±30min, occasionally a load is missed), NOT overnight — the header shows this so
    *  "is it live?" is answerable at a glance, and so "why hasn't it moved?" is too. */
   lastRefreshAt: string | null;
   refreshCadence: string;
@@ -91,7 +91,7 @@ export interface DailyRunChasePayload {
   dataAsOf: string;
   /** Total mortgage value written this chase week (SUM(MortgageValue)) — not commission revenue. */
   /** TODAY's part-day counts, held apart from the chase so pace maths stays on complete days.
-   *  Null at weekends. `loadedAt` is the load that produced them — the share reloads 5× daily. */
+   *  Null at weekends. `loadedAt` is the load that produced them — the share reloads 4× daily. */
   today: {
     date: string;
     loadedAt: string | null;

@@ -17,14 +17,24 @@ describe("dayRecordedShare — how much of a day the data share is holding", () 
     // Mid-afternoon.
     expect(dayRecordedShare(14)).toBeCloseTo(0.333);
     expect(dayRecordedShare(15)).toBeCloseTo(0.333);
-    // Early evening.
+    // Late-afternoon load — the LAST of the day since the schedule changed on 2026-08-21. Around a
+    // third of the day is still to arrive, on tomorrow morning's load or later, which is what
+    // INPUT_LAG_SETTLE_DAYS is about.
     expect(dayRecordedShare(17)).toBeCloseTo(0.63);
     expect(dayRecordedShare(18)).toBeCloseTo(0.63);
-    // Last load of the day: most of the day is in, but NOT all of it — the rest arrives on later
-    // days, which is what INPUT_LAG_SETTLE_DAYS is about.
-    expect(dayRecordedShare(20)).toBeCloseTo(0.885);
-    expect(dayRecordedShare(21)).toBeCloseTo(0.885);
-    expect(dayRecordedShare(23)).toBeCloseTo(0.885);
+    // Nothing loads after ~17:45 any more, so a late hour must hold the late-afternoon share and NOT
+    // the retired 21:00 load's 88.5% — an evening viewer would otherwise be told five-sixths of the
+    // day was in when only two-thirds was.
+    expect(dayRecordedShare(20)).toBeCloseTo(0.63);
+    expect(dayRecordedShare(23)).toBeCloseTo(0.63);
+  });
+
+  it("puts the new ~06:00 load on the morning step, not on a later one", () => {
+    // The first load moved from ~08:45 to ~05:50 on 2026-08-21. It arrives before the business day,
+    // so it can only hold less than the morning 1.5% — never more.
+    expect(dayRecordedShare(5)).toBeCloseTo(0.015);
+    expect(dayRecordedShare(6)).toBeCloseTo(0.015);
+    expect(dayRecordedShare(10)).toBeCloseTo(0.015);
   });
 
   it("treats an unusually early load as the morning load, not as no load", () => {
