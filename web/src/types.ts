@@ -40,11 +40,18 @@ export interface Meta {
    *  server-side regardless of what the nav shows. */
   isTargetsAdmin: boolean;
   dataAsOf: string;
+  /** The newest business day ON the board — today once today has business loaded, else `dataAsOf`.
+   *  What the header stamps. `dataAsOf` is the target-comparison boundary and stops at yesterday;
+   *  stamping THAT made the board read a day stale while the ticker beside it already said today. */
+  dataThrough: string;
   /** ISO wall-clock of the lake's last load. The share reloads 4× daily (≈06:00/11:20/14:50/17:35
    *  London, ±30min, occasionally a load is missed), NOT overnight — the header shows this so
    *  "is it live?" is answerable at a glance, and so "why hasn't it moved?" is too. */
   lastRefreshAt: string | null;
   refreshCadence: string;
+  /** Loads per day, straight from DATA_CADENCE — the header renders the count rather than hardcoding
+   *  it, because it has already changed once (five → four on 2026-08-21). */
+  loadsPerDay: number;
   /** Closed weeks whose figures have moved unexpectedly — drives the header warning everywhere. */
   revisedWeeks: number;
   refreshSeconds: number;

@@ -55,7 +55,7 @@ export function App({ mode }: { mode: Mode }) {
     <div className="dash-shell">
       <GosHeader
         title={page.label}
-        freshness={{ dataAsOf: meta.dataAsOf, lastRefreshAt: meta.lastRefreshAt, targetsProvenance: meta.targetsProvenance }}
+        freshness={{ dataAsOf: meta.dataAsOf, dataThrough: meta.dataThrough, lastRefreshAt: meta.lastRefreshAt, loadsPerDay: meta.loadsPerDay, targetsProvenance: meta.targetsProvenance }}
         onTargetsClick={meta.isTargetsAdmin ? () => { window.location.hash = "targets"; setPageId("targets"); } : undefined}
       />
       <nav className="dash-nav">

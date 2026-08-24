@@ -81,6 +81,31 @@ export function completeThrough(maxLeadDate: string, today: string): string {
   return maxLeadDate < yesterday ? maxLeadDate : yesterday;
 }
 
+/**
+ * The freshest business day the board actually HOLDS — which is today, once today has any business on
+ * it, and the last complete day otherwise.
+ *
+ * Different question from `completeThrough`, and the board needs both. `completeThrough` answers
+ * "how far can I compare against target?" and deliberately stops at yesterday. This answers "what is
+ * the newest day on this screen?" — and since 2026-08-21 the screens carry today: the dotted segment
+ * on each chase chart, the "today so far" figure, and the ticker's own date.
+ *
+ * Stamping the header with the complete-day boundary instead made the board read a day stale. Kyle
+ * queried it as a broken refresh three times (2026-08-10, 08-21, 08-24) and Capricorn again on 08-24:
+ * "it is confusing saying yesterday's date — if we have refreshed on the day, make the date reflect
+ * that date." The boundary has not moved; only which of the two questions the header answers.
+ *
+ * `todayCount` is the count actually loaded for today, and gating on it is the point: an 06:00 load
+ * lands before anyone has written anything, so claiming the board reaches today at that hour would be
+ * a date with nothing behind it. Deliberately the SAME rule the ticker uses to choose its date
+ * (`liveFeed`), so the two stamps cannot contradict each other — which is what the header did while
+ * the ticker beside it already read today.
+ */
+export function dataThroughDay(asOf: string, today: string, todayCount: number): string {
+  if (!isTradingDay(today) || todayCount <= 0) return asOf;
+  return today > asOf ? today : asOf;
+}
+
 /** Gates the "today so far" figure: a wall board reading "Today so far: 0" on a non-trading day
  *  is noise, not information — nobody is writing business, so there is nothing to be behind on.
  *

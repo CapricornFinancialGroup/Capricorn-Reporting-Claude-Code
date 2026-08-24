@@ -39,7 +39,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 // `protectionCommissionByAdviser` is deliberately NOT imported any more: it credits a policy's whole
 // commission to its primary adviser, which is the 100%-to-the-protection-adviser behaviour the 60/40
@@ -385,11 +385,16 @@ async function revisedWeekCount(config: Config): Promise<number> {
 }
 
 export async function meta(config: Config) {
-  const [asOf, refreshedAt, revisedWeeks] = await Promise.all([
+  const [asOf, refreshedAt, revisedWeeks, today] = await Promise.all([
     dataAsOf(config),
     lastRefreshAt(config),
     revisedWeekCount(config),
+    todaySoFar(config),
   ]);
+  // The freshest day ON the board, as opposed to the last day it can be compared with target. Both
+  // go out: the header leads with this one, and `dataAsOf` still drives every target comparison.
+  const todayCount = today ? sum(KPI_KEYS.map((k) => today.counts[k])) : 0;
+  const through = dataThroughDay(asOf, today?.date ?? asOf, todayCount);
   const daily = getDailyTargets();
   const weekly = Object.fromEntries(KPI_KEYS.map((k) => [k, daily[k] * 5])) as KpiTargets;
   return {
@@ -403,10 +408,16 @@ export async function meta(config: Config) {
     },
     targetsProvenance: getTargetsProvenance(),
     dataAsOf: asOf,
+    /** The newest business day represented on screen — today once today has business on it, else
+     *  `dataAsOf`. This is what the header stamps; `dataAsOf` remains the target-comparison boundary.
+     *  Capricorn 2026-08-24: "if we have refreshed on the day, make the date reflect that date." */
+    dataThrough: through,
     /** Wall-clock of the lake's last load (ISO, UTC) — the honest freshness stamp. */
     lastRefreshAt: refreshedAt,
     /** Human cadence for the header. Not "overnight": see lastRefreshAt's docstring. */
     refreshCadence: DATA_CADENCE.refresh,
+    /** Loads per day, for the header's short stamp — one source of truth for a number that changes. */
+    loadsPerDay: DATA_CADENCE.loadsPerDay,
     /** Closed weeks that have moved unexpectedly — drives the header warning on every screen. */
     revisedWeeks,
     refreshSeconds: config.reporting.refreshSeconds,

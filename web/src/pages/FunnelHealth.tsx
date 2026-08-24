@@ -44,7 +44,12 @@ export function FunnelHealth({ filters, compareFilters, mode, refreshMs }: PageP
           <div className="card">
             <div className="card-title">
               <span>Sales Pipeline — where is revenue getting stuck? <span className="card-sub">gross stage volumes {shortDate(data.window.from)} – {shortDate(data.window.to)} · % = share of period leads, not case-by-case conversion</span></span>
-              <span className="asof">Data as of {shortDate(data.dataAsOf)}</span>
+              {/* "Complete to", not "Data as of". These stage counts really do stop at the last
+                  complete day — but the header above now stamps the freshest day ON the board, which
+                  includes today, and two stamps three inches apart both saying "data as of/to" with
+                  DIFFERENT dates is the confusion Capricorn flagged on 2026-08-24, not a fix for it.
+                  So this one says what it is: the window these counts cover. */}
+              <span className="asof" title="These stage volumes are counted through the last COMPLETE day. Today is deliberately excluded here — a part-loaded day would understate every stage and read as a pipeline stalling.">Complete to {shortDate(data.dataAsOf)}</span>
             </div>
             <EChart
               height={280}

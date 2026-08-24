@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS, KPI_KEYS } from "../../domain/targets.js";
-import { completeThrough, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
+import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
 // The week is Sat..Fri, so index 0 = Sat, 1 = Sun, 2 = Mon ... 6 = Fri.
 const [SAT, MON, TUE, WED, THU, FRI] = [0, 2, 3, 4, 5, 6];
@@ -153,6 +153,38 @@ describe("mtdPacing (month-window screens)", () => {
 // target further behind than it was — leads 351 vs an expected 527, applications 40 vs 96, both
 // CRITICAL, headline day showing 1 lead at 11:19. The share reloads 4× daily, so today IS partly
 // present — which is exactly why the cap is needed: partly present is not complete.
+describe("dataThroughDay — the date the HEADER stamps, which is not the comparison boundary", () => {
+  it("names today once today has business on it", () => {
+    // Mon 24 Aug, the 11:15 load in. dataAsOf is Sunday; the ticker and the dotted chase segment both
+    // already read Monday, so the header must too — this is the whole point of the field.
+    expect(dataThroughDay("2026-08-23", "2026-08-24", 37)).toBe("2026-08-24");
+  });
+
+  it("stays on the complete day when today has loaded nothing yet", () => {
+    // The ~06:00 load lands before anyone has written anything. Stamping today here would put a date
+    // on the board with no business behind it.
+    expect(dataThroughDay("2026-08-23", "2026-08-24", 0)).toBe("2026-08-23");
+  });
+
+  it("never claims a Sunday", () => {
+    // Sunday is not a trading day, so there is no "today so far" to justify the date.
+    expect(dataThroughDay("2026-08-22", "2026-08-23", 0)).toBe("2026-08-22");
+    // Even if a stray row landed: the board shows no Sunday figure, so the stamp must not imply one.
+    expect(dataThroughDay("2026-08-22", "2026-08-23", 4)).toBe("2026-08-22");
+  });
+
+  it("counts Saturday as a day the stamp can reach — the week is Sat–Fri", () => {
+    expect(dataThroughDay("2026-08-21", "2026-08-22", 31)).toBe("2026-08-22");
+  });
+
+  it("never goes BACKWARDS from the complete day", () => {
+    // If the lake ever reports a complete day at or beyond today, the stamp holds at the later date
+    // rather than regressing — the header must not read older than the figures underneath it.
+    expect(dataThroughDay("2026-08-24", "2026-08-24", 12)).toBe("2026-08-24");
+    expect(dataThroughDay("2026-08-25", "2026-08-24", 12)).toBe("2026-08-25");
+  });
+});
+
 describe("completeThrough — today is never a complete day, however many times the lake reloads", () => {
   it("caps a MAX(LeadDate) that has run ahead to today", () => {
     // Thu 30 Jul held exactly 1 lead; every other fact stopped at Wed 29 Jul.

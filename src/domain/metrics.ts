@@ -75,13 +75,17 @@ export const DATA_CADENCE = {
   /** Why the chase measures through the last COMPLETE day even though today is partly loaded. */
   asOfRule:
     "Target comparisons are measured through the last COMPLETE day. Today is only partly loaded until " +
-    "its final load of the evening, and treating a part-loaded day as finished previously made the " +
+    "the next morning's load, and treating a part-loaded day as finished previously made the " +
     "board read 1 lead and 0 applications — both flagged critical — while reporting the firm a full " +
     "day of target further behind than it was. Today is not hidden, though: each KPI card carries a " +
     "separate \"Today so far\" count, stamped with the load that produced it. It has no target beside " +
     "it on purpose — a part-day measured against a whole-day target would drift behind all morning " +
     "and recover by evening.",
   refresh: "4× daily (≈06:00, 11:20, 14:50, 17:35 London), screens poll every 60s",
+  /** Just the COUNT, for the header's one-line stamp. Kept here so the next schedule change is
+   *  one number in one file — this one moved from five to four on 2026-08-21 and the old figure
+   *  was hardcoded in the header, the Glossary, the README and four docstrings. */
+  loadsPerDay: 4,
 } as const;
 
 export const METRIC_DEFINITIONS: MetricDefinition[] = [
