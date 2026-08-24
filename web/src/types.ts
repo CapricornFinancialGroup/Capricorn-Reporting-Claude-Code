@@ -140,7 +140,15 @@ export interface DailyRunChasePayload {
     targeted: boolean;
     weeklyTarget: number;
     wtd: number;
+    /** Week pace through COMPLETE days only — the figure that ties to a target report. Not the
+     *  card's headline any more: on a Monday it judges the firm on Saturday and Sunday alone. */
     pace: Pace | null;
+    /** THE CARD'S HEADLINE VERDICT: the week including today, measured against the share of today
+     *  the data share has actually copied. Null when no load stamp places today on the curve. */
+    paceInclToday: Pace | null;
+    /** Today's OWN day target. What "today so far" must be compared with — the card previously used
+     *  the judged day's target, i.e. Saturday's on a Monday, and printed +49 for a real +21. */
+    todayTarget: number | null;
     day: DayView;
     weekProgress: WeekProgress;
     chart: ChaseChart;

@@ -42,13 +42,17 @@ export interface TrackedCompanion {
   wtd: number;
 }
 
-export function ChaseStats({ day, weeklyTarget, wtd, today, companion }: {
+export function ChaseStats({ day, weeklyTarget, wtd, today, todayTarget, companion }: {
   day: DayView;
   weeklyTarget: number;
   wtd: number;
   /** Today's part-day count, the load that produced it, and the share of a day that load typically
    *  holds — the last of which is what lets today be compared with anything. */
   today?: { count: number; loadedAt: string | null; recordedShare: number | null } | null;
+  /** TODAY's own day target. Must not be confused with `day.target`, which is the JUDGED day's — on a
+   *  Monday that is Saturday's, roughly a third the size, and using it printed "+49 ahead" for a real
+   *  "+21". Null withholds the comparison rather than guessing a denominator. */
+  todayTarget?: number | null;
   companion?: TrackedCompanion | null;
 }) {
   // This strip is only rendered under a chase chart, i.e. for a TARGETED measure, so a missing target
@@ -60,13 +64,18 @@ export function ChaseStats({ day, weeklyTarget, wtd, today, companion }: {
   const gapClass = dayGap > 0 ? "val-green" : dayGap < 0 ? "val-amber" : "val-blue";
   const wtdPct = weeklyTarget > 0 ? Math.round((wtd / weeklyTarget) * 100) : 0;
 
-  // What should be recorded by now: the day's target scaled by the share of a day this load holds.
-  // Withheld entirely when there is no share (no load stamp) or no day target — a verdict against an
-  // unknown denominator is worse than none. Rounded, and only shown once it reaches 1: "0 of 0
-  // expected" is noise, and at the morning load a small KPI's expectation genuinely is under one.
+  // What should be recorded by now: TODAY's own day target scaled by the share of a day this load
+  // holds. Withheld entirely when there is no share (no load stamp) or no target for today — a
+  // verdict against an unknown denominator is worse than none. Rounded, and only shown once it
+  // reaches 1: "0 of 0 expected" is noise, and at the first load a small KPI's expectation genuinely
+  // is under one.
+  //
+  // `todayTarget`, NOT `dayTarget`. The latter belongs to the judged day — Saturday on a Monday — and
+  // using it here was a straight bug: 62 leads against Saturday's 38×⅓ = 13 read as "+49 ahead" when
+  // Monday's own 122×⅓ = 41 makes it "+21". See the note in datasets.ts.
   const todayExpected =
-    today && today.recordedShare != null && dayTarget > 0
-      ? Math.round(dayTarget * today.recordedShare)
+    today && today.recordedShare != null && todayTarget != null && todayTarget > 0
+      ? Math.round(todayTarget * today.recordedShare)
       : null;
   const todayGap = today && todayExpected != null ? today.count - todayExpected : null;
   const todayGapClass = todayGap == null ? "" : todayGap > 0 ? "val-green" : todayGap < 0 ? "val-amber" : "val-blue";

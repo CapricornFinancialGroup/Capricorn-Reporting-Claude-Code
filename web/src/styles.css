@@ -891,3 +891,25 @@ button { font: inherit; }
 .kiosk-canvas .mcl-cases { font-size: 12px; }
 .kiosk-canvas .mcl-value { font-size: 27px; }
 .kiosk-canvas .mcl-total { font-size: 14px; }
+
+/* Chase-chart tooltip. Hand-built (see paceChart) because the default four-series list made the
+   reader reconcile "Target pace 169 · Actual – · Projection 153 · Today so far 106" — a dash that
+   reads as "nothing has been done", and a cumulative figure labelled as if it were the day's own.
+   Two columns, label left and figure right, so the numbers form a column the eye can run down. */
+.ct { font-size: 11px; line-height: 1.45; min-width: 148px; }
+.ct-head {
+  font-weight: 700; font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--muted); margin-bottom: 4px;
+}
+.ct-row { display: flex; justify-content: space-between; gap: 14px; }
+.ct-row b { font-variant-numeric: tabular-nums; font-weight: 700; }
+/* "of which today" hangs off the row above it rather than reading as a peer figure. */
+.ct-sub { color: var(--muted); padding-left: 8px; }
+.ct-sub b { font-weight: 600; }
+/* The verdict is the point of the tooltip, so it gets the whole width and a rule above it. */
+.ct-verdict { justify-content: flex-end; border-top: 1px solid rgba(0,0,0,0.08); margin-top: 3px; padding-top: 3px; }
+.ct-ahead { color: var(--green); font-weight: 700; }
+.ct-behind { color: var(--amber); font-weight: 700; }
+/* Context, not the answer: the whole-day target and the projection sit quieter. */
+.ct-ctx { color: var(--muted); }
+.ct-ctx b { font-weight: 600; }

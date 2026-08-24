@@ -38,7 +38,7 @@ import { EMPTY_FILTERS, type ReportFilters } from "./filters.js";
 import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
-import { chaseStatus, computePace, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
+import { chaseStatus, computePace, paceInclPartDay, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
 import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 // `protectionCommissionByAdviser` is deliberately NOT imported any more: it credits a policy's whole
@@ -466,6 +466,29 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       // that day's target, with a day ahead/behind. Saturday now gets its own tile.
       const dayActual = dayTotal(core.daily[k], ctx.latestDay);
       const target = dayTarget(k, weekly, ctx.latestDayIndex);
+
+      // TODAY'S OWN day target, and the verdict that includes today.
+      //
+      // The card used to build today's expectation from `day.target` — the JUDGED day's target, which
+      // on a Monday is SATURDAY's. Saturday carries 6% of a week's leads and a Monday ~19%, so the
+      // board compared 62 leads against 13 and printed "+49 AHEAD" when the honest read was 62 vs 41,
+      // "+21". Wrong every day of the week, flattering on weekdays and harsh on Saturdays.
+      //
+      // With this, the three figures on a card finally reconcile: week through Sunday −3, today +21,
+      // cumulative +18. They did not before, and a board whose own numbers disagree is a board people
+      // stop believing — Capricorn, 2026-08-24: "they look at it and think nothing's been done and
+      // start questioning the data."
+      const todayIdx = today ? days.indexOf(today.date) : -1;
+      const todayTarget = targeted && todayIdx >= 0 ? dayTarget(k, weekly, todayIdx) : null;
+      const todayCount = today ? today.counts[k] : 0;
+      // Expected by now = the whole complete days (pace.expectedByNow) PLUS the share of today the
+      // ETL has actually copied. Comparing a part-day against a whole day's target is the 2026-07-30
+      // false collapse; this is the same correction the "today so far" tile makes, applied to the
+      // week so the chart's own tooltip can be fair too.
+      const paceInclToday =
+        targeted && todayTarget != null && today?.recordedShare != null && weekly > 0
+          ? paceInclPartDay(weekly, wtd, pace.expectedByNow, todayCount, todayTarget, today.recordedShare)
+          : null;
       return {
         key: k,
         label: KPI_LABELS[k],
@@ -473,8 +496,14 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
         targeted,
         weeklyTarget: weekly,
         wtd,
-        // Week pace — drives the trend chart's header status (the chart is the WTD trend).
+        // Week pace through COMPLETE days only. Still the reconciliation figure — it is the one that
+        // ties to a target report — but no longer what the card header shows.
         pace: targeted ? pace : null,
+        /** The card's single headline verdict: the week INCLUDING today, judged against the share of
+         *  today that is actually in. Null when there is no load stamp to place today on the curve. */
+        paceInclToday,
+        /** Today's own day target — what "today so far" must be measured against. */
+        todayTarget,
         day: {
           date: ctx.latestDay,
           actual: dayActual,

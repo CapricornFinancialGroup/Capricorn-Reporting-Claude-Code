@@ -52,6 +52,29 @@ export function paceChart(opts: {
    * the pace line, reads as "not in yet" rather than "not done".
    */
   today: Array<number | null> | null;
+  /**
+   * What today's column MEANS, for the tooltip. Without it the tooltip listed four raw series and
+   * the reader had to reconcile them: "Target pace 169 · Actual – · Projection 153 · Today so far
+   * 106". Three of those four were actively misleading — the dash reads as "nothing has been done",
+   * "Today so far 106" was the cumulative week (44 + 62) contradicting the 62 on the tile below it,
+   * and 106 against a full-Monday 169 makes every morning look like a collapse.
+   *
+   * Capricorn, 2026-08-24: "they look at it and think nothing's been done and start questioning the
+   * data. It takes away from the focus." A growth board cannot afford a tooltip that argues with the
+   * card it sits on.
+   */
+  todayInfo?: {
+    /** Index of today in `days`. */
+    idx: number;
+    /** Today's OWN count, not the cumulative — the figure the tile shows. */
+    count: number;
+    /** Cumulative expected by now: whole complete days + the recorded share of today. */
+    expectedCum: number;
+    /** Cumulative achieved − expectedCum. Positive = ahead. */
+    aheadBehind: number;
+    /** Whole-percent share of today the data share holds at this load. */
+    sharePct: number;
+  } | null;
   behind: boolean;
   nowLabel?: string;
 }): EChartsOption {
@@ -62,7 +85,55 @@ export function paceChart(opts: {
   return {
     animation: false,
     grid: { left: 44, right: 14, top: 22, bottom: 26, containLabel: true },
-    tooltip: { trigger: "axis" },
+    // ONE reality row, never a dash, and today judged against what is actually in.
+    //
+    // Built by hand rather than left to the default series list because the four series do not carry
+    // equal weight for a reader: "how are we doing" is one line (achieved), against one benchmark
+    // (what should be in by now). Target-for-the-whole-day and projection are context, and go last.
+    tooltip: {
+      trigger: "axis",
+      formatter: (raw: unknown): string => {
+        const params = (Array.isArray(raw) ? raw : [raw]) as Array<{ axisValue?: string; dataIndex?: number }>;
+        const i = params[0]?.dataIndex ?? -1;
+        const label = params[0]?.axisValue ?? "";
+        if (i < 0) return "";
+        const n = (v: number) => Math.round(v).toLocaleString();
+        const isToday = opts.todayInfo != null && opts.todayInfo.idx === i;
+        // The reality figure: today's dotted cumulative if this is today, else the solid actual.
+        const achieved = isToday ? opts.today?.[i] : opts.actual[i];
+        const fullDay = opts.targetPace?.[i];
+        const rows: string[] = [];
+        const row = (k: string, v: string, cls = "") =>
+          rows.push(`<div class="ct-row${cls ? ` ${cls}` : ""}"><span>${k}</span><b>${v}</b></div>`);
+
+        if (isToday && opts.todayInfo) {
+          const { count, expectedCum, aheadBehind, sharePct } = opts.todayInfo;
+          if (achieved != null) row("Achieved", n(achieved));
+          row("of which today", n(count), "ct-sub");
+          row("Expected by now", n(expectedCum));
+          const dir = aheadBehind >= 0 ? "ct-ahead" : "ct-behind";
+          const arrow = aheadBehind >= 0 ? "▲" : "▼";
+          row("", `<span class="${dir}">${arrow} ${n(Math.abs(aheadBehind))} ${aheadBehind >= 0 ? "ahead" : "behind"}</span>`, "ct-verdict");
+          if (fullDay != null) row("Full day target", n(fullDay), "ct-ctx");
+          return `<div class="ct"><div class="ct-head">${label} · part day, ${sharePct}% in</div>${rows.join("")}</div>`;
+        }
+
+        // A COMPLETE day, or a day still ahead of us. Either way: no dashes — a row with nothing
+        // behind it is omitted, not printed as "–".
+        if (achieved != null) row("Achieved", n(achieved));
+        if (fullDay != null) row(achieved != null ? "Target by now" : "Target pace", n(fullDay));
+        if (achieved != null && fullDay != null) {
+          const gap = achieved - fullDay;
+          const dir = gap >= 0 ? "ct-ahead" : "ct-behind";
+          const arrow = gap >= 0 ? "▲" : "▼";
+          row("", `<span class="${dir}">${arrow} ${n(Math.abs(gap))} ${gap >= 0 ? "ahead" : "behind"}</span>`, "ct-verdict");
+        }
+        const proj = opts.projection?.[i];
+        if (achieved == null && proj != null) row("Projection", n(proj), "ct-ctx");
+        if (!rows.length) return "";
+        return `<div class="ct"><div class="ct-head">${label}</div>${rows.join("")}</div>`;
+      },
+    },
     xAxis: {
       type: "category",
       boundaryGap: false,
@@ -137,7 +208,11 @@ export function paceChart(opts: {
       // point is a point rather than a line that trails off ambiguously.
       ...(opts.today
         ? [{
-            name: "Today so far",
+            // "Achieved · today", not "Today so far": the series data is CUMULATIVE (last complete
+            // day + today's count), so the old name contradicted the "Today so far" figure on the
+            // tile below by exactly the week-to-date. The tooltip is hand-built now, but the name
+            // still has to be true.
+            name: "Achieved · today",
             type: "line" as const,
             data: opts.today,
             showSymbol: true,

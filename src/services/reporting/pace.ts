@@ -60,6 +60,36 @@ export function computePace(target: number, current: number, fraction: number): 
   };
 }
 
+/**
+ * Pace for a week that includes a PART day — the card's headline verdict.
+ *
+ * `computePace` needs a clean "how far through the period are we" fraction, and a week that is two
+ * whole days plus a third of a third day has no such fraction on the day curve. So the expectation is
+ * assembled instead: every complete day's target in full, plus the share of today the data share has
+ * actually copied (`dayRecordedShare`). Comparing today's part-day against its WHOLE-day target is the
+ * 2026-07-30 false collapse — the board reads behind all morning and recovers by evening.
+ *
+ * `todayTarget` must be TODAY's day target. Passing the judged day's — Saturday's, on a Monday — is
+ * the bug this replaced: Saturday carries ~6% of a week's leads against a Monday's ~19%, so the board
+ * compared 62 leads with 13 and announced "+49 ahead" where the truth was "+21".
+ *
+ * The identity that matters, and what the test pins: this verdict equals the complete-days verdict
+ * plus today's own. A card whose three figures do not add up is a card people stop believing
+ * (Capricorn, 2026-08-24).
+ */
+export function paceInclPartDay(
+  weeklyTarget: number,
+  achievedComplete: number,
+  expectedThroughComplete: number,
+  todayCount: number,
+  todayTarget: number,
+  recordedShare: number,
+): Pace {
+  const expected = expectedThroughComplete + todayTarget * recordedShare;
+  const fraction = weeklyTarget > 0 ? expected / weeklyTarget : 0;
+  return computePace(weeklyTarget, achievedComplete + todayCount, fraction);
+}
+
 /** Today's date (YYYY-MM-DD) in `tz` — the business day the board measures. */
 export function tzToday(now: Date, tz: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(now); // en-CA → ISO-ish

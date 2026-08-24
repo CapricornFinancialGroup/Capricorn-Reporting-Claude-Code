@@ -56,6 +56,29 @@ function todaySeries(
   return out;
 }
 
+type ChaseKpi = DailyRunChasePayload["kpis"][number];
+
+/** The card's single verdict: the week INCLUDING today where today can be judged, else the
+ *  complete-days figure. Never both on one card — see the note at the pill. */
+function verdict(k: ChaseKpi) {
+  return k.paceInclToday ?? k.pace!;
+}
+
+/** What today's column means, for the chart tooltip. Null unless today is genuinely on the chart AND
+ *  judgeable — no load stamp means no honest expectation, so the tooltip falls back to plain rows. */
+function todayInfo(k: ChaseKpi, today: DailyRunChasePayload["today"]) {
+  if (!today || k.paceInclToday == null) return null;
+  const idx = k.chart.days.indexOf(today.date);
+  if (idx < 0 || today.recordedShare == null) return null;
+  return {
+    idx,
+    count: today.counts[k.key] ?? 0,
+    expectedCum: k.paceInclToday.expectedByNow,
+    aheadBehind: k.paceInclToday.aheadBehind,
+    sharePct: Math.round(today.recordedShare * 100),
+  };
+}
+
 export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<DailyRunChasePayload>("daily-run-chase", filters, mode, refreshMs);
   // KPIs with a target, i.e. the ones a "week chase" chart can honestly be drawn for. Filtering on
@@ -171,9 +194,15 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                       at all — an audit of every screen on 2026-08-20 found this one on zero triggers.
                       Back on the chart title, where the measure is named. */}
                   <span>{k.label} — week chase <MetricInfo metricKey={k.key} mode={mode} /></span>
+                  {/* ONE verdict per card, and it includes today.
+                      The pill read `pace`, which measures COMPLETE days only — so on a Monday it
+                      judged the firm on Saturday and Sunday and nothing else. Leads showed "Behind
+                      −3" (a dead Sunday) directly above a tile reading "Ahead +49" for today. Both
+                      described a different week and neither said which, and the reader is left to
+                      guess. `paceInclToday` covers the same period the chart draws. */}
                   <StatusPill
-                    status={k.pace!.status}
-                    label={k.pace!.status === "on_pace" ? "On Pace" : `${k.pace!.status === "ahead" ? "Ahead" : "Behind"} ${signed(k.pace!.aheadBehind)}`}
+                    status={verdict(k).status}
+                    label={verdict(k).status === "on_pace" ? "On Pace" : `${verdict(k).status === "ahead" ? "Ahead" : "Behind"} ${signed(verdict(k).aheadBehind)}`}
                   />
                 </div>
                 <div className="chart-box">
@@ -185,7 +214,8 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                       targetPace: k.chart.targetPace,
                       projection: k.chart.projection,
                       today: todaySeries(k.chart.days, k.chart.actual, data.today, k.key),
-                      behind: k.pace!.status === "behind",
+                      todayInfo: todayInfo(k, data.today),
+                      behind: verdict(k).status === "behind",
                     })}
                   />
                 </div>
@@ -193,6 +223,7 @@ export function DailyRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                   day={k.day}
                   weeklyTarget={k.weeklyTarget}
                   wtd={k.wtd}
+                  todayTarget={k.todayTarget}
                   today={
                     data.today
                       ? {
