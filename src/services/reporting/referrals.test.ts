@@ -62,3 +62,49 @@ describe("referredProtectionSales", () => {
     expect(built.params.find((p) => p.name === "From")?.value).toBe("2026-07-18");
   });
 });
+
+// The recipient of the 40% is RECORDED, not inferred — we told Kyle otherwise four times. See
+// SPLIT_RECIPIENT_SOURCE in domain/data-quality.ts. These pin the ordering, because getting it the
+// wrong way round put £45,882 of 2026 split commission on the wrong adviser.
+describe("referredProtectionSales — the platform's own recipient comes first", () => {
+  const q = () => referredProtectionSales("2026-08-01", "2026-08-07");
+
+  it("reads SplitAdviserUserAccountKey, the column we wrongly said was absent", () => {
+    expect(q().text).toContain("p.SplitAdviserUserAccountKey");
+  });
+
+  it("prefers the platform's adviser over the client-derived one", () => {
+    // COALESCE order IS the policy: platform first, derivation second. Reversed, the derivation would
+    // win wherever a client has any mortgage — which is most cases — and the recorded recipient would
+    // never be used at all.
+    expect(q().text).toMatch(/COALESCE\(sa\.Username,\s*mu\.Username\)/);
+    expect(q().text).toMatch(/COALESCE\(sa\.FullName,\s*mu\.FullName\)/);
+  });
+
+  it("excludes sentinel keys rather than crediting a blank account", () => {
+    // The Gold build writes COALESCE(key, -OrganisationKey), so an unresolved key arrives as −486 and
+    // passes IS NOT NULL while naming nobody. Without this guard every unresolved split would credit
+    // one blank useraccount row and it would climb the league.
+    expect(q().text).toMatch(/p\.SplitAdviserUserAccountKey\s*>\s*0/);
+    expect(q().text).not.toMatch(/SplitAdviserUserAccountKey\s+IS\s+NOT\s+NULL/);
+  });
+
+  it("keeps the client derivation as a fallback, not a replacement", () => {
+    // The platform's column is empty on cases merged since ~July 2026 (upstream regression), so
+    // dropping the derivation now would lose attribution on exactly the newest week the board shows.
+    expect(q().text).toContain("PrimaryClientKey = pc.ClientKey");
+    expect(q().text).toMatch(/ORDER BY\s+m\.LeadDate\b(?!\s+DESC)/);
+  });
+
+  it("says which source each row used, so the board can stop claiming it is all inferred", () => {
+    expect(q().text).toContain("originatorSource");
+    expect(q().text).toContain("'platform'");
+    expect(q().text).toContain("'derived'");
+  });
+
+  it("still groups one row per originator/converter pair after the rewrite", () => {
+    // The preference is computed in a derived table, so the GROUP BY has to name the OUTER columns —
+    // grouping on the raw joins again would split one adviser pair across two rows.
+    expect(q().text).toMatch(/GROUP BY s\.originator, s\.originatorName, s\.originatorSource, s\.converter, s\.converterName/);
+  });
+});

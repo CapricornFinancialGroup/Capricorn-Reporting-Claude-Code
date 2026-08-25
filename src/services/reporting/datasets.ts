@@ -1610,10 +1610,14 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
      *   the 40% AMOUNT is read.      `protectioncase.SplitCommission` is populated on 102 of the 309
      *                               protection cases in the 90 days to 2026-08-21 and is exactly 40%
      *                               of ProductCommission on every one. Capricorn's own number.
-     *   the RECIPIENT is inferred.   `SplitAdviserUserAccountKey` is populated on 1 of 309, so the
-     *                               platform's recorded recipient is unusable. The mortgage adviser is
-     *                               identified from the CLIENT instead (see referrals.ts), which
-     *                               attributed £14,300 of the £15,709 split in W34 — 91%.
+     *   the RECIPIENT is READ TOO,  from `SplitAdviserUserAccountKey` — corrected 2026-08-25. That
+     *   where it is populated.       column IS in the share and holds the platform's own recipient; it
+     *                               is complete on split cases merged up to June 2026 and empty on
+     *                               recent ones through an upstream regression, not absence. Where it
+     *                               is empty the mortgage adviser is still identified from the CLIENT
+     *                               (see referrals.ts). The derivation was right on only 17% of the
+     *                               cases where the platform names someone, so this ordering matters:
+     *                               £45,882 of 2026 split commission was going to the wrong adviser.
      *
      * So: the writing adviser keeps commission MINUS the split, and the split goes to the mortgage
      * adviser whose client it was. Three cases where it does not:

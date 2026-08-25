@@ -232,8 +232,13 @@ describe("momentum + league builders", () => {
       expect(q.text).toContain("WorkflowStatusId IN ('60', '65', '70', '105', '120')");
     }
     expect(protection.text).toMatch(/SUM\(COALESCE\(f\.ProductCommission, 0\)\) AS commission/);
-    // Credited to the case's PRIMARY adviser. The recipient of a commission split is not in the share
-    // (PBI 91379), so there is no second credit to give — see SPLIT_RECIPIENT_SOURCE.
+    // Credited to the case's PRIMARY adviser, and deliberately WITHOUT the 60/40 — this builder is the
+    // whole-commission view kept for reconciliation against a Total Written Report run per adviser.
+    // The split lives in `referredProtectionSales`, which credits the recipient properly.
+    //
+    // The old comment here said the recipient "is not in the share (PBI 91379)". That was wrong — see
+    // SPLIT_RECIPIENT_SOURCE. The assertion below is unchanged in effect but is now about SCOPE rather
+    // than availability: this query must stay gross so the two views can be compared.
     expect(protection.text).toContain("adv.UserAccountKey = f.PrimaryAdviserUserAccountKey");
     expect(protection.text).not.toContain("SplitCommission");
   });

@@ -159,22 +159,73 @@ export const PROTECTION_WRITTEN_STATUSES = ["60", "65", "70", "105", "120"] as c
  * Pass 2 is why Michael Ngoka appears on Kyle's Total Written Report with £13,948 of protection
  * commission while not being the primary adviser on those cases.
  *
- * ⚠ CORRECTING MY OWN CORRECTION. On 2026-08-10 I told Kyle the recipient field "is empty on all of
- * them". That was wrong, and it walked back an earlier statement that had been RIGHT. The chain:
- *   - `dbo.tblSplitCommission` (FinanceId, ToAdviserId, Commission) holds the split and its
- *     recipient. It is NOT in the Gold share — that is the whole of PBI 91379, correctly specified.
- *   - `protectioncase.SplitCommission` in our feed is a derived copy of the AMOUNT only.
- *   - `protectioncase.SplitAdviserUserAccountKey` is NULL on every split case, and
- *     `ReferringAdviserUserAccountKey` carries a firm-level sentinel (the negated OrganisationKey,
- *     e.g. -486) on 23 of 24 — so neither is the recipient, and neither is what the platform uses.
- *   - Therefore "the referral field is only populated on 1 in 5 cases" is TRUE but IRRELEVANT to the
- *     split: the platform never reads it for this. Do not cite it as the blocker again.
+ * ⚠⚠ THE RECIPIENT IS IN THE SHARE. WE TOLD KYLE OTHERWISE FOUR TIMES AND WE WERE WRONG.
  *
- * The ask is one column: `tblSplitCommission.ToAdviserId` (with FinanceId and Commission) in the
- * share. Until then per-adviser protection on the Adviser League cannot match the Written Report,
- * and firm totals are unaffected.
+ * `protectioncase.SplitAdviserUserAccountKey` is a real column carrying `tblSplitCommission.ToAdviserId`
+ * resolved through `useraccount`. Verified against production on 2026-08-25:
+ *
+ *   - Silver source is immaculate: `GASilver.dbo.tblsplitcommission` scoped to the two Capricorn orgs
+ *     ('1MEQ16C','1Q1M7BJ') has BOTH ToAdviserId and FromAdviserId on 100% of rows in every month from
+ *     Sep 2025 to Aug 2026 (59/59 in August), average SplitPercent 40.8%.
+ *   - Gold carries it too, and correctly: of split cases last merged up to June 2026, 2,980 of 2,980
+ *     have a real recipient key. Six August cases traced end to end — Gold `SplitCommission` equals
+ *     source `Commission` to the penny, Gold's primary adviser equals source `FromAdviserId`, and every
+ *     `ToAdviserId` resolves to a named mortgage adviser in Gold's own `useraccount`.
+ *   - Populated history resolves to exactly who you would expect: Mason Elliott 194 cases,
+ *     Luke Northcott 176, Tony Chryseliou 142, Ross Murphy 132, James Storer 130.
+ *
+ * WHAT IS ACTUALLY BROKEN is an upstream regression, and it tracks MERGE date, not case date:
+ *
+ *   last merged ≤ Jun 2026   2,980 split cases, 2,980 with a real recipient   (100%)
+ *   last merged Jul 2026        94 split cases,    43 real, 41 sentinel, 10 NULL
+ *   last merged Aug 2026        96 split cases,     8 real,  6 sentinel, 82 NULL
+ *
+ * So the column populates correctly on insert and is LOST when a row is re-merged. Read by case date
+ * that looks like "cases since May lost it"; read by merge date it is "anything the ETL has touched
+ * since July lost it", which also means history will erode as old cases are updated. None had eroded
+ * as of 2026-08-25 (no pre-May case is missing it yet).
+ *
+ * The NULLs are the tell. Both `LoadGold` and `MergeGold` write
+ * `COALESCE(sad.UserAccountKey, -org.OrganisationKey)`, which cannot return NULL — and on the very same
+ * August rows `ReferringAdviserUserAccountKey` does carry −486. Two columns built by one identical
+ * expression cannot diverge in one SELECT, so those rows were not written by either notebook as they
+ * now stand: the DEPLOYED Capricorn-share build differs from the repo. That build is not in
+ * Smartr365.Reporting.Workspaces — it is a Fabric artefact — so it cannot be fixed from this codebase.
+ *
+ * PBI 91379 IS THE WRONG TICKET, though not quite for the reason it looks. Its literal ask — put
+ * `tblSplitCommission` in the share — is genuinely unfulfilled: `GAGold_Capricorn` has no table matching
+ * `%split%`. But it is also unnecessary, because the recipient is already exposed by a different route.
+ * Raise a REGRESSION against the Capricorn Gold share build instead: `protectioncase.SplitAdviserUserAccountKey`
+ * stopped populating on re-merge from ~July 2026. Filed as a new column request, 91379 will be closed
+ * as already-done and nothing will improve.
+ *
+ * `ReferringAdviserUserAccountKey` remains a red herring for the split AND a sentinel trap in its own
+ * right — see DIMENSION_KEY_SENTINEL. Do not cite it as the blocker again.
  */
-export const SPLIT_RECIPIENT_SOURCE = "dbo.tblSplitCommission.ToAdviserId (NOT in the Gold share — PBI 91379)" as const;
+export const SPLIT_RECIPIENT_SOURCE =
+  "protectioncase.SplitAdviserUserAccountKey (IN the share; upstream regression empties it on re-merge from ~Jul 2026)" as const;
+
+/**
+ * ⚠ NEVER TEST A DIMENSION KEY IN THIS SHARE FOR NULL. TEST IT FOR A VALID MEMBER.
+ *
+ * The Gold build resolves every adviser key as `COALESCE(x.UserAccountKey, -org.OrganisationKey)`, so an
+ * unresolved key arrives as the NEGATED ORGANISATION KEY — −486 for CFM — which is a row that exists in
+ * `useraccount` with a NULL UserID and a blank FullName and Username. It passes `IS NOT NULL`. It names
+ * nobody.
+ *
+ * Measured 2026-08-25, `protectioncase.ReferringAdviserUserAccountKey`, by ApplicationDate month:
+ *
+ *   month     cases   non-null   real person
+ *   2026-06      99        99          22
+ *   2026-07     119       119          23
+ *   2026-08      80        80          10
+ *
+ * An `IS NOT NULL` completeness check reads 100% where the truth is 13% — overstating attribution about
+ * sevenfold. `ProtectionReferralByUserAccountKey` is worse: non-null on 100% of the 298 cases from June
+ * to August and a real person on ZERO of them. Anything reported as "now 100% populated" off a null test
+ * on these columns is an artefact, not an improvement.
+ */
+export const DIMENSION_KEY_SENTINEL = "keys ≤ 0 are the negated OrganisationKey and name nobody" as const;
 
 /**
  * The column that means "a mortgage offer was issued", matching the platform's own reports.

@@ -270,11 +270,11 @@ function CommissionLeague({ data, mode }: { data: MarketMomentumPayload; mode: M
         All written commission for the week, whichever product line earned it — mortgage, protection and general
         insurance counted together. Commission is what the lender or provider pays Capricorn; client fees are not
         included. <b>Protection is split 60/40</b>: the adviser who wrote the policy keeps their share and the 40% goes
-        to the mortgage adviser whose client it was. The 40% is Capricorn&rsquo;s own recorded figure; the mortgage
-        adviser is identified from the client, since the platform&rsquo;s split-recipient field is not in the data
-        share — so an individual row can still differ from the Total Written Report. Where a client has no mortgage,
-        the 40% has no identifiable recipient and is carried as &ldquo;no adviser on file&rdquo; rather than left with
-        the writing adviser. The week&rsquo;s total is unaffected either way.
+        to the referring mortgage adviser. Both halves are Capricorn&rsquo;s own record — the amount and the recipient
+        both come from the platform. Where the platform has not recorded a recipient, the mortgage adviser is identified
+        from the client instead, and those rows can differ from the Total Written Report. Where the client has no
+        mortgage either, the 40% is carried as &ldquo;no adviser on file&rdquo; rather than left with the writing
+        adviser. The week&rsquo;s total is unaffected either way.
       </div>
     </div>
   );

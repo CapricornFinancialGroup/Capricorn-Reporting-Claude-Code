@@ -308,11 +308,12 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     status: "indicative",
     note:
       "The week's TOTAL reconciles; an individual ROW may not. Protection is split 60/40 — the writing " +
-      "adviser keeps their share, the 40% goes to the mortgage adviser whose client it was. The 40% is " +
-      "Capricorn's own recorded amount, but the mortgage adviser is identified from the CLIENT because " +
-      "the platform's split-recipient field is not in the data share, so a row can still disagree with " +
-      "the Total Written Report. Where the client has no mortgage the 40% has no recipient and is shown " +
-      "as \"no adviser on file\". Headed \"mortgages\" but counts every product line.",
+      "adviser keeps their share, the 40% goes to the referring mortgage adviser. Both halves are now " +
+      "Capricorn's own record: the amount comes from the platform, and so does the recipient. On cases " +
+      "where the platform has not recorded a recipient, the mortgage adviser is identified from the " +
+      "CLIENT instead and the row can differ from the Total Written Report. Where the client has no " +
+      "mortgage either, the 40% is shown as \"no adviser on file\" rather than left with the writer. " +
+      "Headed \"mortgages\" but counts every product line.",
   },
   {
     key: "pace",
