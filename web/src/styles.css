@@ -883,6 +883,10 @@ button { font: inherit; }
   margin-top: 8px; padding-top: 8px; border-top: 2px solid var(--border);
   font-size: 12px; font-variant-numeric: tabular-nums;
 }
+/* The 60/40 stated as a figure. Green because it is the thing Kyle has been asking to see working, not
+   a caveat — but sized as supporting detail so it does not compete with the week's total beside it. */
+.mcl-split { font-size: 10.5px; font-weight: 600; color: var(--green); }
+.mcl-split strong { font-weight: 800; }
 .mcl-empty {
   flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
   color: var(--text-secondary); font-size: 12px;

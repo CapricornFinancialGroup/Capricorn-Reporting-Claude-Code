@@ -1457,6 +1457,17 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
         // Quarter average is a WHOLE-week measure, so it stays anchored to the last complete week —
         // comparing four days against a 13-week average of full weeks would always read as behind.
         vsQuarterPct: series[li] != null && qa ? round((((series[li] as number) - qa) / qa) * 100, 1) : null,
+        /** WHICH WEEK `vsQuarterPct` is about — never the same week as the card's headline.
+         *
+         *  The pill rendered as a bare "−14.9% vs qtr avg" in the top corner of a card whose footer read
+         *  "W35 to 24 Aug: £92.1k +101% vs W34 same days". Two figures, opposite signs, no periods
+         *  named, and the prominent one describing a week the card was not otherwise about. Kyle read
+         *  the screen as not having been moved to the current week at all (2026-08-25: "I don't believe
+         *  this screen has been updated as requested"). It had been; the pill was arguing with it.
+         *
+         *  Taken from `li` rather than from `lastComplete`, because the two are not always the same week
+         *  — `lastComplete` additionally requires the week to be fully loaded. */
+        vsQuarterLabel: weeks[li] ?? null,
       };
     };
 
@@ -1634,15 +1645,31 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
      * The FIRM TOTAL is untouched by any of this: it comes from the graph's own series and is 100% of
      * both legs. This only changes who inside it holds which share.
      */
+    // COUNT WHAT THE SPLIT ACTUALLY MOVED, so the board can prove it rather than assert it.
+    //
+    // Kyle asked four times whether this screen applies the 60/40 and, having been told it does, asked
+    // again on 2026-08-25: "we haven't had confirmation that the Mortgage (written) on the right splits
+    // the protection 60/40". The split HAD been live since 08-24 — but in the week he was looking at
+    // (W35 to 24 Aug) the entire protection split was £204 against a £92,100 week, 0.2%, so nothing on
+    // the card visibly moved. There was no way to tell a working split from a broken one by looking.
+    // A figure he can read settles it every week without an email.
+    let splitReassigned = 0;
+    let splitSelfReferred = 0;
+    let splitCases = 0;
     for (const r of protReferred) {
       const full = r.commission ?? 0;
       const split = r.splitCommission ?? 0;
       const selfReferral = r.originator != null && r.originator === r.converter;
       const handOver = selfReferral ? 0 : split;
+      if (split > 0) splitCases += r.sales;
+      if (selfReferral) splitSelfReferred += split;
       credit(r.converter, r.converterName, full - handOver, r.sales);
       // `credit` already routes a nameless adviser to `unattributed`, which is exactly what an
       // unidentifiable referrer needs — so the null-originator case needs no special handling here.
-      if (handOver > 0) credit(r.originator, r.originatorName, handOver, 0);
+      if (handOver > 0) {
+        splitReassigned += handOver;
+        credit(r.originator, r.originatorName, handOver, 0);
+      }
     }
     const earners = [...earnerBy.values()]
       .filter((r) => r.commission > 0)
@@ -1666,6 +1693,22 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       earners: earners.length,
       /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */
       unattributed: Math.round(unattributed),
+      /**
+       * THE 60/40, AS A NUMBER ON THE CARD.
+       *
+       * `reassigned` = the 40% actually moved from writing advisers to referring mortgage advisers this
+       * week. `selfReferred` = split on cases where the same adviser did both, so nothing moved and
+       * nothing should. `cases` = how many written protection cases carried a split at all.
+       *
+       * Together these answer "is the split working?" from the screen. A week showing 0 cases means
+       * there was no protection split to apply — not that the rule is off, which is the inference Kyle
+       * kept having to make and kept having to ask about.
+       */
+      split: {
+        reassigned: Math.round(splitReassigned),
+        selfReferred: Math.round(splitSelfReferred),
+        cases: splitCases,
+      },
       /** Same input-lag caveat as the graph — a just-closed week is still filling. */
     };
 

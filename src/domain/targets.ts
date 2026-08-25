@@ -93,8 +93,25 @@ export const DAILY_TARGETS: KpiTargets = { leads: 126.6, applications: 23, refer
 const WEEKEND_SHARES: Record<KpiKey, [number, number]> = {
   leads: [0.060, 0.015],
   applications: [0.015, 0.020],
-  referrals: [0.020, 0.000],
-  sales: [0.035, 0.000],
+  // PROTECTION IS A WEEKDAY BUSINESS — Kyle's ruling, 2026-08-25: "This is the most accurate, slightly
+  // different to that of Mortgage. We should weight it Monday to Friday for Protection."
+  //
+  // Asked because the board was marking the team down every weekend for days protection is never
+  // written on. Twelve weeks, 1 Jun – 21 Aug: opportunities Mon 161 / Tue 125 / Wed 147 / Thu 137 /
+  // Fri 113 against SAT 5 and SUN 4; written Thu 70 / Wed 56 / Tue 54 / Mon 42 / Fri 37 against SAT 1
+  // and SUN 0. Averaged over twelve Saturdays that is 0.4 opportunities and 0.08 written, while the
+  // Saturday target rounded UP to 1 and 2 — so both protection cards reported behind every weekend,
+  // and on a Monday the week-to-date read "0 of 58" because the only complete days were the two days
+  // protection isn't done.
+  //
+  // Zero here, not a small number: `dayTarget` rounds, so any share above ~0.9% would round back up to
+  // a whole case on a 58/week target and the false verdict would return.
+  //
+  // Leads and mortgages KEEP their weekend share — Saturday is a real trading day for those (~36
+  // leads), which is the whole reason the week runs Sat–Fri. This is the difference Kyle means by
+  // "slightly different to that of Mortgage".
+  referrals: [0.000, 0.000],
+  sales: [0.000, 0.000],
   // New enquiries arrive at the weekend; remortgage and repeat work is opened by advisers on weekdays.
   // Observed Sat 8 – Fri 14 Aug: 2 of 111 existing-client cases fell on the Saturday, 0 on the Sunday.
   // Only shapes the day curve, which nothing paces against while this KPI has no target.

@@ -102,7 +102,9 @@ export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
  *  silently, until 2026-07-28) so this is on the same basis as Capricorn's own Total Written report. */
 function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode }) {
   const { written } = data;
-  const vsQ = data.kpis.find((k) => k.key === "written")?.vsQuarterPct ?? null;
+  const writtenKpi = data.kpis.find((k) => k.key === "written");
+  const vsQ = writtenKpi?.vsQuarterPct ?? null;
+  const vsQuarterLabel = writtenKpi?.vsQuarterLabel ?? null;
   const targetK = Math.round(written.combined.target / 1000);
   // THE TARGET PERCENTAGE HANGS OFF THE FORECAST WHILE THE WEEK IS RUNNING, not off the week-to-date
   // actual. A whole-week target can only fairly judge a whole-week figure: £160k of a £436k target
@@ -126,8 +128,18 @@ function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode 
         <span>
           Total Written (£k) <MetricInfo metricKey="written" mode={mode} />
         </span>
+        {/* THE PILL NAMES ITS WEEK. It read a bare "−14.9% vs qtr avg" in the corner of a card whose
+            footer said "W35 to 24 Aug: £92.1k +101% vs W34 same days" — two figures, opposite signs,
+            neither stating its period, and the louder one describing a week the card was not about.
+            Kyle read that as the screen never having been moved to the current week (2026-08-25). It
+            had been. The quarter average is a whole-week measure and has to stay on the last complete
+            week, so the honest fix is to say so rather than to change what it measures. */}
         {vsQ != null && (
-          <span className={`pill ${vsQ > 2 ? "ahead" : vsQ < -2 ? "behind" : "on_pace"}`}>
+          <span
+            className={`pill ${vsQ > 2 ? "ahead" : vsQ < -2 ? "behind" : "on_pace"}`}
+            title="The last COMPLETE week against the 13-week average. Held there on purpose: comparing a part week against an average of full weeks would read as a collapse every Monday. The current week is in the footer beneath the graph."
+          >
+            {vsQuarterLabel ? `${vsQuarterLabel} ` : ""}
             {vsQ >= 0 ? "+" : ""}
             {vsQ}% vs qtr avg
           </span>
@@ -261,6 +273,26 @@ function CommissionLeague({ data, mode }: { data: MarketMomentumPayload; mode: M
           — {league.partial ? "the headline under the graph" : "the figure on the graph"}
         </span>
         {share != null && <span className="pill muted">top 10 = {share}%</span>}
+        {/* THE 60/40, STATED AS A NUMBER. Kyle asked four separate times whether this card applies the
+            split, and asked again after it had been live for a day (2026-08-25). The reason he could
+            not tell is that in the week he was looking at, the entire protection split was £204 against
+            a £92,100 week — 0.2%, so nothing on the card moved. A working split and an absent one looked
+            identical. This line makes the difference visible: an amount when there is one, and "no
+            protection split this week" when there is genuinely nothing to apply, which is the fact he
+            was actually missing rather than a rule that was off. */}
+        <span className="mcl-split" title="Capricorn's 60/40: the writing adviser keeps their share and the 40% goes to the referring mortgage adviser. This is the 40% actually moved between advisers in this week. The firm total above is unchanged by it — the split only changes who inside that total holds which share.">
+          {league.split.cases === 0
+            ? "no protection split this week"
+            : (
+              <>
+                60/40 applied: <strong>{gbpCompact(league.split.reassigned)}</strong> moved to referring advisers
+                {" "}across {num(league.split.cases)} {league.split.cases === 1 ? "case" : "cases"}
+                {league.split.selfReferred > 0 && (
+                  <> · {gbpCompact(league.split.selfReferred)} stayed put (same adviser both sides)</>
+                )}
+              </>
+            )}
+        </span>
         <span style={{ marginLeft: "auto", opacity: 0.65, fontSize: 10.5 }}>
           top 10 of {num(league.earners)} earning advisers
           {league.unattributed > 0 && <> · {gbpCompact(league.unattributed)} on cases with no adviser on file</>}

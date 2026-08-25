@@ -286,6 +286,11 @@ export interface MomentumKpi {
   delta: number | null;
   deltaPct: number | null;
   vsQuarterPct: number | null;
+  /** WHICH WEEK `vsQuarterPct` describes — deliberately the last COMPLETE week, never the card's
+   *  headline week. Rendered beside the figure because an unlabelled "−14.9%" in the corner of a card
+   *  whose footer said "+101% vs W34 same days" read as the screen not being on the current week at
+   *  all (Kyle, 2026-08-25). It was; the pill was silently about a different period. */
+  vsQuarterLabel: string | null;
   /** True when `latest` is the CURRENT week to date and `delta` compares it with the prior week
    *  truncated to the same weekday — the comparison Kyle asked for on 2026-08-07, made fair. */
   likeForLike: boolean;
@@ -366,6 +371,11 @@ export interface MarketMomentumPayload {
     earners: number;
     /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */
     unattributed: number;
+    /** The 60/40 as a figure on the card: `reassigned` is the 40% actually moved to referring mortgage
+     *  advisers this week, `selfReferred` the split on cases where one adviser did both (so nothing
+     *  moved), `cases` how many written protection cases carried a split at all. Zero cases means there
+     *  was no split to apply — not that the rule is off, which is the inference Kyle kept having to make. */
+    split: { reassigned: number; selfReferred: number; cases: number };
   };
   /** Combined weekly written target, £k — reference line on the Weekly Written trend. */
   writtenTargetCombinedK: number;

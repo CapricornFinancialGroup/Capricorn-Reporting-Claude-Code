@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS, KPI_KEYS } from "../../domain/targets.js";
+import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, DAY_WEIGHTS, dayTarget, KPI_KEYS } from "../../domain/targets.js";
 import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, mtdPacing, weekElapsedFraction, weeklyPacing } from "./pacing.js";
 
 // The week is Sat..Fri, so index 0 = Sat, 1 = Sun, 2 = Mon ... 6 = Fri.
-const [SAT, MON, TUE, WED, THU, FRI] = [0, 2, 3, 4, 5, 6];
+const [SAT, SUN, MON, TUE, WED, THU, FRI] = [0, 1, 2, 3, 4, 5, 6];
 
 describe("weekly weights", () => {
   it("keeps Conor's weekday shape: Mon\u2013Thu equal, Friday 80% of a Mon\u2013Thu day", () => {
@@ -23,12 +23,39 @@ describe("weekly weights", () => {
     }
   });
 
-  // The bug this fixes: Saturday used to carry ZERO expected share while Capricorn traded through it
-  // (~36 leads a day), so its business counted towards the actual and nothing towards the
-  // expectation. Kyle, 2026-08-04: "we do Saturday coverage which can result in circa 50+ leads".
-  it("no longer expects nothing on a Saturday", () => {
-    for (const k of KPI_KEYS) {
+  // The bug this guards: Saturday used to carry ZERO expected share for EVERY measure while Capricorn
+  // traded through it (~36 leads a day), so its business counted towards the actual and nothing
+  // towards the expectation. Kyle, 2026-08-04: "we do Saturday coverage which can result in circa 50+
+  // leads". That must never come back for the measures that genuinely trade on a Saturday.
+  it("still expects Saturday business where Capricorn actually does Saturday business", () => {
+    for (const k of ["leads", "applications", "existingCases"] as const) {
       expect(DAY_WEIGHTS[k][SAT], `${k}: Saturday must carry a non-zero share`).toBeGreaterThan(0);
+    }
+  });
+
+  // ...and the deliberate exception, pinned so nobody "fixes" it back. Kyle's ruling, 2026-08-25: "We
+  // should weight it Monday to Friday for Protection." Twelve weeks to 21 Aug: 5 protection
+  // opportunities and 1 written across twelve SATURDAYS, against 113–161 per weekday. A Saturday target
+  // of 1–2 cases against an average of 0.4 and 0.08 had both protection cards reporting behind every
+  // weekend, and the week-to-date reading "0 of 58" every Monday.
+  it("expects NOTHING from protection at the weekend, on Kyle's ruling", () => {
+    for (const k of ["referrals", "sales"] as const) {
+      expect(DAY_WEIGHTS[k][SAT], `${k}: Saturday`).toBe(0);
+      expect(DAY_WEIGHTS[k][SUN], `${k}: Sunday`).toBe(0);
+      // Exactly zero, not merely small: dayTarget ROUNDS, so a share of even 1% comes back as a whole
+      // case on a 58/week target and the false weekend verdict returns.
+      expect(dayTarget(k, 58, SAT), `${k}: Saturday target`).toBe(0);
+      expect(dayTarget(k, 58, SUN), `${k}: Sunday target`).toBe(0);
+    }
+  });
+
+  it("gives protection's weekend share to its weekdays rather than losing it", () => {
+    // Kyle was explicit that the weekly numbers do not change, only how they are spread — so the curve
+    // must still sum to a full week and the weekdays must have absorbed the difference.
+    for (const k of ["referrals", "sales"] as const) {
+      expect(DAY_WEIGHTS[k].reduce((a, b) => a + b, 0), k).toBeCloseTo(1);
+      expect(dayTarget(k, 58, MON), `${k}: Monday`).toBeGreaterThan(0);
+      expect(DAY_WEIGHTS[k][MON], `${k}: Monday share vs leads`).toBeGreaterThan(DAY_WEIGHTS.leads[MON]);
     }
   });
 
