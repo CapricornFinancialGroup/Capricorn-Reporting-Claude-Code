@@ -218,8 +218,10 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     note:
       "Covers the Capricorn GROUP. A Total Written Report run inside one entity covers that entity " +
       "alone: for Sat 25–31 Jul that is £413,541 group against £381,559 for CFM. Both are shown per " +
-      "week on the Reconciliation screen. A week within a fortnight of its end is marked provisional " +
-      "and can still move in either direction.",
+      "week on the Reconciliation screen. A week keeps moving for about a fortnight after it ends, in " +
+      "EITHER direction — late entry adds business, and cases already counted are sometimes removed. " +
+      "Every closed week watched since 10 Aug 2026 has moved, by up to 7%. So a just-closed week is " +
+      "accurate to within a few thousand pounds, not to the penny; Reconciliation shows what moved.",
   },
   {
     key: "revenue",

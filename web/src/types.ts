@@ -283,9 +283,6 @@ export interface MomentumKpi {
   weekFrom: string;
   weekTo: string;
   priorWeekLabel: string | null;
-  /** True when this week's WrittenDate-keyed figure is still filling from input lag — mean 6 days,
-   *  so a just-closed week is not final. */
-  provisional: boolean;
   delta: number | null;
   deltaPct: number | null;
   vsQuarterPct: number | null;
@@ -350,10 +347,8 @@ export interface MarketMomentumPayload {
       weekFrom: string;
       weekTo: string;
       actual: number;
-      provisional: boolean;
     } | null;
     clientFees: number;
-    provisional: boolean;
   };
   /** Top 10 commission earners over the SAME window `written` reports — the league beside the graph.
    *  All commission, product lines added together and never split (2026-08-19). */
@@ -371,7 +366,6 @@ export interface MarketMomentumPayload {
     earners: number;
     /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */
     unattributed: number;
-    provisional: boolean;
   };
   /** Combined weekly written target, £k — reference line on the Weekly Written trend. */
   writtenTargetCombinedK: number;

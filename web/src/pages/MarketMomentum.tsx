@@ -39,12 +39,23 @@ import type { Mode } from "../api.js";
 import { Load, type PageProps } from "./common.js";
 
 /**
- * Both panels carry the same chip because they are the same week's money.
+ * NO "PROVISIONAL" CHIP ON THIS PAGE — removed 2026-08-25, and the reason is that it could never turn
+ * off, not that the risk behind it went away.
  *
- * KEPT, AND NOW SAYS WHAT IT MEANS. Capricorn asked on 2026-08-20 to drop it "unless you can tell me
- * why we need to have provision on there". The week snapshots (services/snapshots, recording since
- * 10 Aug) answer that: every closed week observed has moved after it closed, and two of the three
- * moved DOWN, which is business leaving a week rather than late entry arriving.
+ * The flag is `week end + INPUT_LAG_SETTLE_DAYS > dataAsOf`. This page leads with the CURRENT week, so
+ * its end is today or later and the condition is true by construction — as is the one on the last
+ * ENDED week, which is never more than six days old. A badge that is permanently lit carries no
+ * information: it cannot distinguish a week worth double-checking from one that is settled, which is
+ * the only thing a reader would want it for. Capricorn, 2026-08-25: "I still don't understand why they
+ * have provisional in there. It either is data or it is not."
+ *
+ * What replaces it is what the cards already said, in real dates rather than a word: "W35 to 24 Aug"
+ * with a forecast beside it, and "W35 so far · 22 Aug – 24 Aug" on the league. Both state the part-week
+ * plainly, and neither implies a figure is missing.
+ *
+ * THE RISK IS REAL AND STILL HAS A HOME. The week snapshots (services/snapshots, recording since
+ * 10 Aug) show every closed week moving after it closed, two of three DOWNWARD — business leaving a
+ * week, not late entry arriving:
  *
  *   25–31 Jul   mortgage commission £413,540 → £414,283, still climbing on 19 Aug (day 19, i.e.
  *               AFTER the 14-day settle window), protection cases 28 → 29
@@ -52,16 +63,11 @@ import { Load, type PageProps } from "./common.js";
  *               client fees −£301 — every one of them DOWN
  *   8–14 Aug    mortgage commission −£220, client fees −£200
  *
- * So the chip is load-bearing: a figure quoted from a just-closed week can be wrong by several
- * thousand pounds within a fortnight. The old wording claimed figures "will rise", which the same
- * evidence contradicts — the movement goes both ways, and saying otherwise would have made a
- * downward revision look like a bug.
+ * So a figure quoted from a just-closed week can be wrong by thousands. That warning now lives where it
+ * VARIES and can therefore mean something: the Reconciliation screen, whose chip tracks the week the
+ * reader has actually selected and goes out once that week is settled, and which itemises what moved.
+ * The `written` metric's ⓘ note carries the same fact for anyone reading a figure off this page.
  */
-const PROVISIONAL_TITLE =
-  "Not final, for two reasons. The week is still running, so this is business written so far. And " +
-  "business written is entered on the platform days later while cases already counted are sometimes " +
-  "removed, so even after the week closes the figures move in EITHER direction — every closed week " +
-  "tracked so far has moved, by up to 7%. The Reconciliation screen holds each week's history.";
 
 export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
   const { data, error } = usePayload<MarketMomentumPayload>("market-momentum", filters, mode, refreshMs);
@@ -120,11 +126,6 @@ function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode 
         <span>
           Total Written (£k) <MetricInfo metricKey="written" mode={mode} />
         </span>
-        {written.provisional && (
-          <span className="mom-kpi-prov" title={PROVISIONAL_TITLE}>
-            provisional
-          </span>
-        )}
         {vsQ != null && (
           <span className={`pill ${vsQ > 2 ? "ahead" : vsQ < -2 ? "behind" : "on_pace"}`}>
             {vsQ >= 0 ? "+" : ""}
@@ -218,11 +219,6 @@ function CommissionLeague({ data, mode }: { data: MarketMomentumPayload; mode: M
         <span>
           Mortgages — Top 10 Commission Earners <MetricInfo metricKey="commission-league" mode={mode} />
         </span>
-        {league.provisional && (
-          <span className="mom-kpi-prov" title={PROVISIONAL_TITLE}>
-            provisional
-          </span>
-        )}
         <span className="card-sub">
           {league.partial
             ? `${league.weekLabel} so far · ${shortDate(league.weekFrom)} – ${shortDate(league.throughDay)}`

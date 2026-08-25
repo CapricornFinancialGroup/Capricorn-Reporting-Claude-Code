@@ -12,7 +12,6 @@
 import type { Config } from "../../config.js";
 import {
   dayRecordedShare,
-  INPUT_LAG_SETTLE_DAYS,
   MORTGAGE_WRITTEN_DATE,
   PROTECTION_WRITTEN_DATE,
   PROTECTION_WRITTEN_STATUSES,
@@ -1408,9 +1407,6 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     // no way to tell — Kyle read a full week (18–24 Jul) as "3 days" and reconciled it against a
     // 25–28 Jul report that shares no days with it (2026-07-28).
     const windowOf = (i: number) => ({ from: weekStarts[i], to: shiftDays(weekStarts[i], 6) });
-    // WrittenDate-keyed measures keep climbing for days after the week ends (INPUT_LAG_SETTLE_DAYS);
-    // LeadDate/CreatedDate-keyed ones (leads, referrals) land same-day and are settled on close.
-    const WRITTEN_DATE_KEYED = new Set(["applications", "written", "case-size"]);
     // `ltd` = the like-for-like week-to-date series for this measure (null for ratio measures, where
     // truncating numerator and denominator by the same days changes nothing worth showing).
     const kpi = (
@@ -1442,7 +1438,6 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
         /** Last day included in both sides of the comparison. */
         throughDay: useLtd ? asOf : w.to,
         priorWeekLabel: headIdx > 0 ? weeks[headIdx - 1] : null,
-        provisional: WRITTEN_DATE_KEYED.has(key) && shiftDays(w.to, INPUT_LAG_SETTLE_DAYS) > asOf,
         // The last COMPLETE week, kept alongside so a full-week number is always available — it is
         // the only one comparable with the quarter average. Suppressed when the headline IS that
         // week (i.e. the current week is being held back), so the tile doesn't print it twice.
@@ -1543,17 +1538,23 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
               weekFrom: weekStarts[completeIdx],
               weekTo: shiftDays(weekStarts[completeIdx], 6),
               actual: Math.round(combW[completeIdx] ?? 0),
-              provisional: shiftDays(shiftDays(weekStarts[completeIdx], 6), INPUT_LAG_SETTLE_DAYS) > asOf,
             }
           : null,
       /** Client fees written in the same window — NOT part of "written" (which is commission), shown
        *  so the gap to a fees-inclusive figure like Est. Revenue is explicit, not mysterious. */
       clientFees: Math.round(feeW[subjectIdx] ?? 0),
-      /** Cases written whose WrittenDate falls in the week but were input later. Mean input lag is
-       *  ~6 days and 22% of written £ arrives 8+ days late, so a week keeps climbing after it closes
-       *  — and, per the snapshot history, sometimes falls. The board must say "provisional" rather
-       *  than imply the figure is final (Kyle 2026-07-28). */
-      provisional: shiftDays(subjectEnd, INPUT_LAG_SETTLE_DAYS) > asOf,
+      // NO `provisional` FLAG on this dataset (removed 2026-08-25).
+      //
+      // A week does keep moving after it closes — mean input lag ~6 days, 22% of written £ arriving 8+
+      // days late, and per the snapshot history sometimes FALLING. That has not changed. What changed is
+      // that the flag was `subjectEnd + INPUT_LAG_SETTLE_DAYS > asOf` and this dataset's subject is the
+      // CURRENT week, so it was true on every request ever made. Momentum rendered it as a permanent
+      // "provisional" chip, which is why Capricorn read it as meaningless (2026-08-25: "it either is
+      // data or it is not"). They were right: a flag that cannot be false is not a flag.
+      //
+      // The warning lives on Reconciliation, whose flag tracks the week the READER selected and does
+      // switch off once that week has settled, and which itemises what actually moved. See the note at
+      // the top of web/src/pages/MarketMomentum.tsx for the snapshot evidence.
     };
 
     // ------------------------------------------------------------------ commission league (top 10)
@@ -1662,7 +1663,6 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       /** Commission on cases with no adviser on file: inside `total`, absent from `rows`. */
       unattributed: Math.round(unattributed),
       /** Same input-lag caveat as the graph — a just-closed week is still filling. */
-      provisional: writtenBlock.provisional,
     };
 
     return {
