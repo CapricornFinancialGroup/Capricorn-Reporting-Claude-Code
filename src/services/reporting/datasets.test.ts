@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { DailyCount } from "./kpis.js";
-import { cumulativeSeries, rankBoard } from "./datasets.js";
+import { cumulativeSeries, rankBoard, withDaybreaks } from "./datasets.js";
+import type { FeedItem } from "./datasets.js";
 import { isoWeekNo } from "./trends.js";
 
 const WEEK_DAYS = ["2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10"]; // Mon..Fri
@@ -118,5 +119,52 @@ describe("rankBoard — a tie on the count is not a tie on anything that matters
     ];
     expect(rankBoard(rows, (a) => a.referred, pct, 1).map((r) => r.row.name)).toEqual(["A"]);
     expect(rankBoard(rows, (a) => a.referred, pct, 10).map((r) => r.row.name)).toEqual(["A", "B"]);
+  });
+});
+
+// The ticker's header carried a single date until 2026-08-25, which stood over every item as though
+// nothing newer existed — and on a Tuesday morning, when today holds no events yet, it read as a board
+// a day behind. Capricorn: "just have a ticker running across." The date now belongs to a marker drawn
+// where the day actually changes.
+describe("withDaybreaks — the strip names a day only where the day changes", () => {
+  const ev = (when: string | null, text = "e"): FeedItem =>
+    ({ kind: "application", icon: "H", text, accent: "none", when });
+  const ms = (text = "m"): FeedItem =>
+    ({ kind: "milestone", icon: "T", text, accent: "none", when: null });
+  const marks = (items: FeedItem[]) => withDaybreaks(items).filter((i) => i.kind === "daybreak");
+
+  it("emits NOTHING when the strip opens on today — the busy-afternoon case", () => {
+    expect(marks([ev(null), ev(null), ev(null)])).toEqual([]);
+  });
+
+  it("marks the FRONT when today has no events and the strip opens on yesterday", () => {
+    // The quiet-morning case, and the whole reason a marker still exists: without it the wall would
+    // scroll yesterday's business with nothing saying so.
+    const m = marks([ev("Mon 24 Aug"), ev("Mon 24 Aug")]);
+    expect(m).toHaveLength(1);
+    expect(m[0].text).toBe("Mon 24 Aug");
+    expect(withDaybreaks([ev("Mon 24 Aug")])[0].kind).toBe("daybreak");
+  });
+
+  it("marks the crossing point once when today's events run out mid-strip", () => {
+    const m = marks([ev(null), ev(null), ev("Mon 24 Aug"), ev("Mon 24 Aug")]);
+    expect(m).toHaveLength(1);
+    expect(m[0].text).toBe("Mon 24 Aug");
+  });
+
+  it("does not let a milestone between two same-day events print a second marker", () => {
+    // Milestones carry when:null. Treating one as a day change would stamp the date again every fourth
+    // item, since that is how often a milestone is interleaved.
+    expect(marks([ev("Mon 24 Aug"), ms(), ev("Mon 24 Aug"), ms(), ev("Mon 24 Aug")])).toHaveLength(1);
+  });
+
+  it("keeps every original item, in order", () => {
+    const input = [ev(null, "a"), ms("b"), ev("Mon 24 Aug", "c")];
+    const kept = withDaybreaks(input).filter((i) => i.kind !== "daybreak");
+    expect(kept.map((i) => i.text)).toEqual(["a", "b", "c"]);
+  });
+
+  it("handles an empty feed without inventing a marker", () => {
+    expect(withDaybreaks([])).toEqual([]);
   });
 });

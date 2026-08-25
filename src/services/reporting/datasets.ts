@@ -39,7 +39,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, paceInclPartDay, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 // `protectionCommissionByAdviser` is deliberately NOT imported any more: it credits a policy's whole
 // commission to its primary adviser, which is the 100%-to-the-protection-adviser behaviour the 60/40
@@ -1712,10 +1712,44 @@ const gbp = (v: number | null | undefined): string => {
 };
 
 export interface FeedItem {
-  kind: "application" | "lead" | "referral" | "sale" | "milestone";
+  kind: "application" | "lead" | "referral" | "sale" | "milestone" | "daybreak";
   icon: string;
   text: string;
   accent: "none" | "green" | "gold";
+  /** Short weekday for an event that is NOT from today ("Mon"); null for today's events and for
+   *  milestones. The ticker header carried a single date until 2026-08-25, which stood over the whole
+   *  strip and read as staleness every morning — the day belongs on the row that needs it. */
+  when: string | null;
+}
+
+/**
+ * Insert ONE day marker where the strip crosses into an earlier day.
+ *
+ * Seeded with `null` — "the strip starts on today" — so that when today has no events yet and the
+ * first row is already yesterday's, a marker is emitted at the FRONT. Without that seed a quiet
+ * morning would scroll yesterday's business with nothing saying so, which is the failure mode the
+ * header date existed to prevent. With it, the guarantee survives and a busy afternoon gets no date
+ * furniture at all, because the first event is today's and nothing is emitted.
+ *
+ * The alternative — a badge on every row — was built first and rejected: at 07:00 on a Tuesday it put
+ * a "MON" on 37 of 47 rows, louder than the single header date it was replacing.
+ *
+ * Milestones never move the day tracker. They are week-level statements with no day of their own, and
+ * letting one reset it would print a second marker part-way through a run of the same day.
+ */
+export function withDaybreaks(items: readonly FeedItem[]): FeedItem[] {
+  const out: FeedItem[] = [];
+  let lastWhen: string | null = null;
+  for (const it of items) {
+    if (it.kind !== "milestone") {
+      if (it.when !== lastWhen) {
+        out.push({ kind: "daybreak", icon: "", text: it.when ?? "Today", accent: "none", when: it.when });
+      }
+      lastWhen = it.when;
+    }
+    out.push(it);
+  }
+  return out;
 }
 
 export async function liveFeed(config: Config, _f: ReportFilters) {
@@ -1740,12 +1774,48 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
     const todayCount = today ? sum(KPI_KEYS.map((k) => today.counts[k])) : 0;
     const showToday = today != null && todayCount > 0;
     const asOf = showToday ? today.date : core.ctx.latestDay;
+
+    // A WINDOW ending today, not a single chosen day.
+    //
+    // The single-day form needed a fallback — today if today had anything, else the last working day —
+    // and the fallback is what put a yesterday date on the wall. Capricorn, 2026-08-25: "just have a
+    // ticker running across … so that people can see activity happening."
+    //
+    // Each query orders by day DESC and stops at its quota, so a busy afternoon fills the strip with
+    // today alone and a quiet morning reaches back one working day for company. No branch, no empty
+    // strip, and no single date standing over items from different days.
+    const windowTo = tzToday(new Date(), config.reporting.timeZone);
+    const windowFrom = lastTradingDayOnOrBefore(shiftDays(windowTo, -1));
     const [apps, leads, refs, sales] = await Promise.all([
-      q<tickerQ.ApplicationEvent>(config, tickerQ.applicationEvents(asOf, 15)),
-      q<tickerQ.LeadEvent>(config, tickerQ.leadEvents(asOf, 12)),
-      q<tickerQ.ReferralEvent>(config, tickerQ.referralEvents(asOf, 10)),
-      q<tickerQ.SaleEvent>(config, tickerQ.saleEvents(asOf, 10)),
+      q<tickerQ.ApplicationEvent>(config, tickerQ.applicationEvents(windowFrom, windowTo, 15)),
+      q<tickerQ.LeadEvent>(config, tickerQ.leadEvents(windowFrom, windowTo, 12)),
+      q<tickerQ.ReferralEvent>(config, tickerQ.referralEvents(windowFrom, windowTo, 10)),
+      q<tickerQ.SaleEvent>(config, tickerQ.saleEvents(windowFrom, windowTo, 10)),
     ]);
+
+    /**
+     * Which day an item belongs to — null for today, a short date otherwise.
+     *
+     * This is the honest half of removing the date from the header. The header date read as a ceiling
+     * over the whole strip ("nothing newer than this exists"), which on a Tuesday morning was both
+     * confusing and, once today had any events at all, untrue.
+     *
+     * It is NOT rendered as a badge on every row. Tried that first: at 07:00 on a Tuesday today holds
+     * no events yet, so 37 of 47 rows wore a "MON" badge — noisier than the single header date it
+     * replaced, and just as much of an announcement that the board is behind. The client draws ONE
+     * marker where the strip crosses into an earlier day (see the daybreak items below), so a busy
+     * afternoon shows no date furniture at all and a quiet morning shows exactly one.
+     */
+    const dayTag = (raw: unknown): string | null => {
+      const d = isoDay(raw);
+      if (d === windowTo) return null;
+      return new Intl.DateTimeFormat("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      }).format(new Date(`${d}T00:00:00Z`));
+    };
 
     const dayLabel = new Intl.DateTimeFormat("en-GB", {
       weekday: "short",
@@ -1771,26 +1841,34 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
         icon: "🏡",
         text: `${first(e.fullName)}${officeSuffix(e.username)} · ${gbp(e.mortgageValue)} application${e.lenderName ? ` · ${e.lenderName}` : ""}`,
         accent: "none",
+        when: dayTag(e.day),
       })),
       ...sales.map((e): Item => ({
         kind: "sale",
         icon: "⭐",
         text: `${first(e.fullName)}${officeSuffix(e.username)} · protection sale completed${e.policyAmount ? ` · ${gbp(e.policyAmount)} cover` : ""}`,
         accent: "gold",
+        when: dayTag(e.day),
       })),
       ...refs.map((e): Item => ({
         kind: "referral",
         icon: "🛡️",
         text: `${first(e.fullName)}${officeSuffix(e.username)} · protection opportunity referred`,
         accent: "green",
+        when: dayTag(e.day),
       })),
       ...leads.map((e): Item => ({
         kind: "lead",
         icon: "🔥",
         text: `${first(e.fullName)}${officeSuffix(e.username)} · new lead${e.introducer ? ` · ${e.introducer}` : ""}`,
         accent: "none",
+        when: dayTag(e.day),
       })),
     ];
+    // Today first. Each query already returns its own newest-first, but the four are concatenated by
+    // KIND, so without this an interleaved strip could open on yesterday's applications while today's
+    // leads waited at the back — the exact impression of a stale board that this change is undoing.
+    events.sort((a, b) => (a.when == null ? 0 : 1) - (b.when == null ? 0 : 1));
 
     // Milestones from the chase state — the "story of the week" lines between events.
     const milestones: Item[] = [];
@@ -1805,6 +1883,8 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
           icon: pace.status === "ahead" ? "📈" : "📉",
           text: `${KPI_LABELS[k]}: ${Math.abs(pace.aheadBehind)} ${pace.status === "ahead" ? "ahead of" : "behind"} weekly pace`,
           accent: pace.status === "ahead" ? "green" : "none",
+          // A week-level statement, not an event — no day tag belongs on it.
+          when: null,
         });
       }
       // The day count behind the events. `core.daily` stops at the last COMPLETE day, so when the
@@ -1821,6 +1901,7 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
             ? `${latestN} ${KPI_LABELS[k].toLowerCase()} so far today`
             : `${latestN} ${KPI_LABELS[k].toLowerCase()} on ${dayLabel}`,
           accent: "none",
+          when: null,
         });
       }
     }
@@ -1835,19 +1916,20 @@ export async function liveFeed(config: Config, _f: ReportFilters) {
         icon: "🏆",
         text: `${officePaces[0].office} leading — ${officePaces[0].pct}% of pace`,
         accent: "gold",
+        when: null,
       });
     }
 
     // Interleave: a milestone roughly every 4 events.
-    const items: Item[] = [];
+    const interleaved: Item[] = [];
     let mi = 0;
     events.forEach((e, i) => {
-      items.push(e);
-      if ((i + 1) % 4 === 0 && mi < milestones.length) items.push(milestones[mi++]);
+      interleaved.push(e);
+      if ((i + 1) % 4 === 0 && mi < milestones.length) interleaved.push(milestones[mi++]);
     });
-    while (mi < milestones.length) items.push(milestones[mi++]);
+    while (mi < milestones.length) interleaved.push(milestones[mi++]);
 
-    return { dataAsOf: asOf, dayLabel, items };
+    return { dataAsOf: asOf, dayLabel, items: withDaybreaks(interleaved) };
   });
 }
 

@@ -17,6 +17,16 @@ function expectConventions(q: BuiltQuery, opts: { deletedFlag?: boolean } = {}):
   const referenced = [...q.text.matchAll(/@(\w+)/g)].map((m) => m[1]);
   for (const name of referenced) expect(bound, `param @${name} must be bound`).toContain(name);
   expect(bound.size).toBe(q.params.length); // no duplicate param names
+  // BOUND IS NOT ENOUGH — the value has to exist too. tsconfig excludes *.test.ts, so when a builder
+  // gains a required argument the old call sites here keep compiling and keep passing: the param name
+  // is still bound, to `undefined`. That is exactly what happened when the ticker builders moved from
+  // one day to a from/to window on 2026-08-25 — four tests went on passing against a query whose @T
+  // was undefined. Checking the value closes the whole class, not just that instance.
+  for (const p of q.params) {
+    expect(p.value, `param @${p.name} is bound but has no value — a call site is missing an argument`)
+      .not.toBeUndefined();
+    expect(p.value, `param @${p.name} is bound to null`).not.toBeNull();
+  }
 }
 
 // Capricorn's Total Written Report (usp_GetTotalProductReport) keys "written" on the date a product
@@ -244,12 +254,42 @@ describe("momentum + league builders", () => {
   });
 });
 
+// The strip spans a WINDOW ending today and leads with the newest day, so a quiet morning reaches back
+// a working day rather than falling back to yesterday wholesale and stamping the header with its date
+// (Capricorn 2026-08-25: "just have a ticker running across").
+describe("ticker builders read a day window, newest day first", () => {
+  const built = {
+    applications: applicationEvents("2026-08-24", "2026-08-25"),
+    leads: leadEvents("2026-08-24", "2026-08-25"),
+    referrals: referralEvents("2026-08-24", "2026-08-25"),
+    sales: saleEvents("2026-08-24", "2026-08-25"),
+  };
+
+  for (const [name, q] of Object.entries(built)) {
+    it(`${name} bounds the window on both ends`, () => {
+      expect(q.text).toMatch(/BETWEEN @F AND @T/);
+      expect(q.params.find((p) => p.name === "F")?.value).toBe("2026-08-24");
+      expect(q.params.find((p) => p.name === "T")?.value).toBe("2026-08-25");
+    });
+
+    it(`${name} returns each row's day so the item can label itself`, () => {
+      // Without this the strip cannot tell today's events from yesterday's, which is the only reason
+      // the header ever needed a date.
+      expect(q.text).toMatch(/AS day/);
+    });
+
+    it(`${name} orders by day DESC first, so today fills the quota before yesterday`, () => {
+      expect(q.text).toMatch(/ORDER BY day DESC/);
+    });
+  }
+});
+
 describe("ticker builders never touch the client table", () => {
   for (const [name, q, deletedFlag] of [
-    ["applications", applicationEvents("2026-07-05"), true],
-    ["leads", leadEvents("2026-07-05"), true],
-    ["referrals", referralEvents("2026-07-05"), true],
-    ["sales", saleEvents("2026-07-05"), true],
+    ["applications", applicationEvents("2026-07-04", "2026-07-05"), true],
+    ["leads", leadEvents("2026-07-04", "2026-07-05"), true],
+    ["referrals", referralEvents("2026-07-04", "2026-07-05"), true],
+    ["sales", saleEvents("2026-07-04", "2026-07-05"), true],
   ] as const) {
     it(`${name} events carry no client join`, () => {
       expectConventions(q, { deletedFlag });
@@ -267,7 +307,7 @@ describe("leads mean new CLIENTS, not new cases", () => {
     kpiDaily("leads", "2026-08-08", "2026-08-12"),
     kpiDailyByAdviser("leads", "2026-08-08", "2026-08-12"),
     mortgageStageCounts("2026-08-08", "2026-08-12"),
-    leadEvents("2026-08-12"),
+    leadEvents("2026-08-11", "2026-08-12"),
   ];
 
   it("counts DISTINCT CLIENTS, never distinct LeadIds", () => {

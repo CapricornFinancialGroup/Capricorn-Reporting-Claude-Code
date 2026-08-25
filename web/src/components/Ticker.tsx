@@ -48,18 +48,32 @@ export function Ticker({ mode, refreshMs }: { mode: Mode; refreshMs: number }) {
 
   if (!data || data.items.length === 0) return null;
 
-  const items = data.items.map((it, i) => (
-    <div className="ticker-item" key={i}>
-      <span>{it.icon}</span>
-      <span className={it.accent === "green" ? "t-green" : it.accent === "gold" ? "t-gold" : undefined}>
+  const items = data.items.map((it, i) =>
+    // A day marker, not an event: drawn once where the strip crosses into an earlier day. On a busy
+    // afternoon the first event is today's and the server emits none of these at all.
+    it.kind === "daybreak" ? (
+      <div className="ticker-day" key={i}>
         {it.text}
-      </span>
-    </div>
-  ));
+      </div>
+    ) : (
+      <div className="ticker-item" key={i}>
+        <span>{it.icon}</span>
+        <span className={it.accent === "green" ? "t-green" : it.accent === "gold" ? "t-gold" : undefined}>
+          {it.text}
+        </span>
+      </div>
+    ),
+  );
 
   return (
     <div className="ticker-wrap">
-      <div className="ticker-label">Latest Activity · {data.dayLabel}</div>
+      {/* NO DATE. It read "Latest Activity · Mon 24 Aug", which stood over every item as though
+          nothing newer existed — and on a Tuesday morning, when the ~06:00 load holds ~1.5% of a day,
+          the strip fell back entirely to Monday and the header confirmed the wall was a day behind.
+          Capricorn, 2026-08-25: "just have a ticker running across … so that people can see activity
+          happening." The events now span a window ending today (see liveFeed) and any item that is not
+          from today says so itself, so the header has nothing left to qualify. */}
+      <div className="ticker-label">Latest Activity</div>
       <div className="ticker-outer">
         <div
           ref={trackRef}

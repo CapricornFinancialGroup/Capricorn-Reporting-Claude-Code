@@ -381,17 +381,23 @@ export interface MarketMomentumPayload {
 }
 
 export interface FeedItem {
-  kind: "application" | "lead" | "referral" | "sale" | "milestone";
+  kind: "application" | "lead" | "referral" | "sale" | "milestone" | "daybreak";
   icon: string;
   text: string;
   accent: "none" | "green" | "gold";
+  /** Short weekday for an item that is NOT from today ("Mon"), null for today's own events and for
+   *  milestones. Replaces the header's single date: that read as a ceiling over the whole strip, and
+   *  on a Tuesday morning it read as yesterday. The day now travels with the item that needs it. */
+  when?: string | null;
 }
 
 export interface LiveFeedPayload {
-  /** The day the EVENTS are from — today once today has any, otherwise the last working day. NOT the
-   *  board's `dataAsOf`, which is the last complete day: a feed of events has no target to be measured
-   *  against, so it is not held back to complete days. */
+  /** The day the day-count milestones speak for — today once today has any events, otherwise the last
+   *  working day. NOT the board's `dataAsOf` (the last complete day): a feed of events has no target
+   *  to be measured against, so it is not held back to complete days. The EVENTS themselves now span
+   *  a short window ending today and carry their own day; see `FeedItem.when`. */
   dataAsOf: string;
+  /** Only used inside a milestone sentence now — the ticker header no longer carries a date. */
   dayLabel: string;
   items: FeedItem[];
 }

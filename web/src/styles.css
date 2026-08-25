@@ -390,6 +390,16 @@ button { font: inherit; }
 }
 .t-green { color: #6EE7A0; font-weight: 700; }
 .t-gold { color: #FCD34D; font-weight: 700; }
+/* The day marker, drawn once where the strip crosses into an earlier day. A per-row badge was tried
+   first and on a quiet morning put a "MON" on 37 of 47 rows — louder than the header date it replaced.
+   This is deliberately dim: it should read as a divider someone can find if they look for it, not as
+   an announcement that the board is behind. */
+.ticker-day {
+  display: inline-flex; align-items: center; padding: 0 24px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+}
 @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
 
 .alert {
