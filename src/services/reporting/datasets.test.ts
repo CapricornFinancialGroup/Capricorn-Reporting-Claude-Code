@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { DailyCount } from "./kpis.js";
-import { cumulativeSeries, rankBoard, withDaybreaks } from "./datasets.js";
+import { cumulativeSeries, officeStatus, pctToPace, rankBoard, withDaybreaks } from "./datasets.js";
+import type { WeeklyPacingContext } from "./pacing.js";
+import type { KpiTargets } from "./kpis.js";
 import type { FeedItem } from "./datasets.js";
 import { isoWeekNo } from "./trends.js";
 
@@ -166,5 +168,144 @@ describe("withDaybreaks — the strip names a day only where the day changes", (
 
   it("handles an empty feed without inventing a marker", () => {
     expect(withDaybreaks([])).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Office Run Chase — ranking and status on sub-unit targets
+// ---------------------------------------------------------------------------
+
+/** Expected-by-now fractions as at Wed 26 Aug 2026 (data through Tue 25), from the live payload:
+ *  leads 291/633, applications 49/113, protection 24/58 under Kyle's Mon–Fri weighting. */
+const FRAC_WED = {
+  leads: 291 / 633,
+  applications: 49 / 113,
+  referrals: 24 / 58,
+  sales: 24 / 58,
+  existingCases: 0,
+} as unknown as WeeklyPacingContext["fractionByKpi"];
+
+const CTX_WED = { fractionByKpi: FRAC_WED } as unknown as WeeklyPacingContext;
+
+/** Daily office targets → the shape pctToPace takes (it multiplies by 5 itself). */
+function daily(leads: number, applications: number, referrals: number, sales: number): KpiTargets {
+  return { leads, applications, referrals, sales, existingCases: 0 } as KpiTargets;
+}
+
+describe("pctToPace — a target expecting less than one case gets no vote", () => {
+  // Singapore, 26 Aug: leads 9 of 27/wk, apps 3 of 4/wk, refs 0 of 1/wk, sales 0 of 1/wk. The two
+  // protection legs expect 0.41 cases by Wednesday — unreachable, and scored as outright zeros.
+  const SG_TARGETS = daily(5.4, 0.8, 0.2, 0.2);
+  const SG_WTD = { leads: 9, applications: 3, referrals: 0, sales: 0, existingCases: 0 } as KpiTargets;
+
+  it("drops the sub-unit legs instead of scoring them zero", () => {
+    // Expectations: leads 12.4, apps 1.73 — both count. Refs/sales 0.41 each — neither does.
+    // Leads 9/12.4 = 0.73, apps 3/1.73 = 1.73 capped to 1.00 → 86%.
+    expect(pctToPace(SG_WTD, SG_TARGETS, CTX_WED)).toBe(86);
+  });
+
+  it("is the fix for the 61% it read before — two of the four misses were not yet missable", () => {
+    // The old rule admitted any expectation above zero, so 0/0.41 twice halved the score.
+    const oldWay = (() => {
+      const ratios: number[] = [];
+      for (const k of ["leads", "applications", "referrals", "sales"] as const) {
+        const expected = SG_TARGETS[k] * 5 * FRAC_WED[k];
+        if (expected > 0) ratios.push(SG_WTD[k] / expected);
+      }
+      return Math.round((ratios.reduce((a, b) => a + b, 0) / ratios.length) * 100);
+    })();
+    expect(oldWay).toBe(61);
+  });
+
+  it("returns null when NO KPI is big enough to rank on, so the office is left unranked", () => {
+    const tiny = daily(0.2, 0.1, 0.1, 0.1); // whole-week expectations well under one case
+    const wtd = { leads: 1, applications: 0, referrals: 0, sales: 0, existingCases: 0 } as KpiTargets;
+    expect(pctToPace(wtd, tiny, CTX_WED)).toBeNull();
+  });
+
+  it("excludes nothing for an office whose every target is material", () => {
+    // Hammersmith: every leg expects tens or hundreds. 0.68 + 1.00 (capped from 1.28) + 0.81 + 0.59.
+    const hs = daily(98, 18, 9, 9);
+    const wtd = { leads: 154, applications: 50, referrals: 15, sales: 11, existingCases: 0 } as KpiTargets;
+    expect(pctToPace(wtd, hs, CTX_WED)).toBe(77);
+  });
+});
+
+describe("pctToPace — beating a small target cannot carry the office", () => {
+  // THE 2026-08-26 WALL. Newmarket: 1 lead of 36/wk (expects 16.6), 7 applications of 3/wk
+  // (expects 1.3), no protection target at all. It was CHAMPION of the firm at 272% of pace while
+  // its own leads tile read CRITICAL, and Hammersmith — doing the overwhelming majority of the
+  // business — ranked third.
+  const NM_TARGETS = daily(7.2, 0.6, 0, 0);
+  const NM_WTD = { leads: 1, applications: 7, referrals: 0, sales: 0, existingCases: 0 } as KpiTargets;
+
+  it("scores Newmarket on what it delivered, not on the ratio arithmetic of a 1.3-case target", () => {
+    // 0.06 for leads + 1.00 for applications (capped from 5.38) → 53%.
+    expect(pctToPace(NM_WTD, NM_TARGETS, CTX_WED)).toBe(53);
+  });
+
+  it("puts it BELOW the office doing most of the business, which is the whole point", () => {
+    const hs = daily(98, 18, 9, 9);
+    const hsWtd = { leads: 154, applications: 50, referrals: 15, sales: 11, existingCases: 0 } as KpiTargets;
+    const newmarket = pctToPace(NM_WTD, NM_TARGETS, CTX_WED) ?? 0;
+    const hammersmith = pctToPace(hsWtd, hs, CTX_WED) ?? 0;
+    expect(newmarket).toBeLessThan(hammersmith);
+  });
+
+  it("was the other way round under the uncapped mean — 272% against 84%", () => {
+    const uncapped = (wtd: KpiTargets, tg: KpiTargets) => {
+      const r: number[] = [];
+      for (const k of ["leads", "applications", "referrals", "sales"] as const) {
+        const expected = tg[k] * 5 * FRAC_WED[k];
+        if (expected > 0) r.push(wtd[k] / expected);
+      }
+      return Math.round((r.reduce((a, b) => a + b, 0) / r.length) * 100);
+    };
+    const hs = daily(98, 18, 9, 9);
+    const hsWtd = { leads: 154, applications: 50, referrals: 15, sales: 11, existingCases: 0 } as KpiTargets;
+    expect(uncapped(NM_WTD, NM_TARGETS)).toBe(272);
+    expect(uncapped(hsWtd, hs)).toBe(84);
+  });
+});
+
+describe("officeStatus — CRITICAL is denominated in cases, not percentage points", () => {
+  const critical = [{ status: "critical" as const }];
+  const notCritical = [{ status: "behind" as const }, { status: "ahead" as const }];
+
+  it("says critical when a KPI has earned it on its own figures", () => {
+    // Shanghai, 26 Aug: 0 leads against 4 expected — a real collapse, and it should shout.
+    expect(officeStatus(0, critical)).toBe("critical");
+  });
+
+  it("says BEHIND, not critical, when no single KPI is in crisis", () => {
+    // THE BUG THIS PINS: officeStatus passed `pct` (percentage points) into chaseStatus, whose
+    // critical guard is "at least two whole cases short". `100 - pct >= 2` is true for any office
+    // under 98%, so the guard never fired and everything below 60% of pace read CRITICAL however
+    // small its target. One rule, stated once, in cases.
+    expect(officeStatus(6, notCritical)).toBe("behind");
+    expect(officeStatus(0, notCritical)).toBe("behind");
+  });
+
+  it("does not let one failing leg drag a broadly-delivering office into the red", () => {
+    // Hammersmith is 77% of target with protection sales critical (11 of 19 expected). Critical
+    // needs a low score AS WELL AS a critical leg, or the firm's main office shouts on one measure.
+    expect(officeStatus(77, critical)).toBe("behind");
+  });
+
+  it("bands against a CEILING of 100, not a midpoint", () => {
+    // Calibrated for the capped score. chaseStatus's ≥100 / ≥90 bands would put every office on the
+    // 2026-08-26 wall in amber or red, the best of them at 86% of every target met.
+    expect(officeStatus(100, notCritical)).toBe("ahead");
+    expect(officeStatus(95, notCritical)).toBe("ahead");
+    expect(officeStatus(86, notCritical)).toBe("on_pace"); // Singapore
+    expect(officeStatus(84, notCritical)).toBe("behind");
+  });
+
+  it("has no verdict for an office with no rankable target", () => {
+    expect(officeStatus(null, [])).toBe("on_pace");
+  });
+
+  it("ignores KPIs whose verdict was withheld for a sub-unit target", () => {
+    expect(officeStatus(5, [{ status: null }, { status: "behind" as const }])).toBe("behind");
   });
 });

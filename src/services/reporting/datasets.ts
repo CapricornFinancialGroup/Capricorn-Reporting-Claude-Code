@@ -341,21 +341,86 @@ function officeAggregates(core: ChaseCore): OfficeCums[] {
   });
 }
 
-/** % of expected-by-now weekly pace, averaged across the four KPIs. Null when no targets. */
-function pctToPace(wtd: KpiTargets, dailyTargets: KpiTargets, ctx: WeeklyPacingContext): number | null {
+/** A ratio needs at least one whole unit of expectation behind it to mean anything.
+ *
+ *  Below 1 there is no scale left: at expected = 0.4 the reachable outcomes are 0% and 250%, and
+ *  which one you get is decided by whether a single case happened to land before Wednesday. This is
+ *  the same rule `chaseStatus` already applies to the critical band, hoisted to where the office
+ *  ranking is decided. See RANK_MIN_EXPECTED's use in pctToPace for what it was costing. */
+export const RANK_MIN_EXPECTED = 1;
+
+/** No credit for overshoot when scoring an office (Capricorn ruling, 2026-08-26).
+ *
+ *  A mean of UNBOUNDED ratios is decided by whichever denominator is smallest, and no guard on the
+ *  inputs repairs that. On 2026-08-26 Newmarket led the firm at 272% of pace: 7 applications against
+ *  an expectation of 1.3 scores 5.4, and averaged against 1 lead of 17 expected (0.06) that still
+ *  beat every other office — while the leads KPI it was failing read CRITICAL on the same card, and
+ *  Hammersmith, doing the overwhelming majority of the business, ranked third. Capping each leg at
+ *  its own target turns the score into "how much of what we asked for did you deliver", which is
+ *  bounded, comparable across offices of wildly different size, and cannot be carried by one small
+ *  overshoot. Newmarket goes to 53% and fourth; Hammersmith to second.
+ *
+ *  Overshoot is NOT hidden — it stays on the office's own KPI tile, where it has a denominator
+ *  attached ("75/53 · +51 vs exp."). It just stops deciding the leaderboard. */
+const ATTAINMENT_CAP = 1;
+
+/** % of expected-by-now weekly pace, averaged across the targeted KPIs. Null when no KPI has a
+ *  large enough target to rank on.
+ *
+ *  ONLY KPIs EXPECTING AT LEAST ONE WHOLE UNIT COUNT. Below one there is no scale left: Singapore's
+ *  referral target of 1/week expects 0.41 cases by Wednesday, so the only reachable ratios are 0%
+ *  and 244%, and which one shows is decided by whether a single case happened to land. Scored as a
+ *  zero it dragged Singapore to 61% of pace on 2026-08-26 — two of its four "misses" were targets it
+ *  could not yet have hit.
+ *
+ *  Excluded KPIs are still SHOWN, with their actual and target; they just don't get a vote on the
+ *  ranking or a verdict of their own (see the kpis map in officeRunChase).
+ *
+ *  Each surviving leg is then capped at its own target — see ATTAINMENT_CAP. So the number reads
+ *  "% of what we asked of you, delivered so far", with 100 the CEILING rather than the middle of the
+ *  range. That is what officeStatus's bands are calibrated against. */
+export function pctToPace(wtd: KpiTargets, dailyTargets: KpiTargets, ctx: WeeklyPacingContext): number | null {
   const ratios: number[] = [];
-  for (const k of KPI_KEYS) {
+  for (const k of TARGETED_KPI_KEYS) {
     const weekly = dailyTargets[k] * 5;
     const expected = weekly * ctx.fractionByKpi[k];
-    if (expected > 0) ratios.push(wtd[k] / expected);
+    if (expected >= RANK_MIN_EXPECTED) ratios.push(Math.min(wtd[k] / expected, ATTAINMENT_CAP));
   }
   if (!ratios.length) return null;
   return Math.round((sum(ratios) / ratios.length) * 100);
 }
 
-function officeStatus(pct: number | null): ChaseStatus {
+/** Bands for the ATTAINMENT score, where 100 is the ceiling.
+ *
+ *  Deliberately NOT chaseStatus's thresholds. Those are calibrated for an unbounded ratio, in which
+ *  100 sits in the middle of the range and "≥90 = on pace" is a generous band. Against a ceiling of
+ *  100 the same numbers are punishing: every office on the wall on 2026-08-26 would read behind or
+ *  critical, the best of them at 86% of every target met, which is the "nothing's been done" wall
+ *  Conor asked us to stop building. Reusing them would also repeat in reverse the exact units error
+ *  this function was written to fix. Ahead now means essentially everything asked for was delivered. */
+const OFFICE_AHEAD_PCT = 95;
+const OFFICE_ON_PACE_PCT = 85;
+/** Critical needs BOTH a low score and a KPI that earned the word on real case counts. Without the
+ *  score floor, Hammersmith at 77% of target would shout CRITICAL on the strength of one leg. */
+const OFFICE_CRITICAL_PCT = 40;
+
+/** Band an office on its attainment score — and never say CRITICAL on percentage points alone.
+ *
+ *  The old code passed `pct` (percentage points) into chaseStatus, whose critical guard is
+ *  denominated in whole cases ("at least two short"). That made the guard inert — `100 - pct >= 2`
+ *  is true for any office below 98% — so every office under 60% read CRITICAL however small its
+ *  target. It is how Hong Kong reached the wall as CRITICAL for being 3 leads short of 8.
+ *
+ *  Now the office inherits the loudest word only when one of its own KPIs has earned it on real
+ *  figures; those per-KPI statuses already run through the two-whole-cases rule. One rule, stated
+ *  once. A genuine collapse still shows: Shanghai at 0 leads against 4 expected is critical on the
+ *  leads KPI itself, and stays critical here. */
+export function officeStatus(pct: number | null, kpis: ReadonlyArray<{ status: ChaseStatus | null }>): ChaseStatus {
   if (pct == null) return "on_pace";
-  return chaseStatus(pct, 100);
+  if (pct >= OFFICE_AHEAD_PCT) return "ahead";
+  if (pct >= OFFICE_ON_PACE_PCT) return "on_pace";
+  if (pct < OFFICE_CRITICAL_PCT && kpis.some((k) => k.status === "critical")) return "critical";
+  return "behind";
 }
 
 // ---------------------------------------------------------------------------
@@ -598,6 +663,14 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
         // are "actual/target" with a pace bar — an untargeted KPI has no honest rendering here (and
         // chaseStatus would band "expected 0, actual > 0" as ahead, painting it green). The
         // untargeted measures live on the Daily Run Chase cards instead.
+        // The KPIs this office can honestly be measured on — decided ONCE, so the pill, the tiles
+        // and the chart line are all describing the same set. They were three independent averages
+        // before, which is how Newmarket's chart could peak at 118% while its pill said something
+        // else entirely. `expectedByNow` is rounded for display, so band on the unrounded
+        // expectation: a target expecting 0.6 must not qualify by rounding up to 1.
+        const rankable = new Set(
+          TARGETED_KPI_KEYS.filter((k) => targets[k] * 5 * ctx.fractionByKpi[k] >= RANK_MIN_EXPECTED),
+        );
         const kpis = TARGETED_KPI_KEYS.map((k) => {
           const weekly = targets[k] * 5;
           const pace = computePace(weekly, o.mtd[k], ctx.fractionByKpi[k]);
@@ -608,16 +681,24 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
             target: weekly,
             expected: pace.expectedByNow,
             gap: pace.aheadBehind,
-            status: chaseStatus(o.mtd[k], pace.expectedByNow),
+            // Expectation below one whole unit gets NO verdict — the figures print, the colour and
+            // the "vs exp." line do not.
+            status: rankable.has(k) ? chaseStatus(o.mtd[k], pace.expectedByNow) : null,
           };
         });
-        // Mini chart: blended % of weekly target achieved by day vs the weighted pace line.
+        // Mini chart: blended % of weekly target achieved by day vs the weighted pace line. Same two
+        // rules as the pill — sub-unit legs excluded, each leg capped at its own target — because the
+        // chart and the pill are the same claim drawn two ways. Uncapped, Newmarket's line peaked at
+        // 118% on the Tuesday off 7 applications while its headline said something else entirely, and
+        // a card that argues with itself is how the last three rounds of doubt started. The pace line
+        // it is drawn against tops out at 100%, so a capped actual is also the only one that can be
+        // read against it.
         const pctSeries = days.map((_, i) => {
           const ratios: number[] = [];
           for (const k of TARGETED_KPI_KEYS) {
             const weekly = targets[k] * 5;
             const v = o.series[k][i];
-            if (weekly > 0 && v != null) ratios.push(v / weekly);
+            if (rankable.has(k) && weekly > 0 && v != null) ratios.push(Math.min(v / weekly, ATTAINMENT_CAP));
           }
           return ratios.length ? Math.round((sum(ratios) / ratios.length) * 100) : null;
         });
@@ -630,7 +711,7 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
           active,
           kpis,
           pct,
-          status: officeStatus(pct),
+          status: officeStatus(pct, kpis),
           chart: { days, actualPct: pctSeries, targetPct: paceLine },
           // Unassigned only: who is in it. Turns "what are the 19 unassigned?" into a list Capricorn
           // can act on, instead of an email (Kyle 2026-08-06).

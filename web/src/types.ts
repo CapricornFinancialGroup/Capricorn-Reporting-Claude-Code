@@ -170,7 +170,9 @@ export interface OfficeRunChasePayload {
       target: number;
       expected: number;
       gap: number;
-      status: ChaseStatus;
+      /** Null when the week expects less than one whole unit of this KPI for this office — the
+       *  figures are still shown, but a ratio on a sub-unit denominator carries no verdict. */
+      status: ChaseStatus | null;
     }>;
     pct: number | null;
     status: ChaseStatus;

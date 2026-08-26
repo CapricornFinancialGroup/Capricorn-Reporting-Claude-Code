@@ -28,6 +28,10 @@ export const STATUS_COLOR: Record<string, string> = {
   critical: RED,
 };
 
+/** For a figure that is real but carries no verdict — a target too small to band honestly. Grey on
+ *  purpose: green, amber and red all make a claim, and the point is that there isn't one to make. */
+export const NO_VERDICT_GREY = PROJECTION_GREY;
+
 /**
  * Run-chase pace chart (strawman screen 1): straight dashed target-pace line, actual line with
  * area fill (navy when ahead/on-pace, amber when behind), dotted projection from "now" to the

@@ -8,7 +8,7 @@
 // "ranked #1-N by pace" would have been describing a strip that no longer existed.
 
 import { usePayload } from "../api.js";
-import { pctPaceChart, STATUS_COLOR } from "../charts.js";
+import { NO_VERDICT_GREY, pctPaceChart, STATUS_COLOR } from "../charts.js";
 import { EChart } from "../components/EChart.js";
 import { MetricInfo } from "../components/MetricInfo.js";
 import { StatusPill } from "../components/StatusPill.js";
@@ -50,11 +50,11 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
               reach, without 28 triggers competing with the numbers. */}
           <div className="funnel-defs office-defs">
             {[["leads", "Leads"], ["applications", "Mortgages Written"], ["referrals", "Protection Referrals"],
-              ["sales", "Protection Sales"], ["pace", "% of Pace"]].map(([key, label]) => (
+              ["sales", "Protection Sales"], ["pace", "% of Target"]].map(([key, label]) => (
               <span className="funnel-def" key={key}>{label} <MetricInfo metricKey={key} mode={mode} /></span>
             ))}
             <span className="asof" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
-              Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · expected <b>{data.week.expectedPct}%</b> · rank #1–{data.offices.length} by pace on each tile
+              Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · expected <b>{data.week.expectedPct}%</b> · rank #1–{data.offices.length} by targets met
             </span>
           </div>
 
@@ -70,23 +70,32 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                         "—" for an office with no target: there is no rank to hold. */}
                     {o.rank != null && <span className="office-rank">{o.rank}</span>}
                     <span className="office-title">{o.office}</span>
-                    {o.pct != null ? <StatusPill status={o.status} label={`${o.pct}% of pace`} /> : <span className="pill muted">No target</span>}
+                    {o.pct != null ? <StatusPill status={o.status} label={`${o.pct}% of target`} /> : <span className="pill muted">No target</span>}
                   </div>
                   <div className="office-kpis">
                     {o.kpis.map((k) => {
                       const fillPct = k.target > 0 ? Math.min(100, Math.round((k.actual / k.target) * 100)) : 0;
+                      // No status = the week expects under one whole unit here, so there is no
+                      // honest verdict to paint. Show the count against the target in grey and say
+                      // why in one word, rather than colouring 0/1 red or 1/1 green.
+                      const colour = k.status ? STATUS_COLOR[k.status] : NO_VERDICT_GREY;
                       return (
                         <div className="office-kpi" key={k.key}>
                           <span className="office-kpi-label">{KPI_SHORT[k.key]}</span>
                           <span className="office-kpi-val">{num(k.actual)}/{num(k.target)}</span>
                           <div className="progress-bar-bg">
-                            <div
-                              className="progress-bar-fill"
-                              style={{ width: `${fillPct}%`, background: STATUS_COLOR[k.status] }}
-                            />
+                            <div className="progress-bar-fill" style={{ width: `${fillPct}%`, background: colour }} />
                           </div>
-                          <span className="office-kpi-gap" style={{ color: STATUS_COLOR[k.status] }}>
-                            {k.status === "on_pace" ? "on pace" : `${signed(k.gap)} vs exp.`}
+                          <span className="office-kpi-gap" style={{ color: colour }}>
+                            {/* Short enough not to clip the column — "target too small to pace" ran
+                                off the card edge as "target too small to pac". The reason lives on
+                                the "% of Target" ⓘ in the strip above, once, instead of in six
+                                truncated copies. */}
+                            {k.status == null
+                              ? "no verdict"
+                              : k.status === "on_pace"
+                                ? "on pace"
+                                : `${signed(k.gap)} vs exp.`}
                           </span>
                         </div>
                       );

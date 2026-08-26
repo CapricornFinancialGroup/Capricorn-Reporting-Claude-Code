@@ -317,22 +317,28 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
   },
   {
     key: "pace",
-    label: "% of Pace",
+    label: "% of Target",
     definition:
-      "How an office's results compare with what was expected by this point in the week. 100% means " +
-      "exactly on track for the point the week has reached.",
+      "How much of what was asked of an office it has delivered by this point in the week. 100% means " +
+      "every target met for the point the week has reached — it is a ceiling, not a midpoint.",
     calculation:
-      "Average of (actual ÷ expected-so-far) across the four KPIs, ×100. Expected-so-far uses the " +
-      "weighted day curve: Mon–Thu each carry a fifth of the week, Friday slightly less.",
+      "Average across the four KPIs of (actual ÷ expected-so-far), each capped at 100%, ×100. " +
+      "Expected-so-far uses the weighted day curve: Mon–Thu each carry a fifth of the week, Friday " +
+      "slightly less, and protection is weighted Mon–Fri only. A KPI expecting less than one whole " +
+      "case by now is left out — 0 or 250% of half a case says nothing about an office — and its tile " +
+      "shows the count without a verdict.",
     source: "Derived from the four KPIs and the weekly targets",
     reconcilesTo: null,
     owner: "Conor Murphy",
     frequency: "Daily",
     status: "indicative",
     note:
-      "Only as meaningful as the targets underneath it. Each screen states whose targets it is using; " +
-      "where a measure has no Capricorn target the figure beneath is our estimate, and the pace over " +
-      "it inherits that. Measured through the last COMPLETE day, so it does not dip every morning.",
+      "Beating a target earns no extra credit HERE, so one small overshoot cannot carry an office past " +
+      "one doing far more business — until 2026-08-26 it could, and did. The overshoot is still shown, " +
+      "on the KPI's own tile where it has a denominator beside it. Only as meaningful as the targets " +
+      "underneath it: each screen states whose targets it is using, and where a measure has no " +
+      "Capricorn target the figure beneath is our estimate. Measured through the last COMPLETE day, so " +
+      "it does not dip every morning.",
   },
 ];
 
