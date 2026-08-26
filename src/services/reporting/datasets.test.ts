@@ -200,8 +200,8 @@ describe("pctToPace — a target expecting less than one case gets no vote", () 
 
   it("drops the sub-unit legs instead of scoring them zero", () => {
     // Expectations: leads 12.4, apps 1.73 — both count. Refs/sales 0.41 each — neither does.
-    // Leads 9/12.4 = 0.73, apps 3/1.73 = 1.73 capped to 1.00 → 86%.
-    expect(pctToPace(SG_WTD, SG_TARGETS, CTX_WED)).toBe(86);
+    // Leads 9/12.4 = 0.73, apps 3/1.73 = 1.73, uncapped → 123%.
+    expect(pctToPace(SG_WTD, SG_TARGETS, CTX_WED)).toBe(123);
   });
 
   it("is the fix for the 61% it read before — two of the four misses were not yet missable", () => {
@@ -224,47 +224,39 @@ describe("pctToPace — a target expecting less than one case gets no vote", () 
   });
 
   it("excludes nothing for an office whose every target is material", () => {
-    // Hammersmith: every leg expects tens or hundreds. 0.68 + 1.00 (capped from 1.28) + 0.81 + 0.59.
+    // Hammersmith: every leg expects tens or hundreds. 0.68 + 1.28 + 0.81 + 0.59 → 84%.
     const hs = daily(98, 18, 9, 9);
     const wtd = { leads: 154, applications: 50, referrals: 15, sales: 11, existingCases: 0 } as KpiTargets;
-    expect(pctToPace(wtd, hs, CTX_WED)).toBe(77);
+    expect(pctToPace(wtd, hs, CTX_WED)).toBe(84);
   });
 });
 
-describe("pctToPace — beating a small target cannot carry the office", () => {
-  // THE 2026-08-26 WALL. Newmarket: 1 lead of 36/wk (expects 16.6), 7 applications of 3/wk
-  // (expects 1.3), no protection target at all. It was CHAMPION of the firm at 272% of pace while
-  // its own leads tile read CRITICAL, and Hammersmith — doing the overwhelming majority of the
-  // business — ranked third.
+describe("pctToPace — beating a small target IS allowed to win", () => {
+  // Capricorn's ruling, 2026-08-26: "it is ok to crown an office based on their % above target."
+  // Newmarket on that date: 1 lead of 36/wk (expects 16.6), 7 applications of 3/wk (expects 1.3),
+  // no protection target at all. It leads the firm on the applications overshoot, and the leads
+  // miss is reported next to it on the same card rather than netted off the headline.
   const NM_TARGETS = daily(7.2, 0.6, 0, 0);
   const NM_WTD = { leads: 1, applications: 7, referrals: 0, sales: 0, existingCases: 0 } as KpiTargets;
 
-  it("scores Newmarket on what it delivered, not on the ratio arithmetic of a 1.3-case target", () => {
-    // 0.06 for leads + 1.00 for applications (capped from 5.38) → 53%.
-    expect(pctToPace(NM_WTD, NM_TARGETS, CTX_WED)).toBe(53);
+  it("gives full credit for the overshoot rather than capping it at the target", () => {
+    // 0.06 for leads + 5.38 for applications → 272%. Capped at 1.0 this was 53%, which is the
+    // version that was briefly live on 2026-08-26 and then reverted on the ruling above.
+    expect(pctToPace(NM_WTD, NM_TARGETS, CTX_WED)).toBe(272);
   });
 
-  it("puts it BELOW the office doing most of the business, which is the whole point", () => {
+  it("lets a small office outrank a large one on that strength", () => {
     const hs = daily(98, 18, 9, 9);
     const hsWtd = { leads: 154, applications: 50, referrals: 15, sales: 11, existingCases: 0 } as KpiTargets;
-    const newmarket = pctToPace(NM_WTD, NM_TARGETS, CTX_WED) ?? 0;
-    const hammersmith = pctToPace(hsWtd, hs, CTX_WED) ?? 0;
-    expect(newmarket).toBeLessThan(hammersmith);
+    expect(pctToPace(NM_WTD, NM_TARGETS, CTX_WED) ?? 0).toBeGreaterThan(pctToPace(hsWtd, hs, CTX_WED) ?? 0);
   });
 
-  it("was the other way round under the uncapped mean — 272% against 84%", () => {
-    const uncapped = (wtd: KpiTargets, tg: KpiTargets) => {
-      const r: number[] = [];
-      for (const k of ["leads", "applications", "referrals", "sales"] as const) {
-        const expected = tg[k] * 5 * FRAC_WED[k];
-        if (expected > 0) r.push(wtd[k] / expected);
-      }
-      return Math.round((r.reduce((a, b) => a + b, 0) / r.length) * 100);
-    };
-    const hs = daily(98, 18, 9, 9);
-    const hsWtd = { leads: 154, applications: 50, referrals: 15, sales: 11, existingCases: 0 } as KpiTargets;
-    expect(uncapped(NM_WTD, NM_TARGETS)).toBe(272);
-    expect(uncapped(hsWtd, hs)).toBe(84);
+  it("still refuses to build that credit on less than one whole case", () => {
+    // The applications leg earns its 5.38 off an expectation of 1.3 — over the line. Halve the
+    // target and the same 7 cases would be scoring against 0.65 expected, which is noise, so the
+    // leg drops out and only leads is left to speak.
+    const halved = daily(7.2, 0.3, 0, 0);
+    expect(pctToPace(NM_WTD, halved, CTX_WED)).toBe(6);
   });
 });
 
@@ -286,19 +278,11 @@ describe("officeStatus — CRITICAL is denominated in cases, not percentage poin
     expect(officeStatus(0, notCritical)).toBe("behind");
   });
 
-  it("does not let one failing leg drag a broadly-delivering office into the red", () => {
-    // Hammersmith is 77% of target with protection sales critical (11 of 19 expected). Critical
-    // needs a low score AS WELL AS a critical leg, or the firm's main office shouts on one measure.
-    expect(officeStatus(77, critical)).toBe("behind");
-  });
-
-  it("bands against a CEILING of 100, not a midpoint", () => {
-    // Calibrated for the capped score. chaseStatus's ≥100 / ≥90 bands would put every office on the
-    // 2026-08-26 wall in amber or red, the best of them at 86% of every target met.
-    expect(officeStatus(100, notCritical)).toBe("ahead");
-    expect(officeStatus(95, notCritical)).toBe("ahead");
-    expect(officeStatus(86, notCritical)).toBe("on_pace"); // Singapore
-    expect(officeStatus(84, notCritical)).toBe("behind");
+  it("keeps chaseStatus's bands, which are right for an unbounded ratio", () => {
+    expect(officeStatus(272, critical)).toBe("ahead"); // Newmarket — overshoot wins, by ruling
+    expect(officeStatus(123, notCritical)).toBe("ahead"); // Singapore
+    expect(officeStatus(95, critical)).toBe("on_pace");
+    expect(officeStatus(84, critical)).toBe("behind"); // Hammersmith
   });
 
   it("has no verdict for an office with no rankable target", () => {

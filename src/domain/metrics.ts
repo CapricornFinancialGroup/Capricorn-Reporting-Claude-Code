@@ -317,28 +317,29 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
   },
   {
     key: "pace",
-    label: "% of Target",
+    label: "% of Pace",
     definition:
-      "How much of what was asked of an office it has delivered by this point in the week. 100% means " +
-      "every target met for the point the week has reached — it is a ceiling, not a midpoint.",
+      "How an office's results compare with what was expected by this point in the week. 100% means " +
+      "exactly on track for the point the week has reached; above 100% means ahead of it, and an " +
+      "office that beats what was asked of it can lead the board on that strength.",
     calculation:
-      "Average across the four KPIs of (actual ÷ expected-so-far), each capped at 100%, ×100. " +
-      "Expected-so-far uses the weighted day curve: Mon–Thu each carry a fifth of the week, Friday " +
-      "slightly less, and protection is weighted Mon–Fri only. A KPI expecting less than one whole " +
-      "case by now is left out — 0 or 250% of half a case says nothing about an office — and its tile " +
-      "shows the count without a verdict.",
+      "Average across the four KPIs of (actual ÷ expected-so-far), ×100, uncapped. Expected-so-far " +
+      "uses the weighted day curve: Mon–Thu each carry a fifth of the week, Friday slightly less, and " +
+      "protection is weighted Mon–Fri only. A KPI expecting less than one whole case by now is left " +
+      "out — 0 or 250% of half a case says nothing about an office — and its tile shows the count " +
+      "without a verdict.",
     source: "Derived from the four KPIs and the weekly targets",
     reconcilesTo: null,
     owner: "Conor Murphy",
     frequency: "Daily",
     status: "indicative",
     note:
-      "Beating a target earns no extra credit HERE, so one small overshoot cannot carry an office past " +
-      "one doing far more business — until 2026-08-26 it could, and did. The overshoot is still shown, " +
-      "on the KPI's own tile where it has a denominator beside it. Only as meaningful as the targets " +
-      "underneath it: each screen states whose targets it is using, and where a measure has no " +
-      "Capricorn target the figure beneath is our estimate. Measured through the last COMPLETE day, so " +
-      "it does not dip every morning.",
+      "A small target beaten several times over scores several times over, and that is intended — " +
+      "Capricorn's ruling, 2026-08-26. So read the figure alongside the four tiles beneath it rather " +
+      "than on its own: a high score can sit on one measure while another on the same card is in the " +
+      "red. Only as meaningful as the targets underneath it: each screen states whose targets it is " +
+      "using, and where a measure has no Capricorn target the figure beneath is our estimate. " +
+      "Measured through the last COMPLETE day, so it does not dip every morning.",
   },
 ];
 

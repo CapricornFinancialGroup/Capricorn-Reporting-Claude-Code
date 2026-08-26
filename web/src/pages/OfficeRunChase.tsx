@@ -50,11 +50,11 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
               reach, without 28 triggers competing with the numbers. */}
           <div className="funnel-defs office-defs">
             {[["leads", "Leads"], ["applications", "Mortgages Written"], ["referrals", "Protection Referrals"],
-              ["sales", "Protection Sales"], ["pace", "% of Target"]].map(([key, label]) => (
+              ["sales", "Protection Sales"], ["pace", "% of Pace"]].map(([key, label]) => (
               <span className="funnel-def" key={key}>{label} <MetricInfo metricKey={key} mode={mode} /></span>
             ))}
             <span className="asof" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
-              Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · expected <b>{data.week.expectedPct}%</b> · rank #1–{data.offices.length} by targets met
+              Week {shortDate(data.week.start)} – {shortDate(data.week.end)} · expected <b>{data.week.expectedPct}%</b> · rank #1–{data.offices.length} by pace on each tile
             </span>
           </div>
 
@@ -70,7 +70,7 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                         "—" for an office with no target: there is no rank to hold. */}
                     {o.rank != null && <span className="office-rank">{o.rank}</span>}
                     <span className="office-title">{o.office}</span>
-                    {o.pct != null ? <StatusPill status={o.status} label={`${o.pct}% of target`} /> : <span className="pill muted">No target</span>}
+                    {o.pct != null ? <StatusPill status={o.status} label={`${o.pct}% of pace`} /> : <span className="pill muted">No target</span>}
                   </div>
                   <div className="office-kpis">
                     {o.kpis.map((k) => {
@@ -89,7 +89,7 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                           <span className="office-kpi-gap" style={{ color: colour }}>
                             {/* Short enough not to clip the column — "target too small to pace" ran
                                 off the card edge as "target too small to pac". The reason lives on
-                                the "% of Target" ⓘ in the strip above, once, instead of in six
+                                the "% of Pace" ⓘ in the strip above, once, instead of in six
                                 truncated copies. */}
                             {k.status == null
                               ? "no verdict"
