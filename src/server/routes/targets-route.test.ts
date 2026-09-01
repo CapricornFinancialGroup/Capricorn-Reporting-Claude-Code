@@ -16,7 +16,6 @@ import type { Config } from "../../config.js";
 import { buildApp } from "../app.js";
 import { getOfficeDailyTargets, getTargetsProvenance, getWrittenWeeklyTargets, resetTargetsForTest } from "../../services/targets/store.js";
 import { OFFICES } from "../../domain/offices.js";
-import { OFFICE_DAILY_TARGETS } from "../../domain/targets.js";
 
 const ADMIN = "arman@capricornfinancial.co.uk";
 
@@ -128,11 +127,20 @@ function allOffices(value: number): Record<string, number> {
 
 describe("POST /api/targets/set-leads — the only route that can set a leads target", () => {
   let app: FastifyInstance;
+  // Snapshot the GETTER, not the raw placeholder constant: Mortgages Written is derived on read
+  // (Kyle 2026-09-01), so the constant is no longer what an untouched board returns. Comparing
+  // like with like keeps these four assertions saying what they mean — "nothing was activated".
+  let untouched: ReturnType<typeof getOfficeDailyTargets>;
   beforeAll(async () => { app = await buildApp(testConfig()); });
   afterAll(async () => { await app.close(); });
-  beforeEach(() => resetTargetsForTest());
+  // Reset FIRST, then snapshot — hooks run in registration order, and snapshotting before the reset
+  // would capture whatever the previous test left behind.
+  beforeEach(() => {
+    resetTargetsForTest();
+    untouched = structuredClone(getOfficeDailyTargets());
+  });
 
-  it("writes ONLY leads, leaving every other KPI as it was", async () => {
+  it("writes leads, carries Mortgages Written with it, and leaves protection alone", async () => {
     const before = getOfficeDailyTargets()["Hammersmith"];
     const res = await postLeads(app, { week: SATURDAY, leads: { ...allOffices(10), Hammersmith: 400 } });
     expect(res.statusCode).toBe(200);
@@ -140,7 +148,13 @@ describe("POST /api/targets/set-leads — the only route that can set a leads ta
     const after = getOfficeDailyTargets()["Hammersmith"];
     // Weekly in, DAILY out — the store divides by 5, same as every other target source.
     expect(after.leads).toBe(80);
-    expect(after.applications).toBe(before.applications);
+    // MORTGAGES WRITTEN MOVES TOO, BY DESIGN. This test asserted it must NOT until 2026-09-01, when
+    // Kyle tied the written target to lead flow and asked for exactly this: "We can set it now at 620
+    // but in 3 weeks time when I want it to be 800 - I want to be able to update it and it will
+    // automatically calibrate by itself." 400 leads/wk × 25% = 100/wk = 20/day.
+    expect(after.applications).toBe(20);
+    expect(after.applications).not.toBe(before.applications);
+    // Protection is Capricorn's own figure and this route must still never touch it.
     expect(after.referrals).toBe(before.referrals);
     expect(after.sales).toBe(before.sales);
   });
@@ -159,7 +173,7 @@ describe("POST /api/targets/set-leads — the only route that can set a leads ta
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toContain("not a Saturday");
     // Nothing activated: the placeholder targets must be untouched.
-    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+    expect(getOfficeDailyTargets()).toEqual(untouched);
   });
 
   it("rejects a missing office rather than silently zeroing it", async () => {
@@ -168,14 +182,14 @@ describe("POST /api/targets/set-leads — the only route that can set a leads ta
     const res = await postLeads(app, { week: SATURDAY, leads: partial });
     expect(res.statusCode).toBe(422);
     expect(res.json().hardErrors.join(" ")).toContain("Mayfair");
-    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+    expect(getOfficeDailyTargets()).toEqual(untouched);
   });
 
   it("rejects an implausible figure, so a transposed digit cannot reset the board's pacing", async () => {
     const res = await postLeads(app, { week: SATURDAY, leads: { ...allOffices(20), Hammersmith: 49000 } });
     expect(res.statusCode).toBe(422);
     expect(res.json().hardErrors.join(" ")).toContain("plausible maximum");
-    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+    expect(getOfficeDailyTargets()).toEqual(untouched);
   });
 
   it("403s a non-admin viewer", async () => {
@@ -183,6 +197,6 @@ describe("POST /api/targets/set-leads — the only route that can set a leads ta
       "x-ms-client-principal-name": "someone.else@capricornfinancial.co.uk",
     });
     expect(res.statusCode).toBe(403);
-    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+    expect(getOfficeDailyTargets()).toEqual(untouched);
   });
 });

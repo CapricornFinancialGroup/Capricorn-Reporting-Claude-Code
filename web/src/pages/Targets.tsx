@@ -184,8 +184,17 @@ export function Targets({ meta }: PageProps) {
           Weekly NEW-CLIENT leads per office. Capricorn's Datarails export carries no lead figures, so
           this is the only place the leads target can come from — until it is set here, the board is
           pacing against our own headcount estimate and says so under the leaderboard.
-          {" "}Saving writes <strong>only</strong> Leads: Applications, Protection and Revenue keep
-          whatever the last import gave them.
+          {" "}Protection and Revenue keep whatever the last import gave them.
+          {/* Saying this out loud on the form. Until 2026-09-01 the leads target genuinely wrote only
+              leads; now it carries the mortgage target with it, and an admin typing a number here has
+              to know that before they save, not after they see the board move. */}
+          <div style={{ marginTop: 4 }}>
+            <strong>Mortgages Written follows this figure.</strong> On Kyle's rule of 1 Sep 2026 the
+            written target is 25% of lead flow, so saving 620 leads sets 155 mortgages a week and
+            saving 800 would set 200. It recalibrates on its own — there is nothing else to update.
+            {" "}If a Datarails file ever supplies its own Applications figure, that wins and this
+            stops deriving.
+          </div>
           <div style={{ marginTop: 4 }}>
             Since 17 Aug 2026 a "lead" is a new CLIENT, not a case — a target set on the older
             all-cases basis will read about 19% too high (new clients run 81–83% of all lead-cases).

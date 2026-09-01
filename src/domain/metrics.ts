@@ -146,6 +146,12 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     frequency: "Daily",
     status: "agreed",
     note:
+      "THE TARGET IS DERIVED, NOT SET: 25% of the lead target, per Kyle's rule of 1 Sep 2026 — 620 " +
+      "leads a week gives 155 mortgages, which sense-checks against 500–600 completions a month. It " +
+      "moves whenever the lead target moves, with nothing else to update. It replaced a 113/wk figure " +
+      "that had never been traced to anything Capricorn gave us and was flattering the board: 73 " +
+      "written against 49 expected read AHEAD 24 on a target nobody owned. A Datarails file supplying " +
+      "its own Applications figure takes precedence and stops the derivation. " +
       "6.4% of mortgage cases have never been given this status and are therefore not counted — here " +
       "or on Capricorn's own report, which requires it too. Group-wide: a Total Written Report run " +
       "inside one entity covers that entity alone and will read lower.",

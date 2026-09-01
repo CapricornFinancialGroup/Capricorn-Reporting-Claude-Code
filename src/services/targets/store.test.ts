@@ -11,15 +11,28 @@ import {
   getTargetsProvenance,
   getWrittenWeeklyTargets,
   noneCaptured,
+  MORTGAGE_CONVERSION_RATE,
   resetTargetsForTest,
 } from "./store.js";
 
 beforeEach(() => resetTargetsForTest());
 
 describe("store — seeded from placeholders, zero behaviour change before any upload", () => {
-  it("returns the exact placeholder constants", () => {
-    expect(getDailyTargets()).toEqual(DAILY_TARGETS);
-    expect(getOfficeDailyTargets()).toEqual(OFFICE_DAILY_TARGETS);
+  it("returns the placeholder constants, with Mortgages Written derived from Leads", () => {
+    // Mortgages Written is the one exception, and deliberately so — Kyle's rule of 2026-09-01 ties it
+    // to lead flow at MORTGAGE_CONVERSION_RATE rather than leaving it on a 113/wk figure that had never
+    // been traced to anything Capricorn gave us. Everything else is still verbatim.
+    for (const k of ["leads", "referrals", "sales", "existingCases"] as const) {
+      expect(getDailyTargets()[k]).toBe(DAILY_TARGETS[k]);
+      expect(getOfficeDailyTargets()["Hammersmith"][k]).toBe(OFFICE_DAILY_TARGETS["Hammersmith"][k]);
+    }
+    expect(getOfficeDailyTargets()["Hammersmith"].applications)
+      .toBe(Math.round(OFFICE_DAILY_TARGETS["Hammersmith"].leads * 5 * MORTGAGE_CONVERSION_RATE) / 5);
+    // The group is the SUM of the derived offices, never a second derivation of its own — so the cards
+    // and the headline cannot disagree by a rounding.
+    expect(getDailyTargets().applications).toBe(
+      OFFICES.reduce((s, o) => s + Math.round(getOfficeDailyTargets()[o.name].leads * 5 * MORTGAGE_CONVERSION_RATE), 0) / 5,
+    );
     expect(getWrittenWeeklyTargets()).toEqual(WRITTEN_WEEKLY_TARGET);
     // Before any upload NO target is Capricorn's. Asserted exhaustively over BOTH the stored per-figure
     // map and the list derived from it, rather than loosened: the Targets page reads the map and the
@@ -48,10 +61,13 @@ describe("store — activateTargets", () => {
 
     // existingCases is 0 throughout: the upload sheet has no column for it (untargeted by design),
     // and `?? 0` in the ÷5 keeps it a real zero rather than the NaN a missing key used to produce.
-    expect(getOfficeDailyTargets()["Hammersmith"]).toEqual({ leads: 10, applications: 2, referrals: 1, sales: 1, existingCases: 0 });
+    // applications is 2.6, not the 2 the file carried: this upload did not supply Applications, so it
+    // is still ours to derive — 50 leads/wk × 25% = 12.5, rounded to a whole 13/wk = 2.6/day. The
+    // file's own figure is ignored precisely because nothing marks it as Capricorn's; see `captured`.
+    expect(getOfficeDailyTargets()["Hammersmith"]).toEqual({ leads: 10, applications: 2.6, referrals: 1, sales: 1, existingCases: 0 });
     expect(getDailyTargets()).toEqual({
       leads: 10 * OFFICES.length,
-      applications: 2 * OFFICES.length,
+      applications: (13 * OFFICES.length) / 5, // 2.6/day each, summed without a float artefact
       referrals: 1 * OFFICES.length,
       sales: 1 * OFFICES.length,
       existingCases: 0,
@@ -115,7 +131,9 @@ describe("store — activateTargets", () => {
     const parsed: ParsedTargets = { effectiveWeek: "2026-07-04", offices, writtenWeekly: { mortgage: 200_000, insurance: 50_000 } };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-04T09:00:00.000Z");
     expect(getDailyTargets().leads).toBe(10 * OFFICES.length);
-    expect(getDailyTargets().applications).toBe(2 * OFFICES.length);
+    // Dubai's 500 leads/wk must not reach the group. Derived: each LIVE office 50 leads/wk × 25% =
+    // 13/wk, so the group is 13 × 6 = 78/wk = 15.6/day. Dubai would have added another 125.
+    expect(getDailyTargets().applications).toBe((13 * OFFICES.length) / 5);
   });
 
   // main's twin of the above, kept because it asserts the DERIVED list rather than the map — the two

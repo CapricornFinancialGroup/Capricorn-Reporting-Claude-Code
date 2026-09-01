@@ -111,6 +111,10 @@ function multiplyBy5(t: KpiTargets): KpiTargets {
   return Object.fromEntries(KPI_KEYS.map((k) => [k, (t[k] ?? 0) * 5])) as KpiTargets;
 }
 
+function multiplyBy5All(offices: Record<string, KpiTargets>): Record<string, KpiTargets> {
+  return Object.fromEntries(Object.entries(offices).map(([office, t]) => [office, multiplyBy5(t)]));
+}
+
 /** The group target = the sum of the offices the board actually SHOWS.
  *
  *  Restricted to the live roster because an upload outlives the roster it was written against: Kyle's
@@ -186,12 +190,58 @@ export function resetTargetsForTest(): void {
   state = placeholderState();
 }
 
+/** Mortgages Written per lead. Kyle, 2026-09-01: "it should be a % of the leads i.e. lead flow target
+ *  is 620 thus we should be looking at circa 25% conversion resulting in 155 per week (which as a
+ *  sense check – in a 4 week month is 620 Mortgages – which is about right as we do circa 500 – 600
+ *  mortgage completions per Month)." */
+export const MORTGAGE_CONVERSION_RATE = 0.25;
+
+/** Mortgages Written is DERIVED from the lead target, not set independently.
+ *
+ *  The 113/wk it replaces had never been traced to any figure Capricorn gave us, and it was flattering
+ *  the board: 73 written against 49 expected read "AHEAD 24" on a target nobody owned. Kyle's rule ties
+ *  it to lead flow, which also answers what he asked for alongside the leads target — "I want to be
+ *  able to update it and it will automatically calibrate by itself." Change leads and this follows on
+ *  the next read; no second upload, no second decision.
+ *
+ *  ONLY WHILE THE FIGURE IS STILL OURS. The moment a Datarails file supplies Applications,
+ *  `captured.applications` goes true and Capricorn's own number wins — a derivation is a stand-in for
+ *  a target nobody has set, never an override of one they have.
+ *
+ *  Derived per office and then summed for the group, rather than derived twice: two independent
+ *  roundings would let the group total disagree with the offices beneath it by a case or two, which is
+ *  precisely the "the screens don't agree" complaint this thread exists to end.
+ *
+ *  Rounded so the WEEKLY figure is whole — every call site does `daily * 5`, so the daily carries a
+ *  fifth. 620 leads → 155 written, exactly Kyle's number. */
+function deriveApplications(officeDaily: Record<string, KpiTargets>): Record<string, KpiTargets> {
+  return Object.fromEntries(
+    Object.entries(officeDaily).map(([office, t]) => [
+      office,
+      { ...t, applications: Math.round(t.leads * 5 * MORTGAGE_CONVERSION_RATE) / 5 },
+    ]),
+  );
+}
+
+/** Is Mortgages Written still our stand-in, and therefore ours to derive? */
+function applicationsAreOurs(): boolean {
+  return state.provenance.captured?.applications !== true;
+}
+
 export function getDailyTargets(): KpiTargets {
-  return state.daily;
+  if (!applicationsAreOurs()) return state.daily;
+  // ONLY `applications` is replaced. Recomputing the whole record from the offices looked equivalent
+  // and is not: the placeholder group figures are not an exact office sum (referrals 5.0/day against
+  // 5.2 summed), so it silently moved two protection targets nobody had asked to change.
+  //
+  // The applications total is the sum of the offices the board SHOWS — same rule as activation, so a
+  // retired office's row cannot pull the group away from the cards underneath it.
+  const applications = sumOffices(multiplyBy5All(deriveApplications(state.officeDaily))).applications / 5;
+  return { ...state.daily, applications };
 }
 
 export function getOfficeDailyTargets(): Record<string, KpiTargets> {
-  return state.officeDaily;
+  return applicationsAreOurs() ? deriveApplications(state.officeDaily) : state.officeDaily;
 }
 
 /** WEEKLY written targets, £ — Mortgage + Insurance (the dashboard's "Revenue"). */

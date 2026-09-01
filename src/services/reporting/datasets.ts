@@ -705,7 +705,17 @@ export async function officeRunChase(config: Config, _f: ReportFilters) {
       .sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0))
       .map((o, i) => ({ ...o, rank: i + 1 }));
     const unranked = offices.filter((o) => o.pct == null).map((o) => ({ ...o, rank: null as number | null }));
-    const champion = ranked[0]?.office ?? null;
+    // THE BADGE IS NOT THE RANK. Kyle's ruling, 2026-09-01 ("Fine. Proceed."): the percentage and the
+    // ranking stand exactly as they are — an office that beats what was asked of it wins on that
+    // strength, however small the office — but the "Leading" celebration is withheld from an office
+    // with a measure in crisis.
+    //
+    // On 2026-08-26 Newmarket wore it at 270% of pace, earned on 7 applications against a target of 3,
+    // while two inches away on the same card its leads read 1 of 36 in red. Congratulating an office
+    // on a card that also shows a collapse is how a wall stops being believed. So the crown goes to the
+    // best-placed office that is not failing anything; if every office has a leg in crisis it goes
+    // nowhere, which is itself the honest signal.
+    const champion = ranked.find((o) => !o.kpis.some((k) => k.status === "critical"))?.office ?? null;
 
     // Card/strip POSITION is Conor's fixed roster order (2026-07-07: "Office Order"), not
     // performance -- a wall display shouldn't reshuffle its layout every refresh. `rank` (above)
