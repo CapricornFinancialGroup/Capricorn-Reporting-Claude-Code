@@ -38,7 +38,7 @@ import * as funnelQ from "./funnel.js";
 import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } from "./kpis.js";
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, paceInclPartDay, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
-import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, weekDatesOf, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
 import { run, type BuiltQuery } from "./query.js";
 // `protectionCommissionByAdviser` is deliberately NOT imported any more: it credits a policy's whole
 // commission to its primary adviser, which is the 100%-to-the-protection-adviser behaviour the 60/40
@@ -510,7 +510,9 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       // DAY view (the headline counter, per Conor's 2026-07-06 feedback): the latest day's actual vs
       // that day's target, with a day ahead/behind. Saturday now gets its own tile.
       const dayActual = dayTotal(core.daily[k], ctx.latestDay);
-      const target = dayTarget(k, weekly, ctx.latestDayIndex);
+      // `weekDatesOf(ctx.latestDay)` rather than `days`: early in a week the judged day is LAST week's
+      // Friday, and the holiday shape that applies to it is that week's, not this one's.
+      const target = dayTarget(k, weekly, ctx.latestDayIndex, weekDatesOf(ctx.latestDay));
 
       // TODAY'S OWN day target, and the verdict that includes today.
       //
@@ -524,7 +526,7 @@ export async function dailyRunChase(config: Config, _f: ReportFilters) {
       // stop believing — Capricorn, 2026-08-24: "they look at it and think nothing's been done and
       // start questioning the data."
       const todayIdx = today ? days.indexOf(today.date) : -1;
-      const todayTarget = targeted && todayIdx >= 0 ? dayTarget(k, weekly, todayIdx) : null;
+      const todayTarget = targeted && todayIdx >= 0 ? dayTarget(k, weekly, todayIdx, days) : null;
       const todayCount = today ? today.counts[k] : 0;
       // Expected by now = the whole complete days (pace.expectedByNow) PLUS the share of today the
       // ETL has actually copied. Comparing a part-day against a whole day's target is the 2026-07-30

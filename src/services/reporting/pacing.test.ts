@@ -342,3 +342,32 @@ describe("the judged day is never a Sunday", () => {
     }
   });
 });
+
+describe("isTradingDay — a bank holiday is not one either", () => {
+  it("excludes the summer bank holiday, Mon 31 Aug 2026", () => {
+    expect(isTradingDay("2026-08-31")).toBe(false);
+  });
+
+  it("still counts the ordinary Monday either side of it", () => {
+    expect(isTradingDay("2026-08-24")).toBe(true);
+    expect(isTradingDay("2026-09-07")).toBe(true);
+  });
+
+  it("keeps Saturday a trading day and Sunday not", () => {
+    expect(isTradingDay("2026-08-29")).toBe(true); // Saturday
+    expect(isTradingDay("2026-08-30")).toBe(false); // Sunday
+  });
+
+  it("walks back PAST a bank holiday to find the last day that traded", () => {
+    // Mon 31 Aug looking back lands on Sat 29 Aug: Monday was the holiday, Sunday never trades. This
+    // is what stops the headline day tile handing a closed Monday a full Monday target.
+    expect(lastTradingDayOnOrBefore("2026-08-31")).toBe("2026-08-29");
+  });
+
+  it("stops the week-to-date expectation counting a closed day", () => {
+    // Through Mon 31 Aug the leads curve stands at the two open days only — Sat 6% + Sun 1.5%.
+    expect(weekElapsedFraction("2026-08-31", "leads")).toBeCloseTo(0.075, 10);
+    // The equivalent Monday a week earlier is untouched: weekend plus a full Monday.
+    expect(weekElapsedFraction("2026-08-24", "leads")).toBeCloseTo(0.075 + (0.925 * 5) / 24, 10);
+  });
+});

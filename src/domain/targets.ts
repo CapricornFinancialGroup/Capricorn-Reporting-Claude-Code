@@ -13,6 +13,7 @@
 //
 // Monthly targets are derived: daily target × working days in the month (Mon–Fri).
 
+import { isBankHoliday } from "./calendar.js";
 import { UNASSIGNED } from "./offices.js";
 
 export type KpiKey = "leads" | "applications" | "referrals" | "sales" | "existingCases";
@@ -159,10 +160,80 @@ export function weeklyTarget(kpi: KpiKey): number {
   return DAILY_TARGETS[kpi] * 5;
 }
 
+/** Day shares for ONE SPECIFIC WEEK, with any day the offices are shut given nothing to do.
+ *
+ *  A BANK HOLIDAY IS NOT A DAY YOU CAN BE BEHIND ON. Monday 31 August 2026 was the summer bank
+ *  holiday, and the static curve above handed it a full weekday share — 122 leads, 23 mortgages, 12
+ *  protection referrals, 12 protection sales. On the Tuesday morning the board reported the firm 136
+ *  leads and 20 mortgages behind for a three-day weekend nobody worked. Exactly the defect Kyle ruled
+ *  on for Saturday protection on 2026-08-25, in a different costume.
+ *
+ *  THE WEEKLY TARGET DOES NOT CHANGE — only the day-by-day expectation, which is Kyle's own wording
+ *  for the protection ruling and the precedent this follows. The closed day's slice of the weekday
+ *  ratio is REDISTRIBUTED across the days that are actually open, so a four-day week still expects a
+ *  full week's work; it just expects it on the four days available instead of pretending Monday was
+ *  one of them. Zeroing without redistributing would quietly cut the week's commitment by a fifth,
+ *  which is not ours to do.
+ *
+ *  `weekDays` is the seven dates of the week, Sat..Fri — the caller (`weeklyPacing`) already has them,
+ *  which keeps all date arithmetic out of the domain layer. Omit it and you get the plain curve.
+ *
+ *  Weekend indices are left alone: England & Wales substitutes any holiday landing on a Sat or Sun
+ *  forward to the Monday, so a closed weekend day cannot occur in `calendar.ts`. If that ever changes,
+ *  the weekend share is observed rather than ratio-derived and would need its own redistribution rule.
+ *  A week with EVERY weekday closed keeps only the weekend share and therefore sums to less than 1 —
+ *  correct, because a weekly target cannot be met by an office that never opens. */
+export function dayWeightsForWeek(
+  kpi: KpiKey,
+  weekDays: readonly string[],
+  closed: (iso: string) => boolean = isBankHoliday,
+): number[] {
+  const [sat, sun] = WEEKEND_SHARES[kpi];
+  const weekdayTotal = 1 - sat - sun;
+  // WEEKDAY_RATIO is Mon..Fri, which is weekDays index 2..6.
+  const ratios = WEEKDAY_RATIO.map((r, i) => (closed(weekDays[i + 2] ?? "") ? 0 : r));
+  const ratioSum = ratios.reduce((a, b) => a + b, 0);
+  if (ratioSum === 0) return [sat, sun, 0, 0, 0, 0, 0];
+  return [sat, sun, ...ratios.map((r) => (weekdayTotal * r) / ratioSum)];
+}
+
+/** Cumulative expected share by END of each day, for one specific week. See `dayWeightsForWeek`. */
+export function cumulativeSharesForWeek(
+  kpi: KpiKey,
+  weekDays: readonly string[],
+  closed: (iso: string) => boolean = isBankHoliday,
+): number[] {
+  return dayWeightsForWeek(kpi, weekDays, closed).reduce<number[]>((acc, w) => {
+    acc.push((acc[acc.length - 1] ?? 0) + w);
+    return acc;
+  }, []);
+}
+
+/** KPI-agnostic cumulative curve for one specific week — mean across the TARGETED KPIs, as
+ *  `BLENDED_CUMULATIVE_SHARES` but holiday-aware. */
+export function blendedCumulativeForWeek(
+  weekDays: readonly string[],
+  closed: (iso: string) => boolean = isBankHoliday,
+): number[] {
+  const perKpi = TARGETED_KPI_KEYS.map((k) => cumulativeSharesForWeek(k, weekDays, closed));
+  return WEEK_DAY_NAMES.map((_, i) => perKpi.reduce((sum, c) => sum + c[i], 0) / perKpi.length);
+}
+
 /** Target for one day of the Sat–Fri week (index 0 = Sat … 6 = Fri) = weekly target × that day's
- *  share for THAT KPI. Saturday is no longer zero — see the table above. */
-export function dayTarget(kpi: KpiKey, weekly: number, dayIndex: number): number {
-  const w = DAY_WEIGHTS[kpi][dayIndex] ?? DAY_WEIGHTS[kpi][2];
+ *  share for THAT KPI. Saturday is no longer zero — see the table above.
+ *
+ *  Pass `weekDays` to get the shape of that ACTUAL week, with bank holidays given nothing to do and
+ *  their share redistributed. Without it you get the plain day-of-week curve, which is wrong in any
+ *  week containing a holiday. */
+export function dayTarget(
+  kpi: KpiKey,
+  weekly: number,
+  dayIndex: number,
+  weekDays?: readonly string[],
+  closed: (iso: string) => boolean = isBankHoliday,
+): number {
+  const weights = weekDays ? dayWeightsForWeek(kpi, weekDays, closed) : DAY_WEIGHTS[kpi];
+  const w = weights[dayIndex] ?? weights[2];
   return Math.round(weekly * w);
 }
 

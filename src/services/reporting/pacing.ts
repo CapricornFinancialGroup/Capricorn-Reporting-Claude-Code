@@ -15,7 +15,8 @@
 // If a true intraday feed (or the simulated "drip" mode) ever lands, it plugs in HERE — pages and
 // datasets consume PacingContext and never know the cadence.
 
-import { BLENDED_CUMULATIVE_SHARES, CUMULATIVE_WEEK_SHARES, KPI_KEYS, type KpiKey } from "../../domain/targets.js";
+import { blendedCumulativeForWeek, cumulativeSharesForWeek, KPI_KEYS, type KpiKey } from "../../domain/targets.js";
+import { isBankHoliday } from "../../domain/calendar.js";
 import { monthOf, shiftDays, weekStartOf } from "./trends.js";
 import { workingDaysElapsed, workingDaysInMonth } from "../../domain/targets.js";
 
@@ -54,7 +55,17 @@ export function weekDayIndex(iso: string): number {
  *  blended curve is only for genuinely mixed measures. */
 export function weekElapsedFraction(iso: string, kpi?: KpiKey): number {
   const i = weekDayIndex(iso);
-  return kpi ? CUMULATIVE_WEEK_SHARES[kpi][i] : BLENDED_CUMULATIVE_SHARES[i];
+  // The curve is derived from THIS week's dates, not from day-of-week alone, so a bank holiday inside
+  // the week moves the expectation off the closed day and onto the days that were open. See
+  // `dayWeightsForWeek`.
+  const days = weekDatesOf(iso);
+  return kpi ? cumulativeSharesForWeek(kpi, days)[i] : blendedCumulativeForWeek(days)[i];
+}
+
+/** The seven dates of the Sat–Fri reporting week containing `iso`, Sat first. */
+export function weekDatesOf(iso: string): string[] {
+  const start = weekStartOf(iso);
+  return Array.from({ length: 7 }, (_, i) => shiftDays(start, i));
 }
 
 /**
@@ -112,7 +123,10 @@ export function dataThroughDay(asOf: string, today: string, todayCount: number):
  *  Saturday IS a trading day at Capricorn (Kyle, 2026-08-04) — ~36 leads a day, and the reporting
  *  week is Sat–Fri precisely to capture it. Only Sunday is excluded, which runs 0–10 leads. */
 export function isTradingDay(iso: string): boolean {
-  return dow(iso) !== 0; // 0 = Sunday
+  // A bank holiday is not a trading day either. Added 2026-09-01 after Monday 31 August, the summer
+  // bank holiday, was judged as a full trading Monday: 5 leads against a 122 target, and a week-to-date
+  // reading 136 leads behind for three days nobody worked. See `src/domain/calendar.ts`.
+  return dow(iso) !== 0 && !isBankHoliday(iso); // 0 = Sunday
 }
 
 /** The latest trading day at or before `iso`. Only ever walks back one day, since Sunday is the sole
@@ -216,8 +230,13 @@ export function weeklyPacing(today: string, dataAsOf: string): WeeklyPacingConte
     windowStart,
     windowEnd: friday,
     weekDays,
-    cumulativeShares: CUMULATIVE_WEEK_SHARES,
-    blendedShares: [...BLENDED_CUMULATIVE_SHARES],
+    // Curves for THIS week's actual dates — a bank holiday inside it carries no expectation and its
+    // share moves to the days that are open. Everything downstream (the chase charts' target line, the
+    // office pace line, the per-day tiles) reads these, so they all agree on which days counted.
+    cumulativeShares: Object.fromEntries(
+      KPI_KEYS.map((k) => [k, cumulativeSharesForWeek(k, weekDays)]),
+    ) as Record<KpiKey, number[]>,
+    blendedShares: blendedCumulativeForWeek(weekDays),
     fraction: dataAsOf < windowStart ? 0 : weekElapsedFraction(inWeek),
     fractionByKpi,
     latestDay,
