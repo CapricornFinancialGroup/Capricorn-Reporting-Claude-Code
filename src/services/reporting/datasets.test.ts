@@ -279,11 +279,27 @@ describe("officeStatus — CRITICAL is denominated in cases, not percentage poin
   });
 
   it("keeps chaseStatus's bands, which are right for an unbounded ratio", () => {
-    expect(officeStatus(272, critical)).toBe("ahead"); // Newmarket — overshoot wins, by ruling
+    expect(officeStatus(272, notCritical)).toBe("ahead"); // overshoot bands ahead, by the 26 Aug ruling
     expect(officeStatus(123, notCritical)).toBe("ahead"); // Singapore
-    expect(officeStatus(95, critical)).toBe("on_pace");
-    expect(officeStatus(84, critical)).toBe("behind"); // Hammersmith
+    expect(officeStatus(95, notCritical)).toBe("on_pace");
+    expect(officeStatus(84, notCritical)).toBe("behind"); // Hammersmith
   });
+
+  it("lets a critical KPI RAISE the office, not just fail to lower it", () => {
+    // THE BUG THIS PINS, live on the wall 2026-09-02: the critical check could only pull a critical
+    // BAND down to "behind", never lift a milder one, so a high pct hid a collapse beneath it.
+    // Mayfair read "behind" at 72% with applications 1 of 13, referrals 0 of 12 and sales 0 of 12 all
+    // critical, next to Hammersmith reading CRITICAL at 53% on one critical leg. The worse office
+    // looked better. Newmarket's 272% of 26 Aug banded "ahead" with its leads at 1 of 36.
+    expect(officeStatus(272, critical)).toBe("critical");
+    expect(officeStatus(95, critical)).toBe("critical");
+    expect(officeStatus(84, critical)).toBe("critical");
+    expect(officeStatus(72, critical)).toBe("critical"); // Mayfair, 2026-09-02
+  });
+
+  // The 26 Aug overshoot ruling is untouched by the above: ranking is a sort on pctToPace, which is
+  // unbounded and knows nothing about statuses (see the pctToPace describe block). Two different
+  // questions — "who is doing best" and "is anything badly wrong" — that were sharing one answer.
 
   it("has no verdict for an office with no rankable target", () => {
     expect(officeStatus(null, [])).toBe("on_pace");

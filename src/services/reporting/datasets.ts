@@ -384,24 +384,36 @@ export function pctToPace(wtd: KpiTargets, dailyTargets: KpiTargets, ctx: Weekly
   return Math.round((sum(ratios) / ratios.length) * 100);
 }
 
-/** Band an office on its blended pace — but never say CRITICAL on percentage points alone.
+/** Band an office on its blended pace. CRITICAL is decided by its KPIs, never by the percentage.
+ *
+ *  ONE RULE, IN CASES. A critical leg is the only thing that can make an office critical — and it
+ *  always does. `pct` decides only between ahead / on pace / behind.
  *
  *  The bands themselves are chaseStatus's, which is right for an unbounded ratio where 100 is the
- *  middle of the scale. The CRITICAL guard inside chaseStatus is not, because it is denominated in
- *  whole cases ("at least two short") and `pct` arrives in percentage points: `100 - pct >= 2` is
- *  true for any office below 98%, so the guard had never once fired and every office under 60% read
- *  CRITICAL however small its target. That is how Hong Kong reached the wall as CRITICAL for being
- *  3 leads short of 8.
+ *  middle of the scale. Its CRITICAL guard is not, because it is denominated in whole cases ("at
+ *  least two short") and `pct` arrives in percentage points: `100 - pct >= 2` is true for any office
+ *  below 98%, so the guard had never once fired and every office under 60% read CRITICAL however
+ *  small its target. That is how Hong Kong reached the wall as CRITICAL for being 3 leads short of 8.
  *
- *  So the office inherits the loudest word only when one of its own KPIs has earned it on real case
- *  counts; those per-KPI statuses already run through the two-whole-cases rule. One rule, stated
- *  once. A genuine collapse still shows: Shanghai at 0 leads against 4 expected is critical on the
- *  leads KPI itself, and stays critical here. */
+ *  A KPI CRITICAL ALSO HAS TO BE ABLE TO RAISE, NOT ONLY LOWER. Until 2026-09-02 this check could
+ *  only pull a critical BAND down to "behind", so a high pct hid a collapse underneath it. Live that
+ *  morning: Mayfair read "behind" at 72% with applications 1 of 13, referrals 0 of 12 and sales 0 of
+ *  12 all critical, sitting beside Hammersmith reading CRITICAL at 53% with one critical leg. The
+ *  worse office looked better, which is the same defect the Leading badge had — an office cannot be
+ *  congratulated by one part of its card while another part shows a collapse. Newmarket's 272% on
+ *  2026-08-26, earned on 7 applications against 3 while its leads read 1 of 36, banded "ahead" here.
+ *
+ *  This does NOT touch the 2026-08-26 ruling. Overshoot still wins the RANKING outright, unbounded,
+ *  however small the office (see pctToPace). Ranking answers "who is doing best"; this answers "is
+ *  anything badly wrong here", and those are different questions that were sharing one answer.
+ *
+ *  Sub-unit legs hold no verdict at all (status null, see RANK_MIN_EXPECTED), so they cannot raise an
+ *  office either — a target of 1/week that has not landed yet is not a crisis. */
 export function officeStatus(pct: number | null, kpis: ReadonlyArray<{ status: ChaseStatus | null }>): ChaseStatus {
   if (pct == null) return "on_pace";
+  if (kpis.some((k) => k.status === "critical")) return "critical";
   const banded = chaseStatus(pct, 100);
-  if (banded !== "critical") return banded;
-  return kpis.some((k) => k.status === "critical") ? "critical" : "behind";
+  return banded === "critical" ? "behind" : banded;
 }
 
 // ---------------------------------------------------------------------------
