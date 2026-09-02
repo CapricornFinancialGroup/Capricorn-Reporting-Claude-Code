@@ -17,11 +17,14 @@ import {
   PROTECTION_WRITTEN_STATUSES,
 } from "../../domain/data-quality.js";
 import { ORGANISATIONS } from "../../domain/firm.js";
+import { buildSha } from "../../build-info.js";
+import { isBankHoliday } from "../../domain/calendar.js";
 import { DATA_CADENCE, METRIC_DEFINITIONS } from "../../domain/metrics.js";
 import { OFFICES, UNASSIGNED, isSharedAccount, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import { needsExplaining, settleThrough } from "../snapshots/history.js";
 import { closedWeekStarts, loadRevisions, observeWeeks } from "../snapshots/recorder.js";
 import {
+  cumulativeSharesForWeek,
   dayTarget,
   KPI_KEYS,
   KPI_LABELS,
@@ -249,6 +252,32 @@ export function cumulativeSeries(daily: DailyCount[], days: string[], asOf: stri
  *  (Fri carries 80% of a Mon–Thu day — the kink is intentional). */
 function weeklyTargetPace(weekly: number, cumulativeShares: number[]): number[] {
   return cumulativeShares.map((s) => Math.round(weekly * s));
+}
+
+/**
+ * How written COMMISSION accumulates across a Mon–Fri week — the money-weighted blend of the two
+ * businesses that earn it, returned as five cumulative shares (Monday's already carries Sat + Sun).
+ *
+ * Mortgage written and protection written arrive on measurably different shapes: protection is a
+ * weekday business by Kyle's ruling of 25 August 2026 and carries a zero weekend share, while
+ * mortgages keep theirs because Saturday is a real trading day for them. So the shape of the £ is
+ * neither curve — it is the mix, weighted by what each business is TARGETED to contribute. Borrowing
+ * the mortgage curve alone would place ~3.5% of the protection target on a weekend that never earns
+ * any of it.
+ *
+ * `mortgageWeight` is the mortgage share of the combined written target (£328k of £411k ≈ 0.8).
+ *
+ * Bank-holiday aware through `cumulativeSharesForWeek`, so a closed Monday redistributes its share
+ * across the open weekdays and the target line goes flat there instead of asking for a day's money
+ * nobody was in to earn.
+ */
+export function writtenCumulativeShares(weekDates: readonly string[], mortgageWeight: number): number[] {
+  const w = Math.min(1, Math.max(0, mortgageWeight));
+  const apps = cumulativeSharesForWeek("applications", weekDates);
+  const sales = cumulativeSharesForWeek("sales", weekDates);
+  // Index 2 of a CUMULATIVE curve already includes Sat and Sun, so slicing the weekend off the front
+  // folds it into Monday rather than discarding it — which is Kyle's grouping, for free.
+  return apps.map((a, i) => a * w + (sales[i] ?? 0) * (1 - w)).slice(2);
 }
 
 /** Dashed projection: null until "now", then a straight line from the current value to the
@@ -481,6 +510,18 @@ export async function meta(config: Config) {
     cycleSeconds: config.reporting.cycleSeconds,
     pacingMode: config.reporting.pacingMode,
     timeZone: config.reporting.timeZone,
+    /**
+     * WHICH COMMIT THE SERVER IS ON — so an unattended wall can notice it is out of date and reload.
+     *
+     * The page it is running carries the sha it was SERVED with (see withBuildSha in server/static.ts).
+     * When the two disagree the tab is running a build the server has replaced, and the client reloads
+     * itself once. Null in dev, where nothing is stamped.
+     *
+     * This closes the last hole in "is the fix live?": /healthz has answered it for the SERVER since
+     * 30 July, but nothing made the SCREEN act on the answer — so a deploy reached the wall only if
+     * somebody walked over and refreshed the TV, and nobody ever does.
+     */
+    buildSha,
   };
 }
 
@@ -1427,15 +1468,24 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     }
     const avgCaseLtd = casesLtd.map((n, i) => (n > 0 ? valLtd[i] / n : 0));
 
-    if (partialLast && weekFraction > 0) {
+    if (partialLast) {
       // Volume/count series: scale the partial week up to a like-for-like full-week estimate.
       // Ratio series (avg case size, referral rate) are untouched — extrapolating both the
       // numerator and denominator by the same factor leaves a ratio unchanged, so there's nothing
       // to fix there. Weekly Revenue is deliberately EXCLUDED here — see the day-by-day forecast
       // below (item 12, reframed 2026-07-07): a flat scale-up is a worse model for revenue
       // specifically once a per-weekday forecast is available, and Conor's ask was revenue-only.
-      for (const series of [leadsW, appsW, refsW]) {
-        series[lastIdx] = Math.round(series[lastIdx] / weekFraction);
+      //
+      // EACH SERIES SCALES ON ITS OWN CURVE, not on the blended one. This used a single blended
+      // `weekFraction` for all three, while the Daily Run Chase projects every KPI on that KPI's own
+      // day curve — same formula (`current / fraction`, see computePace), different denominator — so
+      // the two screens disagreed about the same week on the same wall. Live on 2026-09-02: Momentum
+      // said 600 leads this week, Run Chase said 534, off 170 actual. Leads carry a 6% Saturday and
+      // protection carries none, so a blend is wrong for every individual series and right for none
+      // of them. Now identical by construction, which is the whole point of the shared helper.
+      for (const [series, kpi] of [[leadsW, "leads"], [appsW, "applications"], [refsW, "referrals"]] as const) {
+        const f = weekElapsedFraction(asOf, kpi);
+        if (f > 0) series[lastIdx] = Math.round(series[lastIdx] / f);
       }
     }
 
@@ -1595,6 +1645,48 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
     const writtenWindow = leagueWindow;
     /** The subject week has not finished — so `combined.actual` is a week TO DATE, not a week. */
     const subjectPartial = writtenWindow.to < subjectEnd;
+
+    // ---------------------------------------------------------------- the week's run rate, Mon–Fri
+    //
+    // Kyle's day-by-day view of the subject week (see `runRate` on writtenBlock for his wording).
+    //
+    // THE TARGET CURVE IS THE MONEY-WEIGHTED BLEND OF THE TWO BUSINESSES THAT EARN IT, not one
+    // borrowed from either. Mortgage written and protection written arrive on measurably different
+    // shapes — protection is a weekday business by Kyle's own 25 August ruling and carries a zero
+    // weekend share, mortgages keep theirs because Saturday is a real trading day — so the shape of
+    // the £ is the mix of the two, weighted by what each is targeted to contribute (£328k mortgage,
+    // £82k insurance). Using the mortgage curve alone would put ~3.5% of the protection target on a
+    // weekend that never writes any of it.
+    //
+    // Both legs come from `cumulativeSharesForWeek`, so this curve is BANK-HOLIDAY AWARE for free: on
+    // a week like 31 August the closed Monday's share redistributes across the open weekdays and the
+    // line goes flat there instead of demanding a day's money nobody was in to earn.
+    const subjectWeekDates = Array.from({ length: 7 }, (_, i) => shiftDays(weekStarts[subjectIdx], i));
+    const mortWeight = writtenTargetCombined > 0 ? writtenTargets.mortgage / writtenTargetCombined : 1;
+    const writtenCumShares = writtenCumulativeShares(subjectWeekDates, mortWeight);
+    // Only this week's days — `combinedByDay` spans the whole 13-week fetch window, and
+    // `cumulativeSeries` accumulates every date at or before each point, so an unfiltered map would
+    // start Monday at a quarter's worth of commission.
+    const weekCombinedDaily = [...combinedByDay.entries()]
+      .filter(([d]) => d >= weekStarts[subjectIdx] && d <= subjectEnd)
+      .map(([d, v]) => ({ d, n: v }));
+    const runRateDays = subjectWeekDates.slice(2);
+    const writtenRunRate = {
+      days: runRateDays,
+      dayNames: ["Mon", "Tue", "Wed", "Thu", "Fri"],
+      /** Cumulative £ written by end of each day; null after the last loaded day. Rounded to whole
+       *  pounds like every other money figure on this payload — raw commission sums carry pence, and
+       *  a payload that ships £10,638.84 next to a £10,639 elsewhere invites the "which is right?"
+       *  question this screen exists to stop. */
+      actual: cumulativeSeries(weekCombinedDaily, runRateDays, writtenWindow.to).map((v) =>
+        v == null ? null : Math.round(v),
+      ),
+      /** Cumulative £ the week's target implies by end of each day. */
+      target: writtenCumShares.map((s) => Math.round(writtenTargetCombined * s)),
+      weeklyTarget: Math.round(writtenTargetCombined),
+      /** Bank holidays inside Mon–Fri, so the chart can say why a step is flat. */
+      closedDays: runRateDays.filter((d) => isBankHoliday(d)),
+    };
     const writtenBlock = {
       weekLabel: weeks[subjectIdx],
       weekFrom: weekStarts[subjectIdx],
@@ -1637,6 +1729,24 @@ export async function marketMomentum(config: Config, f: ReportFilters) {
       /** Client fees written in the same window — NOT part of "written" (which is commission), shown
        *  so the gap to a fees-inclusive figure like Est. Revenue is explicit, not mysterious. */
       clientFees: Math.round(feeW[subjectIdx] ?? 0),
+      /**
+       * THE CURRENT WEEK, DAY BY DAY, AGAINST THE TARGET — Kyle, 2026-09-01: "this hasn't been
+       * corrected to be for the current week and Monday (which includes Sat & Sunday) – Friday …. So
+       * it shouldn't be Wks it should the run rate for the current week and how we are tracking
+       * towards this target."
+       *
+       * The graph above this was a 13-week history with the current week as its last point, which
+       * answers "how do we compare with the last three months" — a real question, and not the one he
+       * asked. This answers his: five points, Monday to Friday, cumulative written commission climbing
+       * against the cumulative target, so the gap to £{target} is readable at a glance on any day.
+       *
+       * MONDAY CARRIES SATURDAY AND SUNDAY, exactly as he specified. That falls out of
+       * `cumulativeSeries` for free: the reporting week LEADS with its weekend, so Sat and Sun sort
+       * before Monday and fold into it as the cursor advances. It is also the right shape for money —
+       * Capricorn writes almost nothing at a weekend, so plotting Sat and Sun as their own points
+       * draws two flat steps and then a cliff, which is what made the old daily view unreadable.
+       */
+      runRate: writtenRunRate,
       // NO `provisional` FLAG on this dataset (removed 2026-08-25).
       //
       // A week does keep moving after it closes — mean input lag ~6 days, 22% of written £ arriving 8+

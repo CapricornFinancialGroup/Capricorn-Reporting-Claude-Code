@@ -355,96 +355,11 @@ export function momentumChart(opts: {
   };
 }
 
-/** Weekly Revenue's forecast redesign (item 12, reframed 2026-07-07): actuals stop at the last
- *  COMPLETE week — no extrapolated point pretending to be real, unlike the other 3 Momentum
- *  series. The current, in-progress week instead shows a dashed forecast segment (a two-point
- *  line from the last actual point to the day-by-day blended forecast), shrinking toward the true
- *  total as real days land. Same `paceChart`/`projectionSeries` pattern already used on the run
- *  chase — actual + a separate null-padded projection series, not one array doing both jobs. */
-export function momentumForecastChart(opts: {
-  weeks: string[];
-  actual: Array<number | null>;
-  forecast: Array<number | null>;
-  color?: string;
-  referenceLine?: { value: number; label: string };
-}): EChartsOption {
-  const color = opts.color ?? GREEN;
-  let forecastIdx = -1;
-  for (let i = 0; i < opts.forecast.length; i++) if (opts.forecast[i] != null) forecastIdx = i;
-  const forecastValue = forecastIdx >= 0 ? opts.forecast[forecastIdx] : null;
-  return {
-    animation: false,
-    grid: { left: 44, right: 14, top: 18, bottom: 24, containLabel: true },
-    tooltip: { trigger: "axis" },
-    xAxis: {
-      type: "category",
-      boundaryGap: false,
-      data: opts.weeks,
-      axisLabel: { color: AXIS_TEXT, fontSize: 9 },
-      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
-    },
-    yAxis: {
-      type: "value",
-      axisLabel: { color: AXIS_TEXT, fontSize: 9 },
-      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
-      scale: true,
-    },
-    series: [
-      {
-        name: "Actual",
-        type: "line",
-        data: opts.actual,
-        smooth: 0.3,
-        showSymbol: opts.weeks.length <= 16,
-        symbolSize: 4,
-        connectNulls: false,
-        lineStyle: { width: 2.5, color },
-        itemStyle: { color },
-        areaStyle: {
-          color: {
-            type: "linear",
-            x: 0, y: 0, x2: 0, y2: 1,
-            colorStops: [
-              { offset: 0, color: `${color}22` },
-              { offset: 1, color: `${color}00` },
-            ],
-          },
-        },
-        markLine: opts.referenceLine
-          ? {
-              symbol: "none",
-              silent: true,
-              lineStyle: { color: PROJECTION_GREY, type: "dashed", width: 1 },
-              label: { formatter: opts.referenceLine.label, color: AXIS_TEXT, fontSize: 8, position: "insideEndTop" },
-              data: [{ yAxis: opts.referenceLine.value }],
-            }
-          : undefined,
-        z: 2,
-      },
-      {
-        name: "Forecast",
-        type: "line",
-        data: opts.forecast,
-        showSymbol: true,
-        symbolSize: 5,
-        connectNulls: false,
-        lineStyle: { width: 2, type: "dashed", color },
-        itemStyle: { color: "#fff", borderColor: color, borderWidth: 2 },
-        markPoint:
-          forecastValue != null
-            ? {
-                symbol: "circle",
-                symbolSize: 7,
-                itemStyle: { color: "#fff", borderColor: color, borderWidth: 2 },
-                label: { formatter: "est.", position: "top", color: AXIS_TEXT, fontSize: 9, fontWeight: 700 },
-                data: [{ name: "est", coord: [opts.weeks[forecastIdx], forecastValue] }],
-              }
-            : undefined,
-        z: 3,
-      },
-    ],
-  };
-}
+// `momentumForecastChart` lived here until 2026-09-02: the 13-week actual-plus-dashed-forecast
+// builder for Market Momentum's Total Written panel. That panel now draws the CURRENT week day by
+// day against its target (`runRateChart`, below) at Kyle's request, which left this with no caller.
+// The payload still carries `series.writtenActualK` / `writtenForecastK`, so the weekly view can be
+// rebuilt from data if it is ever wanted back — what is gone is only the drawing of it.
 
 const FUNNEL_COLORS = ["#0E2040", "#1D4ED8", "#2563EB", "#3B82F6", "#93C5FD"];
 
@@ -546,6 +461,119 @@ export function applicationsReferralsGapChart(opts: {
         itemStyle: { color: GREEN },
         areaStyle: { color: CARD_BG },
         z: 2,
+      },
+    ],
+  };
+}
+
+/**
+ * THE CURRENT WEEK'S RUN RATE FOR WRITTEN COMMISSION — Kyle, 2026-09-01: "it shouldn't be Wks it
+ * should the run rate for the current week and how we are tracking towards this target."
+ *
+ * Five points, Monday to Friday, with MONDAY CARRYING SATURDAY AND SUNDAY exactly as he specified.
+ * Cumulative £ climbing against the cumulative target, so the gap to the week's target is the
+ * vertical distance between two lines on whatever day you happen to walk past the wall.
+ *
+ * WHY NOT `paceChart`, which draws this shape for every KPI card: that builder is denominated in
+ * CASES throughout — its tooltip, its axis and its today-so-far segment all format whole counts, and
+ * a £411,000 target rendered through it reads "411000". Money needs its own axis and its own
+ * tooltip, and bending the count chart to take a currency mode would put a conditional through the
+ * one builder every card on the Daily Run Chase depends on.
+ *
+ * The target line is DASHED GREY and the actual is the hero colour, the same vocabulary as every
+ * other chase chart on the board, so a reader who has learnt one has learnt this.
+ */
+export function runRateChart(opts: {
+  dayNames: string[];
+  /** Cumulative £ written by end of each day; null after the last loaded day. */
+  actual: Array<number | null>;
+  /** Cumulative £ the target implies by end of each day. */
+  target: number[];
+  /** Bank holidays among the five days, by index — labelled so a flat step explains itself. */
+  closedIdx: number[];
+  behind: boolean;
+}): EChartsOption {
+  const hero = opts.behind ? AMBER : NAVY;
+  const heroFill = opts.behind ? "rgba(217,119,6,0.06)" : "rgba(14,32,64,0.06)";
+  let nowIdx = -1;
+  for (let i = 0; i < opts.actual.length; i++) if (opts.actual[i] != null) nowIdx = i;
+  const k = (v: number) => `£${Math.round(v / 1000).toLocaleString()}k`;
+  return {
+    animation: false,
+    grid: { left: 44, right: 14, top: 22, bottom: 26, containLabel: true },
+    tooltip: {
+      trigger: "axis",
+      formatter: (raw: unknown): string => {
+        const params = (Array.isArray(raw) ? raw : [raw]) as Array<{ axisValue?: string; dataIndex?: number }>;
+        const i = params[0]?.dataIndex ?? -1;
+        if (i < 0) return "";
+        const label = params[0]?.axisValue ?? "";
+        const a = opts.actual[i];
+        const t = opts.target[i];
+        const rows = [`<div style="font-weight:600;margin-bottom:2px">${label}</div>`];
+        if (opts.closedIdx.includes(i)) {
+          // The target line is deliberately flat here, and a flat step with no explanation reads as
+          // a broken chart. Same reasoning as the bank-holiday fix on the day curve itself.
+          rows.push(`<div style="opacity:.75">Bank holiday — no target</div>`);
+        }
+        // Achieved first, then the benchmark, then the gap: "how are we doing" is one number against
+        // one comparison, and the difference is the only thing anyone reads a run-rate chart for.
+        rows.push(`<div>Written so far: <strong>${a != null ? k(a) : "—"}</strong></div>`);
+        rows.push(`<div style="opacity:.8">Target by now: ${t != null ? k(t) : "—"}</div>`);
+        if (a != null && t != null) {
+          const gap = a - t;
+          const color = gap >= 0 ? GREEN : AMBER;
+          rows.push(
+            `<div style="color:${color}">${gap >= 0 ? "Ahead" : "Behind"} by ${k(Math.abs(gap))}</div>`,
+          );
+        }
+        return rows.join("");
+      },
+    },
+    xAxis: {
+      type: "category",
+      boundaryGap: false,
+      data: opts.dayNames,
+      axisLabel: { color: AXIS_TEXT, fontSize: 9, interval: 0, hideOverlap: true },
+      axisLine: { lineStyle: { color: "rgba(0,0,0,0.1)" } },
+    },
+    yAxis: {
+      type: "value",
+      min: 0,
+      axisLabel: { color: AXIS_TEXT, fontSize: 9, formatter: (v: number) => k(v) },
+      splitLine: { lineStyle: { color: "rgba(0,0,0,0.06)" } },
+    },
+    series: [
+      {
+        name: "Target",
+        type: "line",
+        data: opts.target,
+        showSymbol: false,
+        lineStyle: { width: 1.5, type: "dashed", color: PACE_GREY },
+        z: 1,
+      },
+      {
+        name: "Written",
+        type: "line",
+        data: opts.actual,
+        smooth: 0.3,
+        showSymbol: true,
+        symbolSize: 5,
+        connectNulls: false,
+        lineStyle: { width: 2.5, color: hero },
+        itemStyle: { color: hero },
+        areaStyle: { color: heroFill },
+        z: 3,
+        markLine:
+          nowIdx >= 0 && nowIdx < opts.actual.length - 1
+            ? {
+                symbol: "none",
+                silent: true,
+                lineStyle: { color: "rgba(100,116,139,0.35)", type: "dashed", width: 1 },
+                label: { formatter: "COMPLETE", color: AXIS_TEXT, fontSize: 8, position: "insideEndTop" },
+                data: [{ xAxis: opts.dayNames[nowIdx] }],
+              }
+            : undefined,
       },
     ],
   };

@@ -106,3 +106,39 @@ export function usePayload<T>(name: string, filters: Filters | null, mode: Mode,
 
   return { data, error, loading };
 }
+
+/**
+ * RELOAD THE PAGE WHEN THE SERVER HAS MOVED ON — the wall's self-refresh.
+ *
+ * The wall runs unattended for weeks at a time, so until now a deploy only reached it if somebody
+ * walked up to the TV and forced a refresh. Nobody does. That is how Capricorn spent 30 July reading
+ * a two-day-old build while being told the fix was live, and how I screenshotted a pre-fix page on
+ * 1 September and believed it.
+ *
+ * `serverSha` is the commit the SERVER is on (from `meta`, polled every few minutes anyway).
+ * `window.__BUILD_SHA__` is the commit this PAGE was served with, injected at serve time by
+ * server/static.ts. Stamped at serve time rather than baked into the bundle on purpose: a cached
+ * index.html then carries the sha of whenever it was cached, so this catches a stale CACHE as well
+ * as a stale tab.
+ *
+ * Reloads AT MOST ONCE per page, guarded by a ref. Without that, a server whose sha never matches —
+ * a half-finished deploy, two instances behind one hostname mid-swap — would put the wall into a
+ * reload loop, which is worse than a stale screen because it never displays anything at all.
+ *
+ * Does nothing when either side is unknown: dev has no stamp, and reloading on a null would refresh
+ * the wall forever.
+ */
+export function useStaleBuildReload(serverSha: string | null | undefined): void {
+  const reloaded = useRef(false);
+  useEffect(() => {
+    const pageSha = (window as unknown as { __BUILD_SHA__?: string }).__BUILD_SHA__;
+    if (!serverSha || !pageSha || serverSha === pageSha || reloaded.current) return;
+    reloaded.current = true;
+    // `true` is a no-op in modern browsers, so bust the cache explicitly rather than trusting a
+    // plain reload to fetch a fresh shell — a cached shell would reload straight back into the same
+    // stale build and burn the one-shot guard for nothing.
+    const url = new URL(window.location.href);
+    url.searchParams.set("b", serverSha.slice(0, 7));
+    window.location.replace(url.toString());
+  }, [serverSha]);
+}

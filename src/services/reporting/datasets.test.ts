@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DailyCount } from "./kpis.js";
-import { cumulativeSeries, officeStatus, pctToPace, rankBoard, withDaybreaks } from "./datasets.js";
+import { cumulativeSeries, officeStatus, pctToPace, rankBoard, withDaybreaks, writtenCumulativeShares } from "./datasets.js";
 import type { WeeklyPacingContext } from "./pacing.js";
 import type { KpiTargets } from "./kpis.js";
 import type { FeedItem } from "./datasets.js";
@@ -38,6 +38,50 @@ describe("cumulativeSeries — Sat–Fri reporting week folds a LEADING weekend 
     ];
     const series = cumulativeSeries(daily, WEEK_DAYS, "2026-07-10");
     expect(series).toEqual([2, 2, 6, 6, 6]);
+  });
+});
+
+describe("writtenCumulativeShares — the £ curve is the mix of the two businesses that earn it", () => {
+  // A clean Mon–Fri week with no bank holiday in it.
+  const OPEN_WEEK = ["2026-07-04", "2026-07-05", "2026-07-06", "2026-07-07", "2026-07-08", "2026-07-09", "2026-07-10"];
+  const MORT_WEIGHT = 328350 / (328350 + 82402); // Capricorn's live split, ≈0.799
+
+  it("returns five points, Mon–Fri, ending on the whole week", () => {
+    const shares = writtenCumulativeShares(OPEN_WEEK, MORT_WEIGHT);
+    expect(shares).toHaveLength(5);
+    expect(shares[4]).toBeCloseTo(1, 10); // Friday closes the week
+  });
+
+  it("climbs — a cumulative curve that ever dips would draw money leaving the week", () => {
+    const shares = writtenCumulativeShares(OPEN_WEEK, MORT_WEIGHT);
+    for (let i = 1; i < shares.length; i++) expect(shares[i]).toBeGreaterThan(shares[i - 1]);
+  });
+
+  it("MONDAY CARRIES THE WEEKEND — Kyle's grouping, 2026-09-01", () => {
+    // Slicing the weekend off a CUMULATIVE curve folds it in rather than dropping it. Monday's point
+    // must therefore exceed a bare weekday share: the mortgage leg puts 1.5% + 2.0% on Sat/Sun.
+    const shares = writtenCumulativeShares(OPEN_WEEK, MORT_WEIGHT);
+    const mondayWeekdayOnly = (1 - 0.035) / 24 * 5; // 5:5:5:5:4 → Monday is 5/24 of the weekday total
+    expect(shares[0]).toBeGreaterThan(mondayWeekdayOnly);
+  });
+
+  it("weights the two curves — pure protection puts NOTHING on the weekend", () => {
+    // Protection's weekend share is zero (Kyle, 2026-08-25), so at weight 0 Monday is exactly the
+    // first weekday slice of a full week: 5 of 24. The mortgage-only curve must sit above it.
+    const protectionOnly = writtenCumulativeShares(OPEN_WEEK, 0);
+    expect(protectionOnly[0]).toBeCloseTo(5 / 24, 10);
+    expect(writtenCumulativeShares(OPEN_WEEK, 1)[0]).toBeGreaterThan(protectionOnly[0]);
+  });
+
+  it("goes FLAT across a bank holiday instead of demanding a closed day's money", () => {
+    // The week of Sat 29 Aug 2026: Monday the 31st is the summer bank holiday. Monday's cumulative
+    // must equal the weekend's alone, and Tuesday must then carry the step.
+    const BH_WEEK = ["2026-08-29", "2026-08-30", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03", "2026-09-04"];
+    const shares = writtenCumulativeShares(BH_WEEK, MORT_WEIGHT);
+    const weekendOnly = 0.035 * MORT_WEIGHT; // protection contributes no weekend at all
+    expect(shares[0]).toBeCloseTo(weekendOnly, 10);
+    expect(shares[1]).toBeGreaterThan(shares[0]);
+    expect(shares[4]).toBeCloseTo(1, 10); // the week's money is still all there
   });
 });
 

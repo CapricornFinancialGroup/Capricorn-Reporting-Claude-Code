@@ -58,6 +58,9 @@ export interface Meta {
   cycleSeconds: number;
   pacingMode: "mtd" | "drip";
   timeZone: string;
+  /** The commit the SERVER is running. Compared against the one this page was served with so an
+   *  unattended wall reloads itself after a deploy — see useStaleBuildReload. Null in dev. */
+  buildSha: string | null;
 }
 
 export interface Pace {
@@ -356,6 +359,21 @@ export interface MarketMomentumPayload {
       actual: number;
     } | null;
     clientFees: number;
+    /** THE CURRENT WEEK, DAY BY DAY, AGAINST THE TARGET — Kyle, 2026-09-01: "it shouldn't be Wks it
+     *  should the run rate for the current week and how we are tracking towards this target."
+     *  Five points, Mon–Fri, with Monday carrying Saturday and Sunday as he specified. */
+    runRate: {
+      /** The five ISO dates, Monday to Friday. */
+      days: string[];
+      dayNames: string[];
+      /** Cumulative £ written by end of each day; null after the last loaded day. */
+      actual: Array<number | null>;
+      /** Cumulative £ the week's target implies by end of each day. */
+      target: number[];
+      weeklyTarget: number;
+      /** Bank holidays inside Mon–Fri, so a flat step on the target line can explain itself. */
+      closedDays: string[];
+    };
   };
   /** Top 10 commission earners over the SAME window `written` reports — the league beside the graph.
    *  All commission, product lines added together and never split (2026-08-19). */

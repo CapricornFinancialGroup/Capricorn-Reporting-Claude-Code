@@ -29,7 +29,7 @@
 // It doesn't actually matter which" — 2026-08-19).
 
 import { usePayload } from "../api.js";
-import { momentumForecastChart } from "../charts.js";
+import { runRateChart } from "../charts.js";
 import { EChart } from "../components/EChart.js";
 import { MetricInfo } from "../components/MetricInfo.js";
 import { Ticker } from "../components/Ticker.js";
@@ -91,6 +91,24 @@ export function MarketMomentum({ filters, mode, refreshMs }: PageProps) {
   );
 }
 
+/**
+ * Is the week's written commission behind its own curve on the LAST JUDGED DAY?
+ *
+ * Judged on the last day that actually has data, not on the whole week: every day after the load is
+ * null, and treating a null as a miss would paint the chart amber every Monday for the four days that
+ * have not happened yet. Same principle as the run-chase cards — a figure that isn't in is not a
+ * figure that's behind.
+ *
+ * A 2% tolerance, so a rounding difference on a £411k target doesn't flip the whole panel's colour.
+ */
+function runRateBehind(rr: { actual: Array<number | null>; target: number[] }): boolean {
+  let i = -1;
+  for (let j = 0; j < rr.actual.length; j++) if (rr.actual[j] != null) i = j;
+  if (i < 0) return false;
+  const t = rr.target[i];
+  return t > 0 && (rr.actual[i] as number) < t * 0.98;
+}
+
 /** Total written — weekly written COMMISSION, week by week. Named after Capricorn's own report
  *  (usp_GetTotalProductReport, the "Total Written Report") because it is on that report's basis; a
  *  figure that reconciles to a report should carry the report's name, not a second one.
@@ -105,7 +123,8 @@ function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode 
   const writtenKpi = data.kpis.find((k) => k.key === "written");
   const vsQ = writtenKpi?.vsQuarterPct ?? null;
   const vsQuarterLabel = writtenKpi?.vsQuarterLabel ?? null;
-  const targetK = Math.round(written.combined.target / 1000);
+  // The target used to be drawn as a flat reference line and captioned here. It is now the dashed
+  // curve the actual is chased against, so the figure lives on the chart and in the footer instead.
   // THE TARGET PERCENTAGE HANGS OFF THE FORECAST WHILE THE WEEK IS RUNNING, not off the week-to-date
   // actual. A whole-week target can only fairly judge a whole-week figure: £160k of a £436k target
   // through Wednesday is 37%, which reads as a collapse and is simply the wrong comparison. Input lag
@@ -156,13 +175,30 @@ function TotalWritten({ data, mode }: { data: MarketMomentumPayload; mode: Mode 
             not a flex column, the page is only as tall as its content, so the chart's own height is
             what stops two half-width cards floating in a sea of white. On the wall the kiosk canvas
             is a fixed 1080 flex column and both panels stretch to fill it regardless. */}
+        {/* THE RUN RATE FOR THIS WEEK, NOT THIRTEEN WEEK BUCKETS — Kyle, 2026-09-01: "One thing
+            missing is that this hasn't been corrected to be for the current week and Monday (which
+            includes Sat & Sunday) – Friday….So it shouldn't be Wks it should the run rate for the
+            current week and how we are tracking towards this target."
+
+            What was here plotted W24–W36 with a dashed forecast on the last point and a flat
+            reference line at the target. That answers "how does this week compare with the last
+            three months", which is a fair question and is not the one he asked twice. His question
+            is "are we going to make the number this week", and the honest shape for it is the week's
+            own five days climbing toward £411k.
+
+            The 13-week series has NOT been deleted from the payload — Reconciliation and any other
+            caller of /api/reporting/market-momentum still read `series.writtenActualK`. It is simply
+            no longer what this panel draws. */}
         <EChart
           height={560}
-          option={momentumForecastChart({
-            weeks: data.weeks,
-            actual: data.series.writtenActualK,
-            forecast: data.series.writtenForecastK,
-            referenceLine: { value: targetK, label: `£${targetK}k combined target` },
+          option={runRateChart({
+            dayNames: written.runRate.dayNames,
+            actual: written.runRate.actual,
+            target: written.runRate.target,
+            closedIdx: written.runRate.closedDays.map((d) => written.runRate.days.indexOf(d)).filter((i) => i >= 0),
+            // Amber only once there is a judged day to be behind ON. Before Monday's data lands every
+            // point is null and a red chart would be describing an absence, not a shortfall.
+            behind: runRateBehind(written.runRate),
           })}
         />
       </div>

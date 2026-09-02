@@ -7,7 +7,7 @@
 //   /screens?k=…&pages=daily,offices  → cycle just those
 
 import { useEffect, useRef, useState } from "react";
-import { EMPTY_FILTERS, KIOSK_TOKEN, usePayload, type Mode } from "./api.js";
+import { EMPTY_FILTERS, KIOSK_TOKEN, usePayload, useStaleBuildReload, type Mode } from "./api.js";
 import type { Meta } from "./types.js";
 import { ErrorNote } from "./components/ui.js";
 import { GosHeader } from "./components/GosHeader.js";
@@ -68,6 +68,8 @@ const IMMINENT_SECONDS = 5;
 
 export function Kiosk({ mode }: { mode: Mode }) {
   const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, META_REFRESH_MS);
+  // A deploy reaches an unattended wall only if the page notices the server moved on.
+  useStaleBuildReload(meta?.buildSha);
   const [index, setIndex] = useState(0);
   const scale = useCanvasScale();
   const cycleMs = (meta?.cycleSeconds ?? 20) * 1000;

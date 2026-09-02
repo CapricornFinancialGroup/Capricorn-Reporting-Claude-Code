@@ -3,7 +3,7 @@
 // Deep-linkable via the URL hash (#advisers).
 
 import { useEffect, useState } from "react";
-import { EMPTY_FILTERS, usePayload, type Filters, type Mode } from "./api.js";
+import { EMPTY_FILTERS, usePayload, useStaleBuildReload, type Filters, type Mode } from "./api.js";
 import type { Meta } from "./types.js";
 import { ErrorNote } from "./components/ui.js";
 import { GosHeader } from "./components/GosHeader.js";
@@ -26,6 +26,8 @@ const META_REFRESH_MS = 60_000;
 
 export function App({ mode }: { mode: Mode }) {
   const { data: meta, error } = usePayload<Meta>("meta", EMPTY_FILTERS, mode, META_REFRESH_MS);
+  // A deploy reaches an unattended wall only if the page notices the server moved on.
+  useStaleBuildReload(meta?.buildSha);
   const [pageId, setPageId] = useState(pageFromHash);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
   const [compareFilters, setCompareFilters] = useState<Filters | null>(null);
