@@ -204,6 +204,12 @@ export const ADVISER_OFFICE: Record<string, string> = {
   // same agencies — a wash, and the per-negotiator overlaps only track office size). Recorded so the
   // next person does not re-run that analysis expecting it to answer.
   "denisa.ahmetaj@capricornfinancialmortgages.co.uk": "Hammersmith",
+  // Ruled by Kyle 2026-10-08 from the Unassigned card ("Domenico Onzaca (11) – Hammersmith (Team
+  // Tony)", and so on). All three are mortgage advisers whose logins post-date every earlier ruling.
+  // Keyed on the login, verified in dbo.useraccount 2026-10-12, not on the name as given.
+  "domenico.onzaca@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Tony
+  "joshua.ellis@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Jordan
+  "ramunas.mitrikevicius@capricornfinancialmortgages.co.uk": "Mayfair", // Team Alex
 };
 
 /** Resolve an adviser's office; unmapped advisers group under UNASSIGNED. */
