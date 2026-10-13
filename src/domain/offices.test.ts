@@ -57,6 +57,15 @@ describe("Kyle's rulings", () => {
     expect(officeOf(login)).toBe(office);
   });
 
+  // 2026-10-13 — Kyle getting ahead of the card; only the names with a login can be placed.
+  it.each([
+    ["rakesh.kapur@capricorncommercial.co.uk", "Hammersmith"],
+    ["josh.palmer@capricornfinancialmortgages.co.uk", "Hammersmith"],
+    ["patricia.mcnicholas@capricorncommercial.co.uk", "Hammersmith"],
+  ])("places %s, ruled by Kyle 2026-10-13, in %s", (login, office) => {
+    expect(officeOf(login)).toBe(office);
+  });
+
   it("places Michael Ngoka, who carries £13,948 on Capricorn's own Written Report", () => {
     // He was invisible for weeks: the Unassigned card read only lead counts, and he is a protection
     // adviser who sources none. A mortgage-only audit could not have found him.

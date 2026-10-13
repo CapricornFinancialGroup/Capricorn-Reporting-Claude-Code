@@ -210,6 +210,14 @@ export const ADVISER_OFFICE: Record<string, string> = {
   "domenico.onzaca@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Tony
   "joshua.ellis@capricornfinancialmortgages.co.uk": "Hammersmith", // Team Jordan
   "ramunas.mitrikevicius@capricornfinancialmortgages.co.uk": "Mayfair", // Team Alex
+  // Ruled by Kyle 2026-10-13, ahead of them reaching the Unassigned card. Keyed on the logins found in
+  // dbo.useraccount that day. Patricia McNicholas was on his list too and is already mapped above (her
+  // 2026-08-10 ruling agrees). Three of his names have no adviser login in the lake yet, so there is
+  // nothing to key them on: Hari Patel (the only "Hari Patel" is an estate-agent contact), Ian
+  // Kebblewhite and Isabella Rechy (Mayfair, Team Manny). Add them when their logins exist — a key
+  // guessed from a name never matches (see aran.purewal above).
+  "rakesh.kapur@capricorncommercial.co.uk": "Hammersmith", // Commercial adviser, Team Other
+  "josh.palmer@capricornfinancialmortgages.co.uk": "Hammersmith", // Protection adviser, Team Tim
 };
 
 /** Resolve an adviser's office; unmapped advisers group under UNASSIGNED. */
