@@ -42,7 +42,7 @@ vi.mock("../reporting/query.js", () => ({
 }));
 
 import type { Config } from "../../config.js";
-import { loadRevisions, recordClosedWeeks } from "./recorder.js";
+import { loadRevisions, loadRevisionsChecked, recordClosedWeeks } from "./recorder.js";
 import { readSnapshot } from "./blob.js";
 
 const config = {
@@ -73,7 +73,7 @@ describe("recordClosedWeeks", () => {
 
   it("skips cleanly when no storage account is configured — never breaks the board", async () => {
     const out = await recordClosedWeeks({ ...config, snapshots: { storageAccount: "", intervalMinutes: 30 } } as Config, TODAY, null, "2026-08-04T09:00:00Z");
-    expect(out).toEqual({ observed: 0, changed: [], skipped: true });
+    expect(out).toEqual({ observed: 0, changed: [], failed: [], skipped: true });
     expect(store.size).toBe(0);
   });
 
@@ -142,5 +142,38 @@ describe("recordClosedWeeks", () => {
     expect(out.observed).toBe(13);
     // The failing week is missing, but the pass completed and recorded the week that has data.
     expect(store.has(WEEK)).toBe(true);
+    // ...and the pass says which week it could not persist, so a caller can retry rather than assume.
+    expect(out.failed).toHaveLength(1);
+  });
+
+  it("reports no failed weeks on a clean pass, and when a lost write race was retried to success", async () => {
+    expect((await recordClosedWeeks(config, TODAY, null, "2026-08-04T09:00:00Z")).failed).toEqual([]);
+    lake.protection = [protectionRow(64_341.82, 28)];
+    failNextWrite = true;
+    expect((await recordClosedWeeks(config, TODAY, null, "2026-08-10T09:00:00Z")).failed).toEqual([]);
+  });
+
+  it("reports a week whose write kept losing the race as failed", async () => {
+    await recordClosedWeeks(config, TODAY, null, "2026-08-04T09:00:00Z");
+    lake.protection = [protectionRow(64_341.82, 28)];
+    const blob = await import("./blob.js");
+    vi.mocked(blob.writeSnapshot).mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+    const out = await recordClosedWeeks(config, TODAY, null, "2026-08-10T09:00:00Z");
+    expect(out.failed).toContain(WEEK);
+    expect(out.changed).not.toContain(WEEK);
+  });
+});
+
+describe("loadRevisionsChecked", () => {
+  it("counts weeks it could not read, so a caller can refuse to cache a degraded answer", async () => {
+    const blob = await import("./blob.js");
+    vi.mocked(blob.readSnapshot).mockRejectedValueOnce(new Error("boom"));
+    const out = await loadRevisionsChecked(config, [WEEK, "2026-08-01"]);
+    expect(out.failed).toBe(1);
+    expect((await loadRevisionsChecked(config, [WEEK])).failed).toBe(0);
+  });
+
+  it("loadRevisions still returns just the revisions", async () => {
+    expect(Array.isArray(await loadRevisions(config, [WEEK]))).toBe(true);
   });
 });

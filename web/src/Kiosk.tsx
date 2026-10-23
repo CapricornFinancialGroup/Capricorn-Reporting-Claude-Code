@@ -47,7 +47,8 @@ const ROTATION = selectedRotation();
  *   • "N weeks changed"          — the closed-week alert could never appear at all.
  *
  * Cheap to poll: the server answers `meta` from its Gold-data-version-keyed cache (PBI 93610), so
- * between Gold loads this costs Fabric nothing, across every TV in the business.
+ * it costs about one query set per Gold load (and one at London midnight), across every TV in the
+ * business.
  */
 const META_REFRESH_MS = 60_000;
 

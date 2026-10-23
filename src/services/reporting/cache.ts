@@ -2,8 +2,8 @@
 // TTL as the fallback.
 //
 // Why a version and not just a TTL. Every payload the board serves is a pure function of the Capricorn
-// copy of Gold, the London date, the active targets and the week-snapshot blob. Gold changes four times
-// a day. A 45 s TTL against a wall that changes page every 20 s therefore re-queried Fabric on nearly
+// copy of Gold, the London date, the active targets and the week-snapshot blob. Gold changes about four
+// times a day. A 45 s TTL against a wall that changes page every 20 s therefore re-queried Fabric on nearly
 // every page change for data that had not moved — ~113k statements a day per screen, and the SQL
 // endpoint held allocated around the clock (~87 CU-h/day against a target of 11).
 //
@@ -13,12 +13,16 @@
 //     bounds anything the version cannot see) makes the next request reload it.
 //   - Scope unknown (never probed, probe failing past its trust window, provider throws): the per-call
 //     `ttlMs` applies exactly as it did before this change. The board never errors for want of a
-//     version and never serves something older than it used to.
+//     version. (A version stays trusted for one probe interval plus a grace after its last good read,
+//     so a short probe outage does not send the wall back to polling.)
 // In-flight de-duplication is unchanged: concurrent requests for a key await one promise. Failures are
-// NOT cached.
+// NOT cached, and a loader can also refuse to have a degraded answer kept (`cacheable`).
 //
-// The two things the scope cannot see, which therefore call `clearCache()` when they change: the active
-// targets (targets/store.ts `activateTargets`) and the week-snapshot blob (snapshots/scheduler.ts).
+// SINGLE INSTANCE: this cache, the active targets and the snapshot scheduler are all in-process, and
+// clearCache() only reaches its own process. The App Service runs one worker (az webapp config show,
+// 24 Sep 2026; the plan's instance count is not set in main.bicep); a second instance would not see an
+// upload or a snapshot write made on the first until its own next version change or the safety cap.
+// Targets were already per-process (hydrated from storage at boot only).
 
 interface Entry {
   at: number;
@@ -62,17 +66,38 @@ function isFresh(hit: Entry, scope: string | null, ttlMs: number, now: number): 
   return hit.scope === scope && now - hit.at < versionedMaxAgeMs;
 }
 
-export async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+export interface CachedOptions<T> {
+  /** Called with a loaded value; false = serve it to the callers waiting on it but do not keep it. For a
+   *  loader that swallows a storage error and returns a degraded answer: under a version scope that
+   *  answer would otherwise be held for hours. */
+  cacheable?: (value: T) => boolean;
+}
+
+export async function cached<T>(
+  key: string,
+  ttlMs: number,
+  load: () => Promise<T>,
+  opts: CachedOptions<T> = {},
+): Promise<T> {
   const now = Date.now();
   const scope = currentScope();
   const hit = entries.get(key);
   if (hit && isFresh(hit, scope, ttlMs, now)) return hit.promise as Promise<T>;
 
-  const promise = load().catch((err) => {
-    // Don't cache failures — let the next poll retry immediately.
+  const forget = (): void => {
     if (entries.get(key)?.promise === promise) entries.delete(key);
-    throw err;
-  });
+  };
+  const promise = load().then(
+    (value) => {
+      if (opts.cacheable && !opts.cacheable(value)) forget();
+      return value;
+    },
+    (err) => {
+      // Don't cache failures — let the next poll retry immediately.
+      forget();
+      throw err;
+    },
+  );
   entries.set(key, { at: now, promise, scope });
   return promise;
 }

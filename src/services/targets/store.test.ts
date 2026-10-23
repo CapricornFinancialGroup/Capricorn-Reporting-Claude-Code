@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cached, clearCache, setCacheScope } from "../reporting/cache.js";
 import { OFFICES } from "../../domain/offices.js";
 import { DAILY_TARGETS, OFFICE_DAILY_TARGETS, WRITTEN_WEEKLY_TARGET } from "../../domain/targets.js";
@@ -17,6 +17,7 @@ import {
 } from "./store.js";
 
 beforeEach(() => resetTargetsForTest());
+afterEach(() => setCacheScope(null));
 
 describe("store — seeded from placeholders, zero behaviour change before any upload", () => {
   it("returns the placeholder constants, with Mortgages Written derived from Leads", () => {
@@ -222,6 +223,5 @@ describe("store — activateTargets and the dataset cache (PBI 93610)", () => {
 
     await cached("ds-daily-run-chase", 45_000, load);
     expect(loads).toBe(2);
-    setCacheScope(null);
   });
 });

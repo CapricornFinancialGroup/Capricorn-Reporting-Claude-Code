@@ -90,8 +90,10 @@ resource app 'Microsoft.Web/sites@2022-09-01' = {
         { name: 'PACING_MODE', value: 'mtd' }
         { name: 'REPORTING_CACHE_TTL_SECONDS', value: '45' }
         // PBI 93610: key the dataset cache on the Gold data version. 'false' is the rollback to pure
-        // wall-clock TTLs. The max age is the bound (seconds) on anything the version cannot see.
+        // wall-clock TTLs (change it here too: the next infra deploy resets a portal edit). The probe
+        // interval and the max age are in seconds; the max age bounds anything the version cannot see.
         { name: 'REPORTING_KEY_ON_DATA_VERSION', value: 'true' }
+        { name: 'REPORTING_VERSION_PROBE_SECONDS', value: '600' }
         { name: 'REPORTING_VERSIONED_CACHE_MAX_SECONDS', value: '21600' }
         // Easy Auth client secret (referenced by authsettingsV2 below).
         { name: 'MICROSOFT_PROVIDER_AUTHENTICATION_SECRET', value: entraClientSecret }

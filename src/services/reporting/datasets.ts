@@ -24,7 +24,7 @@ import { isBankHoliday } from "../../domain/calendar.js";
 import { DATA_CADENCE, METRIC_DEFINITIONS } from "../../domain/metrics.js";
 import { OFFICES, UNASSIGNED, isSharedAccount, officeOf, officeOrderIndex } from "../../domain/offices.js";
 import { needsExplaining, settleThrough } from "../snapshots/history.js";
-import { closedWeekStarts, loadRevisions, observeWeeks } from "../snapshots/recorder.js";
+import { closedWeekStarts, loadRevisionsChecked, observeWeeks } from "../snapshots/recorder.js";
 import {
   cumulativeSharesForWeek,
   dayTarget,
@@ -458,20 +458,29 @@ export function officeStatus(pct: number | null, kpis: ReadonlyArray<{ status: C
  *  Carried on `meta` so the flag reaches EVERY screen, not just Reconciliation. The whole failure
  *  this addresses is that a figure changed underneath a number someone had already acted on — a
  *  warning that only appears on the audit screen would be seen by whoever was already suspicious,
- *  which is the one person who doesn't need it. Cached long: the scheduler only re-observes every
- *  30 minutes, so this cannot change faster than that. */
+ *  which is the one person who doesn't need it. Cached by Gold data version: the snapshot blob it reads
+ *  only changes when the scheduler writes, and a write drops the cache (scheduler.ts). */
 async function revisedWeekCount(config: Config): Promise<number> {
   if (!config.snapshots.storageAccount) return 0;
-  return cached("revised-week-count", 5 * 60_000, async () => {
-    try {
-      const today = tzToday(new Date(), config.reporting.timeZone);
-      const revisions = await loadRevisions(config, closedWeekStarts(today));
-      return revisions.filter((r) => needsExplaining(r)).length;
-    } catch {
-      // Never let a storage hiccup take the header — and so the board — down.
-      return 0;
-    }
-  });
+  try {
+    // A degraded answer (a week of history unreadable, or the read throwing) is served for this call
+    // but NOT kept: under a version scope an entry lives for hours, and it would pin a wrong count.
+    let degraded = false;
+    return await cached(
+      "revised-week-count",
+      5 * 60_000,
+      async () => {
+        const today = tzToday(new Date(), config.reporting.timeZone);
+        const { revisions, failed } = await loadRevisionsChecked(config, closedWeekStarts(today));
+        degraded = failed > 0;
+        return revisions.filter((r) => needsExplaining(r)).length;
+      },
+      { cacheable: () => !degraded },
+    );
+  } catch {
+    // Never let a storage hiccup take the header — and so the board — down.
+    return 0;
+  }
 }
 
 export async function meta(config: Config) {
@@ -2205,15 +2214,19 @@ export async function reconciliation(config: Config, f: ReportFilters) {
   // Default to the last COMPLETE week — the one Capricorn's own report is usually run for. An
   // explicit `from` (the dashboard date filter) selects the week containing it.
   const selected = f.from ? weekStartOf(f.from) : shiftDays(weekStartOf(today), -7);
+  // Not kept when a week of history could not be read: a screen missing history would otherwise be held
+  // until the next version or date change.
+  let degraded = false;
   return cached(`ds-reconciliation:${selected}`, ttl(config), async () => {
     const closed = closedWeekStarts(today);
     const weeks = closed.includes(selected) ? closed : [...closed, selected].sort();
     const loadedAt = await lastRefreshAt(config);
 
-    const [live, revisions] = await Promise.all([
+    const [live, { revisions, failed }] = await Promise.all([
       observeWeeks(config, [selected], loadedAt, new Date().toISOString()),
-      loadRevisions(config, weeks),
+      loadRevisionsChecked(config, weeks),
     ]);
+    degraded = failed > 0;
 
     const byWeek = new Map(revisions.map((r) => [r.weekStart, r]));
     const observation = live.get(selected) ?? null;
@@ -2315,7 +2328,7 @@ export async function reconciliation(config: Config, f: ReportFilters) {
         },
       },
     };
-  });
+  }, { cacheable: () => !degraded });
 }
 
 // ---------------------------------------------------------------------------

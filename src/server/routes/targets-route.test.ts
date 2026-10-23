@@ -26,7 +26,7 @@ function testConfig(overrides: Partial<Config["targets"]> = {}): Config {
     logLevel: "silent",
     fabric: { endpoint: "unused", database: "unused" },
     devUserEmail: ADMIN, // dev-auth: treated as the viewer (no Easy Auth headers in a test)
-    reporting: { kioskToken: "", refreshSeconds: 60, cycleSeconds: 20, timeZone: "Europe/London", pacingMode: "mtd", cacheTtlSeconds: 45, keyOnDataVersion: true, versionedCacheMaxSeconds: 21600 },
+    reporting: { kioskToken: "", refreshSeconds: 60, cycleSeconds: 20, timeZone: "Europe/London", pacingMode: "mtd", cacheTtlSeconds: 45, keyOnDataVersion: true, versionProbeSeconds: 600, versionedCacheMaxSeconds: 21600 },
     targets: { adminEmails: [ADMIN], storageAccount: "teststorage", ...overrides },
   };
 }

@@ -142,6 +142,28 @@ describe("falls back to wall-clock TTL when the version is not usable", () => {
   });
 });
 
+describe("cacheable: a loader can refuse to have a degraded answer kept", () => {
+  it("serves the value to the caller but reloads next time when cacheable says no", async () => {
+    setCacheScope(() => "v1|2026-10-23");
+    let degraded = true;
+    let loads = 0;
+    const load = async () => ++loads;
+    await expect(cached("k", 45_000, load, { cacheable: () => !degraded })).resolves.toBe(1);
+    await expect(cached("k", 45_000, load, { cacheable: () => !degraded })).resolves.toBe(2);
+    degraded = false;
+    await cached("k", 45_000, load, { cacheable: () => !degraded });
+    await cached("k", 45_000, load, { cacheable: () => !degraded });
+    expect(loads).toBe(3); // the third load was clean, so the fourth call was a hit
+  });
+
+  it("still de-duplicates concurrent callers of an uncacheable load", async () => {
+    let loads = 0;
+    const load = async () => ++loads;
+    await Promise.all([1, 2, 3].map(() => cached("k", 45_000, load, { cacheable: () => false })));
+    expect(loads).toBe(1);
+  });
+});
+
 describe("clearCache", () => {
   it("drops versioned entries too (used when targets or snapshots change underneath the payloads)", async () => {
     setCacheScope(() => "v1|2026-10-23");

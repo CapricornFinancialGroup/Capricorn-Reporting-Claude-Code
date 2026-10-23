@@ -34,7 +34,7 @@ vi.mock("./query.js", () => ({
 import { clearCache, setCacheScope } from "./cache.js";
 import { getDataset, type DatasetName } from "./datasets.js";
 import { EMPTY_FILTERS } from "./filters.js";
-import { IN_WINDOW_PROBE_MS, startShareVersionWatcher, type ShareVersionWatcher } from "./share-version.js";
+import { startShareVersionWatcher, type ShareVersionWatcher } from "./share-version.js";
 
 const config = {
   port: 0,
@@ -74,7 +74,7 @@ describe("a wall screen rotating pages", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-23T09:00:00Z")); // Friday, inside load window B
+    vi.setSystemTime(new Date("2026-10-23T09:00:00Z")); // a Friday
     lake.statements = [];
     lake.versionProbes = 0;
     lake.failProbe = false;
@@ -113,7 +113,7 @@ describe("a wall screen rotating pages", () => {
     expect(lake.statements.length).toBe(afterFill);
   });
 
-  it("shows a new load within one probe interval, then goes quiet again", async () => {
+  it("shows a new load within one probe interval plus its confirmation, then goes quiet again", async () => {
     watcher = startShareVersionWatcher(config);
     setCacheScope(() => watcher!.cacheScope());
     await vi.advanceTimersByTimeAsync(0);
@@ -124,7 +124,8 @@ describe("a wall screen rotating pages", () => {
     lake.loadStamp = "2026-10-23T09:07:00.000Z";
     lake.rowCount = 1012;
 
-    await rotate(Math.ceil(IN_WINDOW_PROBE_MS / 20_000) + 1); // one probe interval of rotation
+    // Up to one probe interval to see it, plus the 5 minutes it must hold still before it is believed.
+    await rotate(Math.ceil((10 * 60_000 + 7 * 60_000) / 20_000));
     const afterLoad = lake.statements.length;
     expect(afterLoad).toBeGreaterThan(afterFill); // the new version reached the data
 

@@ -100,7 +100,14 @@ its header comments once the repo is on its permanent GitHub home.
 - **Change targets / office mapping**: edit `src/domain/targets.ts` / `offices.ts`, redeploy (a PR
   is the audit trail) — or, since 2026-07-08, an authorized admin can upload a new weekly targets
   workbook directly from the dashboard's "Targets" tab (see below) without a code change at all.
-- **Data freshness**: the lakehouse reloads FOUR times a day since 2026-08-21 (Capricorn changed the
+- **Data freshness**: the share (`LoadGoldCapricornShare`) has NO schedule of its own. It runs as the
+  last step of each `DeltaLoad`, which the fapp starts on its UTC extract slots (02:00 / 07:30 / 11:00 /
+  14:00) but which takes a variable number of hours, so the share lands roughly four times a day, at
+  times that drift by an hour or more, with the odd extra off-slot run. Runs seen 21-23 Oct 2026 (UTC
+  start): 04:34, 10:02, 13:38, 16:35 and an evening catch-up at 23:14. The times are UTC-anchored, so the
+  UK clock change on Sun 25 Oct does not move them. Each copy takes 6-8 minutes, table by table. Do not
+  model it as fixed times; stamp the load (see "Dataset cache" below for how the app finds it). History,
+  from August 2026: the lakehouse reloaded FOUR times a day since 2026-08-21 (Capricorn changed the
   schedule; confirmed 08-24). Measured off the distinct `MAX(_etl_modified)` stamps for 21–24 Aug
   2026, in **London** time: `05:43–06:22`, `11:12–11:37`, `14:34–15:10`, `17:31–17:43`. It was five
   through 20 Aug — `08:21–09:07`, `11:58–12:51`, `14:53–15:33`, `17:51–18:29`, `20:49–21:22` (n≈85
@@ -116,21 +123,34 @@ its header comments once the repo is on its permanent GitHub home.
   days, the upstream `LoadGoldCapricornShare` notebook (Smartr Fabric, PBI 90576) is where to look.
 - **Dataset cache and the Gold data version (PBI 93610)**: the server caches every dataset keyed on
   (Gold data version, London date), not on a timer, because the wall changes page every 20 s while Gold
-  changes four times a day (before this, ~113,000 Fabric statements a day per open screen, and the SQL
-  endpoint held allocated all day). The version is one statement that reads `MAX(_etl_modified)` (for
-  `lender`, `_etl_created`) and `COUNT_BIG(*)` for each of the eight tables the board reads, hashed;
-  `services/reporting/share-version.ts` lists them and a test fails if a query reads a table that is
-  not in the list. It is read on a timer, never per request: every 10 minutes while a load is
-  expected (windows in UTC: 05:00-06:30, 08:15-11:45, 13:30-15:15, 16:30-18:15), stopping once a load
-  has landed and held for one more probe, and every 2 hours otherwise. About 45 probes a day. A new
-  load therefore reaches the screens within about 10 minutes. If the load schedule moves, edit the
-  windows in that file; the 2-hour backstop still catches every load within 2 hours meanwhile. If the
-  version cannot be read the cache falls back to `REPORTING_CACHE_TTL_SECONDS` (45 s), exactly as
-  before. `REPORTING_KEY_ON_DATA_VERSION=false` switches the whole thing off (no probe) as a rollback;
-  `REPORTING_VERSIONED_CACHE_MAX_SECONDS` (default 21600) bounds how long any entry is served whatever
-  the version says. Uploading targets and a closed week moving both drop the cache directly, since the
-  version cannot see them. The probe logs `Gold data version changed` (with the tables that moved),
-  `Gold data version probe failed` and `Gold data version no longer trusted`.
+  changes about four times a day (before this, ~113,000 Fabric statements a day per open screen, and the
+  SQL endpoint held allocated all day). The version is one statement that reads `MAX(_etl_modified)`
+  (for `lender`, `_etl_created`) and `COUNT_BIG(*)` for each of the eight tables the board reads,
+  hashed; `services/reporting/share-version.ts` lists them and a test fails if a query reads a table that
+  is not in the list. It is read on a timer, never per request, steadily every 10 minutes around the
+  clock (`REPORTING_VERSION_PROBE_SECONDS`, default 600): about 144 single-statement probes a day.
+  There are no load windows, because the load has no fixed times (above). A reading that differs from
+  the version in use is only a candidate: the cache keeps the old, complete version while the
+  candidate is re-probed every 2 minutes, and it is adopted once it has held unchanged for 5 minutes,
+  so a half-copied share is never served. A new load therefore reaches the screens roughly 10 minutes
+  after it lands at the latest, plus about 5 to 7 for the confirmation. The Gold data version is
+  logged as `Gold data version changed` (with the tables that moved), `Gold data version probe
+  failed` and `Gold data version no longer trusted`.
+  - **If the version cannot be read**: the last good version stays trusted for one probe interval plus
+    20 minutes; after that each cached call falls back to its own pre-93610 TTL (`dataAsOf` and the
+    revised-week count 5 min, `lastRefreshAt` and `todaySoFar` 60 s, every other dataset
+    `REPORTING_CACHE_TTL_SECONDS`, 45 s). The board is never blank for want of a version.
+  - **Bounds and switches**: `REPORTING_VERSIONED_CACHE_MAX_SECONDS` (default 21600) bounds how long
+    any entry is served whatever the version says. `REPORTING_KEY_ON_DATA_VERSION=false` (also `0`,
+    `no`, `off`) switches the whole thing off, no probe, as a rollback. `main.bicep` sets it `true`, so
+    a portal change is undone by the next infrastructure deploy: change the Bicep too.
+  - **What the version cannot see**: uploading targets and a closed week moving in the snapshot blob
+    both drop the cache directly. The snapshot timer still ticks every 30 minutes but only goes to
+    Fabric when the version or the London date has moved, or while the version is unknown.
+  - **One instance only**: the cache, the active targets and the snapshot timer are in-process, and
+    dropping the cache reaches only its own process. Scaling the App Service out would leave the other
+    instances on the old targets and snapshot state until their next version change or the 6-hour
+    bound. (Targets were already per-process: they are hydrated from storage at boot only.)
 - **Env var reference**: see `.env.example` — all app settings are set by the Bicep; `PACING_MODE`
   is reserved (`mtd` today; `drip` would replay the latest day across a synthetic working day if
   Capricorn ever wants the intraday illusion).

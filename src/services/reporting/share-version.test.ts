@@ -6,7 +6,8 @@
 //   - the version is built from the tables the board really reads (a guard that fails when a new
 //     table is queried and nobody adds it here),
 //   - it moves on a changed row, a removed row and a different load stamp,
-//   - probes happen densely only while a load is expected and sparsely otherwise,
+//   - it is probed steadily, and a new reading is only believed once it has held still (the share is
+//     copied table by table),
 //   - a failing probe never throws and, once it has failed long enough, stops being trusted so the
 //     cache falls back to wall-clock TTLs.
 
@@ -26,14 +27,12 @@ vi.mock("./query.js", () => ({
 }));
 
 import {
+  CONFIRM_MS,
   FAILED_PROBE_RETRY_MS,
-  IN_WINDOW_PROBE_MS,
-  OUTSIDE_WINDOW_PROBE_MS,
-  SETTLE_MS,
+  PENDING_PROBE_MS,
   TRUST_GRACE_MS,
   VERSION_TABLES,
   buildVersionQuery,
-  nextProbeDelayMs,
   startShareVersionWatcher,
   versionOf,
   type ShareVersionWatcher,
@@ -58,40 +57,74 @@ function goldRows(over: Record<string, { mx?: unknown; n?: unknown }> = {}) {
   }));
 }
 
+/** Every .ts file under src/ that is production code and not this module. */
+function productionSources(dir: string): string[] {
+  const out: string[] = [];
+  for (const f of readdirSync(dir)) {
+    const p = join(dir, f);
+    if (statSync(p).isDirectory()) out.push(...productionSources(p));
+    else if (f.endsWith(".ts") && !f.endsWith(".test.ts") && f !== "share-version.ts") out.push(p);
+  }
+  return out;
+}
+
+/** The SQL-bearing text of a source file: block comments and line comments removed (a `//` only counts
+ *  as a comment at the start of a line or after whitespace, so 'http://x' inside a string survives). */
+function codeOf(path: string): string {
+  return readFileSync(path, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|\s)\/\/.*$/gm, "$1");
+}
+
 describe("what the version is read from", () => {
-  it("probes every table the board reads, in ONE statement", () => {
+  it("is ONE statement: a UNION ALL of per-table aggregates, no parameters", () => {
     const q = buildVersionQuery();
-    for (const { table } of VERSION_TABLES) expect(q.text).toContain(`dbo.${table}`);
     expect(q.text.match(/COUNT_BIG\(\*\)/g)).toHaveLength(VERSION_TABLES.length);
-    expect(q.params).toEqual([]);
+    expect(q.text.match(/UNION ALL/g)).toHaveLength(VERSION_TABLES.length - 1);
+    expect(q.text.match(/;/g)).toHaveLength(1);
     expect(q.text.trim().endsWith(";")).toBe(true);
+    expect(q.params).toEqual([]);
   });
 
-  it("covers every dbo table any production query reads (so a new table cannot be forgotten)", () => {
-    const root = join(__dirname, "..");
-    const files: string[] = [];
-    for (const dir of ["reporting", "snapshots"]) {
-      for (const f of readdirSync(join(root, dir))) {
-        const p = join(root, dir, f);
-        if (statSync(p).isFile() && f.endsWith(".ts") && !f.endsWith(".test.ts")) files.push(p);
+  it("reads each table's own stamp column — lender has no _etl_modified, so it uses _etl_created", () => {
+    const text = buildVersionQuery().text;
+    expect(text).toContain("SELECT 'mortgagecase' AS tbl, MAX([_etl_modified]) AS mx, COUNT_BIG(*) AS n FROM dbo.mortgagecase");
+    expect(text).toContain("SELECT 'lender' AS tbl, MAX([_etl_created]) AS mx, COUNT_BIG(*) AS n FROM dbo.lender");
+  });
+
+  it("covers every table any production query under src/ reads, so a new one cannot be forgotten", () => {
+    const covered = new Set(VERSION_TABLES.map((t) => t.table));
+    const read = new Set<string>();
+    const unqualified: string[] = [];
+    const root = join(__dirname, "..", "..");
+    const sources = productionSources(root).map((path) => ({ path, code: codeOf(path) }));
+    // CTE names are collected across all files: a shared WITH clause is built in one module and used in others.
+    const ctes = new Set(
+      sources.flatMap(({ code }) => [...code.matchAll(/(?:\bWITH\s+|,\s*|`\s*)(\w+)\s+AS\s*\(/g)].map((m) => m[1].toLowerCase())),
+    );
+
+    for (const { path, code } of sources) {
+      // [dbo].[x], dbo.x and GAGold_Capricorn.dbo.x
+      for (const m of code.matchAll(/\[?dbo\]?\.\[?(\w+)\]?/gi)) read.add(m[1].toLowerCase());
+      // A table name built at run time cannot be checked statically.
+      if (/\bdbo\.\$\{/i.test(code)) unqualified.push(`${path}: dbo.\${...}`);
+      // Any FROM/JOIN target must be dbo-qualified, a ${spec.table} that resolves to a dbo literal read
+      // above, or a CTE defined anywhere under src/.
+      for (const m of code.matchAll(/\b(?:FROM|JOIN)\s+([^\s,(;)]+)/g)) {
+        const target = m[1];
+        if (/^\[?dbo\]?\./i.test(target) || target.startsWith("${") || ctes.has(target.toLowerCase())) continue;
+        if (/^[A-Za-z_]\w*\.\[?dbo\]?\./i.test(target)) continue; // db.dbo.table
+        unqualified.push(`${path}: FROM/JOIN ${target}`);
       }
     }
-    const read = new Set<string>();
-    for (const p of files) {
-      if (p.endsWith("share-version.ts")) continue;
-      // Code only: prose in comments names Silver tables and three-part names that are not reads.
-      const code = readFileSync(p, "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
-      for (const m of code.matchAll(/(?<![\w.])dbo\.([a-z_]+)/gi)) read.add(m[1].toLowerCase());
-    }
+
     expect(read.size).toBeGreaterThanOrEqual(8); // the scan itself found the board's tables
-    const covered = new Set(VERSION_TABLES.map((t) => t.table));
+    expect(unqualified).toEqual([]);
     expect([...read].filter((t) => !covered.has(t))).toEqual([]);
   });
 
-  it("uses a stamp column each table is known to have (lender has no _etl_modified)", () => {
-    const lender = VERSION_TABLES.find((t) => t.table === "lender");
-    expect(lender?.stamp).toBe("_etl_created");
-    expect(VERSION_TABLES.find((t) => t.table === "mortgagecase")?.stamp).toBe("_etl_modified");
+  it("the scan would notice a table that is missing (self-check of the guard)", () => {
+    const snippet = "SELECT 1 FROM [dbo].[newtable] n JOIN GAGold_Capricorn.dbo.other o ON 1=1 JOIN dbo.mortgagecase m ON 1=1";
+    const found = [...snippet.matchAll(/\[?dbo\]?\.\[?(\w+)\]?/gi)].map((m) => m[1]);
+    expect(found).toEqual(["newtable", "other", "mortgagecase"]);
   });
 });
 
@@ -133,62 +166,12 @@ describe("versionOf", () => {
   });
 });
 
-describe("nextProbeDelayMs — dense while a load is expected, sparse otherwise", () => {
-  // Load windows (UTC), widened past the measured end times of LoadGoldCapricornShare for 25 Aug-24 Sep
-  // plus the endpoint's sync lag: 05:00-06:30, 08:15-11:45, 13:30-15:15, 16:30-18:15.
-  it("probes every 10 minutes inside a window until a load has landed", () => {
-    expect(nextProbeDelayMs(utc("05:30"), null)).toBe(IN_WINDOW_PROBE_MS);
-    expect(nextProbeDelayMs(utc("10:00"), null)).toBe(IN_WINDOW_PROBE_MS);
-    expect(nextProbeDelayMs(utc("14:00"), null)).toBe(IN_WINDOW_PROBE_MS);
-    expect(nextProbeDelayMs(utc("17:00"), null)).toBe(IN_WINDOW_PROBE_MS);
-    expect(IN_WINDOW_PROBE_MS).toBe(10 * MIN);
-  });
-
-  it("window edges: open at the start, closed at the end", () => {
-    expect(nextProbeDelayMs(utc("05:00"), null)).toBe(IN_WINDOW_PROBE_MS);
-    expect(nextProbeDelayMs(utc("06:30"), null)).not.toBe(IN_WINDOW_PROBE_MS);
-  });
-
-  it("keeps probing at the dense cadence right after a change, until the version has SETTLED", () => {
-    // A change just seen: the share copies tables over several minutes, so the first new version may be
-    // a half-copied one. Do not go quiet until a probe at least SETTLE_MS later still agrees.
-    expect(nextProbeDelayMs(utc("10:50"), utc("10:47"))).toBe(IN_WINDOW_PROBE_MS);
-    expect(nextProbeDelayMs(utc("10:56"), utc("10:47"))).toBe(IN_WINDOW_PROBE_MS); // 9 min: not yet settled
-    expect(SETTLE_MS).toBe(10 * MIN);
-  });
-
-  it("goes quiet once settled — it does not keep probing the rest of the window", () => {
-    // Change seen 10:47, confirmed unchanged by the probe at 10:57; next window opens 13:30 (2h33 away),
-    // so the backstop cadence applies.
-    expect(nextProbeDelayMs(utc("10:57"), utc("10:47"))).toBe(OUTSIDE_WINDOW_PROBE_MS);
-    expect(OUTSIDE_WINDOW_PROBE_MS).toBe(2 * HOUR);
-  });
-
-  it("a change from an earlier window does not settle the current one", () => {
-    expect(nextProbeDelayMs(utc("05:30"), utc("17:17", "2026-10-22"))).toBe(IN_WINDOW_PROBE_MS);
-    expect(nextProbeDelayMs(utc("10:30"), utc("05:29"))).toBe(IN_WINDOW_PROBE_MS);
-  });
-
-  it("outside a window, backs off to the backstop cadence but wakes for the next window opening", () => {
-    expect(nextProbeDelayMs(utc("19:00"), null)).toBe(OUTSIDE_WINDOW_PROBE_MS); // next open is tomorrow 05:00
-    expect(nextProbeDelayMs(utc("07:00"), null)).toBe(75 * MIN); // wakes for 08:15, not 2h later
-    expect(nextProbeDelayMs(utc("08:10"), null)).toBe(5 * MIN);
-    expect(nextProbeDelayMs(utc("12:00"), null)).toBe(90 * MIN); // wakes for 13:30
-  });
-
-  it("never returns a zero or negative delay", () => {
-    for (let m = 0; m < 24 * 60; m++) {
-      expect(nextProbeDelayMs(utc("00:00") + m * MIN, null)).toBeGreaterThan(0);
-    }
-  });
-});
-
 describe("startShareVersionWatcher", () => {
   let watcher: ShareVersionWatcher | undefined;
 
   beforeEach(() => {
     vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-10-23T09:00:00Z")); // inside window B
+    vi.setSystemTime(new Date("2026-10-23T09:00:00Z"));
     lake.rows = goldRows();
     lake.fail = false;
     lake.calls = [];
@@ -201,6 +184,13 @@ describe("startShareVersionWatcher", () => {
   });
 
   const flush = () => vi.advanceTimersByTimeAsync(0);
+  /** A load lands: every row of one table moves to a new stamp and count. */
+  const land = (table: string, n: number) => {
+    lake.rows = goldRows({ ...Object.fromEntries(landed), [table]: { mx: new Date("2026-10-23T10:00:00.000Z"), n } });
+    landed.set(table, { mx: new Date("2026-10-23T10:00:00.000Z"), n });
+  };
+  const landed = new Map<string, { mx: Date; n: number }>();
+  beforeEach(() => landed.clear());
 
   it("has no scope until the first probe succeeds (so the cache stays time-based at boot)", async () => {
     watcher = startShareVersionWatcher(config);
@@ -219,24 +209,111 @@ describe("startShareVersionWatcher", () => {
     expect(watcher.cacheScope()).toMatch(/\|2026-10-24$/);
   });
 
-  it("changes the scope when the lake moves, and records when", async () => {
+  it("probes steadily around the clock: no windows, whatever the hour", async () => {
+    for (const start of ["2026-10-23T03:00:00Z", "2026-10-23T19:00:00Z", "2026-10-23T10:07:00Z"]) {
+      lake.calls = [];
+      vi.setSystemTime(new Date(start));
+      const w = startShareVersionWatcher(config);
+      await vi.advanceTimersByTimeAsync(HOUR);
+      w.stop();
+      expect(lake.calls).toHaveLength(7); // at boot, then every 10 minutes
+    }
+  });
+
+  it("honours a configured probe interval, with a 30 s floor", async () => {
+    const at = (seconds: number) => ({ ...config, reporting: { ...config.reporting, versionProbeSeconds: seconds } }) as Config;
+    watcher = startShareVersionWatcher(at(300));
+    await vi.advanceTimersByTimeAsync(HOUR);
+    watcher.stop();
+    expect(lake.calls).toHaveLength(13);
+
+    lake.calls = [];
+    watcher = startShareVersionWatcher(at(1));
+    await vi.advanceTimersByTimeAsync(5 * MIN);
+    watcher.stop();
+    expect(lake.calls).toHaveLength(11); // floor of 30 s, not 1 s
+  });
+
+  it("does not believe a new reading at once: the cache keeps the old complete version while it is confirmed", async () => {
     watcher = startShareVersionWatcher(config);
     await flush();
     const before = watcher.cacheScope();
-    expect(watcher.getState().lastChangeAt).toBeNull(); // the first read is a baseline, not a change
 
-    lake.rows = goldRows({ mortgagecase: { mx: new Date("2026-10-23T09:05:00.000Z"), n: 1004 } });
-    await vi.advanceTimersByTimeAsync(IN_WINDOW_PROBE_MS);
-    expect(watcher.cacheScope()).not.toBe(before);
-    expect(watcher.getState().lastChangeAt).toBe(Date.now());
+    land("mortgagecase", 1004);
+    await vi.advanceTimersByTimeAsync(10 * MIN); // the steady probe sees it
+    expect(watcher.cacheScope()).toBe(before); // candidate only
+    expect(watcher.getState().candidateSince).toBe(Date.now());
+
+    await vi.advanceTimersByTimeAsync(PENDING_PROBE_MS);
+    expect(watcher.cacheScope()).toBe(before); // 2 min of agreement is not enough
+    const candidateSince = watcher.getState().candidateSince!;
+    await vi.advanceTimersByTimeAsync(CONFIRM_MS);
+    expect(watcher.cacheScope()).not.toBe(before); // held unchanged for CONFIRM_MS: adopted
+    expect(watcher.getState().lastChangeAt).toBeGreaterThanOrEqual(candidateSince + CONFIRM_MS);
+    expect(watcher.getState().lastChangeAt).toBeLessThanOrEqual(Date.now());
+    expect(watcher.getState().candidateSince).toBeNull();
+  });
+
+  it("re-probes every 2 minutes while a candidate waits, then returns to the steady cadence", async () => {
+    watcher = startShareVersionWatcher(config);
+    await flush();
+    land("mortgagecase", 1004);
+    await vi.advanceTimersByTimeAsync(10 * MIN);
+    lake.calls = [];
+    await vi.advanceTimersByTimeAsync(CONFIRM_MS + MIN); // adopted at +6 min
+    expect(lake.calls.length).toBe(3); // +2, +4, +6
+    lake.calls = [];
+    await vi.advanceTimersByTimeAsync(HOUR);
+    expect(lake.calls.length).toBe(6);
+  });
+
+  it("a half-copied load never reaches the cache: the reading keeps moving, so nothing is adopted until it stops", async () => {
+    watcher = startShareVersionWatcher(config);
+    await flush();
+    const before = watcher.cacheScope();
+    const seen = new Set<string | null>([before]);
+
+    // The share is copied table by table: a different table lands every 90 s, starting a minute before a
+    // steady probe, so probes read the share mid-copy.
+    await vi.advanceTimersByTimeAsync(9 * MIN);
+    const tables = ["mortgagecase", "protectioncase", "useraccount", "introducer"];
+    for (let i = 0; i < tables.length; i++) {
+      land(tables[i], 2000 + i);
+      await vi.advanceTimersByTimeAsync(90_000);
+      seen.add(watcher.cacheScope());
+    }
+    expect(lake.calls.length).toBeGreaterThanOrEqual(4); // probes did read it mid-copy
+    expect(seen).toEqual(new Set([before])); // the old, complete version throughout the copy
+    const lastLanding = Date.now() - 90_000;
+
+    await vi.advanceTimersByTimeAsync(30 * MIN);
+    const after = watcher.cacheScope();
+    expect(after).not.toBe(before);
+    // what was adopted is the finished state, not an intermediate one, and only after it held still
+    expect(after!.split("|")[0]).toBe(versionOf(goldRows(Object.fromEntries(landed))).version);
+    expect(watcher.getState().lastChangeAt).toBeGreaterThanOrEqual(lastLanding + CONFIRM_MS);
+  });
+
+  it("drops a candidate that goes back to the version already held", async () => {
+    watcher = startShareVersionWatcher(config);
+    await flush();
+    const before = watcher.cacheScope();
+    land("mortgagecase", 1004);
+    await vi.advanceTimersByTimeAsync(10 * MIN);
+    expect(watcher.getState().candidateSince).not.toBeNull();
+    lake.rows = goldRows(); // the reading returns to what we hold
+    landed.clear();
+    await vi.advanceTimersByTimeAsync(PENDING_PROBE_MS);
+    expect(watcher.getState().candidateSince).toBeNull();
+    expect(watcher.cacheScope()).toBe(before);
+    expect(watcher.getState().lastChangeAt).toBeNull();
   });
 
   it("leaves the scope alone when a probe finds nothing new", async () => {
     watcher = startShareVersionWatcher(config);
     await flush();
     const before = watcher.cacheScope();
-    await vi.advanceTimersByTimeAsync(IN_WINDOW_PROBE_MS);
-    await vi.advanceTimersByTimeAsync(IN_WINDOW_PROBE_MS);
+    await vi.advanceTimersByTimeAsync(20 * MIN);
     expect(lake.calls).toHaveLength(3);
     expect(watcher.cacheScope()).toBe(before);
     expect(watcher.getState().lastChangeAt).toBeNull();
@@ -247,7 +324,7 @@ describe("startShareVersionWatcher", () => {
     await flush();
     const before = watcher.cacheScope();
     lake.fail = true;
-    await vi.advanceTimersByTimeAsync(IN_WINDOW_PROBE_MS);
+    await vi.advanceTimersByTimeAsync(10 * MIN);
     expect(watcher.cacheScope()).toBe(before); // still trusted: one miss must not send the wall back to polling
     expect(watcher.getState().lastError).toMatch(/ECONNRESET/);
   });
@@ -257,15 +334,14 @@ describe("startShareVersionWatcher", () => {
     await flush();
     lake.fail = true;
     // Last good probe at 09:00 scheduled the next one 10 min out; trusted until that plus the grace.
-    await vi.advanceTimersByTimeAsync(IN_WINDOW_PROBE_MS + TRUST_GRACE_MS - MIN);
+    await vi.advanceTimersByTimeAsync(10 * MIN + TRUST_GRACE_MS - MIN);
     expect(watcher.cacheScope()).not.toBeNull();
     await vi.advanceTimersByTimeAsync(2 * MIN);
     expect(watcher.cacheScope()).toBeNull(); // cache is back on wall-clock TTLs
     expect(watcher.trustedVersion()).toBeNull();
   });
 
-  it("retries a failed probe soon, not at the backstop cadence", async () => {
-    vi.setSystemTime(new Date("2026-10-23T19:00:00Z")); // outside every window: backstop is 2h
+  it("retries a failed probe in 5 minutes, not at the steady cadence", async () => {
     lake.fail = true;
     watcher = startShareVersionWatcher(config);
     await flush();
@@ -302,43 +378,48 @@ describe("startShareVersionWatcher", () => {
     expect(lake.calls).toHaveLength(1);
   });
 
-  it("a whole day costs a few dozen probes, and every load reaches the cache within one probe interval", async () => {
-    // The loads land at the measured p50 end times of LoadGoldCapricornShare (25 Aug-24 Sep, UTC):
-    // 05:29, 10:47, 14:16, 17:17. The wall is 'open all day' (cacheScope is read every minute).
+  it("a whole day: loads at the times measured on 21-23 Oct (04:34, 10:02, 13:38, 16:35, 23:14 UTC), each a 7-minute table-by-table copy, are all picked up and no half-copied state is ever adopted", async () => {
+    // These are NOT the Aug-Sep 'windows': the share has no schedule, it runs when DeltaLoad finishes.
     vi.setSystemTime(new Date("2026-10-23T00:00:00Z"));
-    const landings = ["05:29", "10:47", "14:16", "17:17"].map((t) => utc(t));
-    let loaded = 0;
+    const starts = ["04:34", "10:02", "13:38", "16:35", "23:14"].map((t) => utc(t));
+    const COPY_MIN = 7;
+    const copied = ["mortgagecase", "protectioncase", "protectioncaseclient", "useraccount"];
 
-    const stampFor = (n: number) => new Date(utc("00:00") + n * HOUR);
-    const setLake = () => {
-      lake.rows = goldRows({ mortgagecase: { mx: stampFor(loaded), n: 1000 + loaded } });
+    // The share as it stands `now`: each load rewrites one more of the tables every ~1.75 min.
+    const shareAt = (now: number) => {
+      const st: Record<string, { mx: Date; n: number }> = {};
+      starts.forEach((start, li) => {
+        const d = (now - start) / MIN;
+        if (d < 0) return;
+        const done = d >= COPY_MIN ? copied.length : Math.floor(d / (COPY_MIN / copied.length)) + 1;
+        for (let i = 0; i < done; i++) st[copied[i]] = { mx: new Date(start + i * 100_000), n: 3000 + li * 10 + i };
+      });
+      return st;
     };
-    setLake();
-    watcher = startShareVersionWatcher(config);
-    const seenAt: number[] = [];
-    let lastVersion: string | null = null;
+    const finalVersions = new Set<string>([versionOf(goldRows(shareAt(utc("00:00")))).version]);
+    starts.forEach((start) => finalVersions.add(versionOf(goldRows(shareAt(start + COPY_MIN * MIN))).version));
 
+    watcher = startShareVersionWatcher(config);
+    const adopted: Array<{ at: number; version: string }> = [];
+    let last: string | null = null;
     for (let m = 0; m < 24 * 60; m++) {
       const now = utc("00:00") + m * MIN;
-      if (loaded < landings.length && now >= landings[loaded]) {
-        loaded++;
-        setLake();
-      }
+      lake.rows = goldRows(shareAt(now));
       await vi.advanceTimersByTimeAsync(MIN);
-      // The VERSION, not the scope: the scope also moves at London midnight, which is not a load.
       const v = watcher.trustedVersion();
-      if (lastVersion !== null && v !== lastVersion) seenAt.push(Date.now());
-      lastVersion = v;
+      if (last !== null && v !== last) adopted.push({ at: Date.now(), version: v! });
+      last = v;
     }
 
-    expect(seenAt).toHaveLength(4);
-    seenAt.forEach((seen, i) => {
-      const lag = seen - landings[i];
+    expect(adopted).toHaveLength(5);
+    adopted.forEach(({ at, version }, i) => {
+      expect(finalVersions.has(version)).toBe(true); // the finished copy, never an intermediate state
+      const lag = at - (starts[i] + COPY_MIN * MIN);
       expect(lag).toBeGreaterThanOrEqual(0);
-      expect(lag).toBeLessThanOrEqual(IN_WINDOW_PROBE_MS + MIN); // 'within minutes'
+      expect(lag).toBeLessThanOrEqual(10 * MIN + CONFIRM_MS + 2 * MIN); // one probe interval plus the confirmation
     });
     // Today's polling is ~113,000 statements a day; this is the whole of the version traffic.
-    expect(lake.calls.length).toBeLessThan(60);
-    expect(lake.calls.length).toBeGreaterThan(20); // and it is not accidentally idle
+    expect(lake.calls.length).toBeGreaterThan(140);
+    expect(lake.calls.length).toBeLessThan(200);
   });
 });

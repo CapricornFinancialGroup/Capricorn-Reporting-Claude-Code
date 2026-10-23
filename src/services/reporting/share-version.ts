@@ -1,8 +1,8 @@
 // The Gold DATA VERSION of the Capricorn share: one cheap read that says "the data has moved", the
 // timer that takes it, and the scope the dataset cache is keyed on. PBI 93610.
 //
-// Why. The share is rewritten by LoadGoldCapricornShare four times a day. Everything the board shows
-// is a pure function of that data and the London date, yet each dataset cache expired on a 45-60 s
+// Why. The share is rewritten by LoadGoldCapricornShare about four times a day. Everything the board
+// shows is a pure function of that data and the London date, yet each dataset cache expired on a 45-60 s
 // timer, so a wall rotating pages every 20 s kept re-asking Fabric for an answer it already had — and
 // held the SQL endpoint allocated all day (~87 CU-h/day; the target is 11). The Reporting API did the
 // same fix in PBI 93619: read a version hash of MAX(_etl_modified) and COUNT_BIG(*) per table and key
@@ -11,20 +11,28 @@
 // The version. One statement, one round trip: for each table the board queries, its newest load stamp
 // and its row count, hashed. The stamp catches changed and added rows; the count catches a row that
 // VANISHED, which cannot raise a watermark (the July 2026 week-drift case, domain/data-quality.ts, and
-// _MortgageClient in the Reporting repo). Every table that any query in reporting/ or snapshots/ reads
-// is in the list — share-version.test.ts fails if a new one is added there and not here.
+// _MortgageClient in the Reporting repo). Every table that any query under src/ reads is in the list —
+// share-version.test.ts fails if a new one is added and not here.
 //
-// When it is read. NOT per request. Requests only ever look at the in-memory version (free). A timer
-// reads it: every 10 minutes while a load is expected, then, once a load has landed and the version has
-// held for a probe, not again until the next window; every 2 hours otherwise as a backstop for a
-// drifted or missed load. About 45 probes a day, against ~113,000 statements a day before.
+// What it cannot see: an in-place update that does not advance the stamp (LoadGoldCapricornShare
+// overwrites each table with Gold's own rows, so a Gold row is re-stamped when it changes, but `lender`
+// has only `_etl_created`), and a delete paired with an insert that carries an older stamp. Neither is
+// expected from the Gold merge; the 6 h cap on version-keyed entries (cache.ts) bounds it if one happens.
 //
-//   LOAD WINDOWS, UTC, from the end times of the 92 LoadGoldCapricornShare runs 25 Aug-24 Sep 2026
-//   (evidence: ro10-growthos-polling.md §5: 05:11-06:09, 08:31-11:20, 13:49-14:50, 16:54-17:55),
-//   widened by ~10-15 min each side for the SQL endpoint's sync lag (7-8 min) and schedule drift.
-//   UTC, not London: the schedule is fixed in UTC, so it does not move when the clocks change. If the
-//   schedule moves, the 2-hour backstop still catches each load within 2 hours, and these constants
-//   are the one thing to edit.
+// When it is read. NOT per request: requests only ever look at the in-memory version (free). A timer
+// reads it, steadily, every 10 minutes around the clock (REPORTING_VERSION_PROBE_SECONDS): ~144
+// single-statement probes a day, against ~113,000 statements a day before. There is deliberately no
+// schedule of "load windows". LoadGoldCapricornShare has no schedule of its own: it runs at the end of
+// each DeltaLoad, which starts on the fapp's UTC extract slots but takes a variable number of hours, and
+// there are extra off-slot runs (measured 21-23 Oct 2026: starts at 04:34, 10:02, 13:38, 16:35 and an
+// evening catch-up at 23:14 UTC; the Aug-Sep windows would already have missed them). A steady cadence
+// needs no model of it.
+//
+// A new version is not trusted at once. The share is copied table by table (6-8 minutes), so the first
+// different reading can be a half-copied one. A different reading becomes a CANDIDATE: the cache keeps its
+// current (complete) version while the candidate is re-probed every 2 minutes, and it is adopted only once
+// it has held unchanged for 5 minutes. If it moves again the clock restarts; if it returns to the current
+// version the candidate is dropped. The first reading after startup is adopted as the baseline.
 //
 // Failure. A probe that fails is logged and retried in 5 minutes; it never throws and never touches the
 // cache. The last good version stays trusted for one scheduled interval plus a grace; after that
@@ -99,74 +107,35 @@ export function versionOf(rows: VersionRow[]): { version: string; parts: Record<
 }
 
 // ---------------------------------------------------------------------------
-// When it is read
+// When it is read, and when a reading is believed
 // ---------------------------------------------------------------------------
 
 const MIN = 60_000;
 
-/** Probe cadence while a load is expected and has not yet landed and settled. */
-export const IN_WINDOW_PROBE_MS = 10 * MIN;
-/** Backstop cadence outside the windows (and once a window's load has settled). */
-export const OUTSIDE_WINDOW_PROBE_MS = 120 * MIN;
-/** After a change, the version must hold this long (one confirming probe) before probing goes quiet:
- *  the share is copied table by table, so the first new version can be a half-copied one. */
-export const SETTLE_MS = 10 * MIN;
+/** Default steady probe cadence (REPORTING_VERSION_PROBE_SECONDS overrides it). */
+export const DEFAULT_PROBE_INTERVAL_MS = 10 * MIN;
+/** Re-probe cadence while a candidate version is waiting to be confirmed. */
+export const PENDING_PROBE_MS = 2 * MIN;
+/** A candidate version is adopted once it has held unchanged for this long (the copy takes 6-8 min). */
+export const CONFIRM_MS = 5 * MIN;
 /** Retry delay after a failed probe. */
 export const FAILED_PROBE_RETRY_MS = 5 * MIN;
-/** How long past its scheduled next probe a version is still trusted. Two missed retries. */
+/** How long past its scheduled next probe a version is still trusted: four failed 5-minute retries. */
 export const TRUST_GRACE_MS = 20 * MIN;
-const MIN_PROBE_DELAY_MS = 1_000;
-
-/** [open, close) in minutes after 00:00 UTC. */
-const LOAD_WINDOWS_UTC_MINUTES: ReadonlyArray<readonly [number, number]> = [
-  [5 * 60, 6 * 60 + 30], //          05:00-06:30
-  [8 * 60 + 15, 11 * 60 + 45], //    08:15-11:45
-  [13 * 60 + 30, 15 * 60 + 15], //   13:30-15:15
-  [16 * 60 + 30, 18 * 60 + 15], //   16:30-18:15
-];
-
-const DAY_MS = 24 * 60 * MIN;
-
-function windowAt(nowMs: number): { startMs: number } | null {
-  const dayStart = nowMs - (((nowMs % DAY_MS) + DAY_MS) % DAY_MS);
-  for (const [open, close] of LOAD_WINDOWS_UTC_MINUTES) {
-    const startMs = dayStart + open * MIN;
-    if (nowMs >= startMs && nowMs < dayStart + close * MIN) return { startMs };
-  }
-  return null;
-}
-
-function nextWindowOpenMs(nowMs: number): number {
-  const dayStart = nowMs - (((nowMs % DAY_MS) + DAY_MS) % DAY_MS);
-  for (const [open] of LOAD_WINDOWS_UTC_MINUTES) {
-    if (dayStart + open * MIN > nowMs) return dayStart + open * MIN;
-  }
-  return dayStart + DAY_MS + LOAD_WINDOWS_UTC_MINUTES[0][0] * MIN;
-}
-
-/** How long to wait before the next probe, given the time and when the version last CHANGED (ms, or
- *  null if it has not changed since this process started). Pure, so the schedule is testable. */
-export function nextProbeDelayMs(nowMs: number, lastChangeMs: number | null): number {
-  const w = windowAt(nowMs);
-  if (w) {
-    const settled = lastChangeMs != null && lastChangeMs >= w.startMs && nowMs - lastChangeMs >= SETTLE_MS;
-    if (!settled) return IN_WINDOW_PROBE_MS;
-  }
-  const untilNextWindow = nextWindowOpenMs(nowMs) - nowMs;
-  return Math.max(MIN_PROBE_DELAY_MS, Math.min(OUTSIDE_WINDOW_PROBE_MS, untilNextWindow));
-}
 
 // ---------------------------------------------------------------------------
 // The watcher
 // ---------------------------------------------------------------------------
 
 export interface ShareVersionState {
-  /** Last good version, or null before the first successful probe. */
+  /** The adopted (trusted-if-fresh) version, or null before the first successful probe. */
   version: string | null;
-  /** When it was read (epoch ms). */
+  /** When it was last READ, epoch ms (any successful probe). */
   checkedAt: number | null;
-  /** When it last CHANGED (epoch ms); null if it has not changed since startup (the first read is a baseline). */
+  /** When the adopted version last CHANGED (epoch ms); null if it has not changed since startup. */
   lastChangeAt: number | null;
+  /** When the current unconfirmed candidate was first seen (epoch ms), or null if there is none. */
+  candidateSince: number | null;
   /** The latest probe failure; cleared by the next success. */
   lastError: string | null;
 }
@@ -174,10 +143,16 @@ export interface ShareVersionState {
 export interface ShareVersionWatcher {
   stop: () => void;
   getState: () => ShareVersionState;
-  /** The version, only while it can still be vouched for; null otherwise. */
+  /** The adopted version, only while it can still be vouched for; null otherwise. */
   trustedVersion: () => string | null;
   /** What the dataset cache keys on: `<version>|<London date>`, or null when there is no trusted version. */
   cacheScope: () => string | null;
+}
+
+interface Candidate {
+  version: string;
+  parts: Record<string, string>;
+  since: number;
 }
 
 /** Start the background probe. Never throws. The first probe runs at once; until it succeeds the cache
@@ -185,9 +160,13 @@ export interface ShareVersionWatcher {
 export function startShareVersionWatcher(config: Config): ShareVersionWatcher {
   const pool = { server: config.fabric.endpoint, database: config.fabric.database };
   const query = buildVersionQuery();
+  const configured = config.reporting.versionProbeSeconds;
+  const intervalMs =
+    configured > 0 && Number.isFinite(configured) ? Math.max(30_000, configured * 1000) : DEFAULT_PROBE_INTERVAL_MS;
 
   let version: string | null = null;
   let parts: Record<string, string> = {};
+  let candidate: Candidate | null = null;
   let checkedAt: number | null = null;
   let lastChangeAt: number | null = null;
   let lastError: string | null = null;
@@ -205,23 +184,39 @@ export function startShareVersionWatcher(config: Config): ShareVersionWatcher {
 
   const probe = async (): Promise<void> => {
     try {
-      const next = versionOf(await run<VersionRow>(pool, query, { retries: 0 }));
+      // One retry: between loads this is nearly the only statement Fabric sees, so it is usually the
+      // cold first hit after idle (a dropped socket is retried once, on a fresh pool).
+      const reading = versionOf(await run<VersionRow>(pool, query, { retries: 1 }));
       const now = Date.now();
-      if (version !== null && next.version !== version) {
-        lastChangeAt = now;
-        logger.info("Gold data version changed", {
-          from: version,
-          to: next.version,
-          tables: Object.keys(next.parts).filter((t) => next.parts[t] !== parts[t]),
-        });
+
+      if (version === null) {
+        version = reading.version; // first reading after startup: the baseline
+        parts = reading.parts;
+      } else if (reading.version === version) {
+        candidate = null; // nothing new, or a candidate that went back to what we have
+      } else if (candidate && candidate.version === reading.version) {
+        if (now - candidate.since >= CONFIRM_MS) {
+          logger.info("Gold data version changed", {
+            from: version,
+            to: reading.version,
+            tables: Object.keys(reading.parts).filter((t) => reading.parts[t] !== parts[t]),
+            confirmedAfterMs: now - candidate.since,
+          });
+          version = reading.version;
+          parts = reading.parts;
+          lastChangeAt = now;
+          candidate = null;
+        }
+      } else {
+        // A new, or still-moving, reading: do not believe it until it has held still.
+        candidate = { version: reading.version, parts: reading.parts, since: now };
       }
-      if (untrustedLogged) logger.info("Gold data version readable again — dataset cache keyed on it", { version: next.version });
+
+      if (untrustedLogged) logger.info("Gold data version readable again — dataset cache keyed on it", { version });
       untrustedLogged = false;
-      version = next.version;
-      parts = next.parts;
       checkedAt = now;
       lastError = null;
-      const delay = nextProbeDelayMs(now, lastChangeAt);
+      const delay = candidate ? PENDING_PROBE_MS : intervalMs;
       trustedUntil = now + delay + TRUST_GRACE_MS;
       schedule(delay);
     } catch (err) {
@@ -232,7 +227,7 @@ export function startShareVersionWatcher(config: Config): ShareVersionWatcher {
         untrustedLogged = true;
         logger.warn("Gold data version no longer trusted — dataset cache is back on wall-clock TTLs");
       }
-      schedule(Math.min(FAILED_PROBE_RETRY_MS, nextProbeDelayMs(now, lastChangeAt)));
+      schedule(Math.min(FAILED_PROBE_RETRY_MS, candidate ? PENDING_PROBE_MS : intervalMs));
     }
   };
 
@@ -245,7 +240,7 @@ export function startShareVersionWatcher(config: Config): ShareVersionWatcher {
       stopped = true;
       if (timer) clearTimeout(timer);
     },
-    getState: () => ({ version, checkedAt, lastChangeAt, lastError }),
+    getState: () => ({ version, checkedAt, lastChangeAt, candidateSince: candidate?.since ?? null, lastError }),
     trustedVersion,
     cacheScope: () => {
       const v = trustedVersion();

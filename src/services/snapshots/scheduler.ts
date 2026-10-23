@@ -6,11 +6,13 @@
 // would be invisible. The timer is what makes the baseline real.
 //
 // PBI 93610: the timer still ticks on its own clock whoever is watching, but a tick only goes to Fabric
-// when the Gold data version has moved since the last observation that completed. That is the whole of
-// what the lake can have changed: it reloads four times a day, and re-reading it every 30 minutes in
-// between was the measured 8.0-8.5 CU-h/day idle floor. When the version is not known (the probe has
-// not succeeded yet, or has been failing) it observes every tick, as before: missing a real movement
-// is worse than one redundant read.
+// when the Gold data version OR the London date has moved since the last observation that fully
+// persisted. The version is the whole of what the lake can have changed (it reloads four times a day;
+// re-reading it every 30 minutes in between was the measured 8.0-8.5 CU-h/day idle floor). The date
+// matters because the set of closed weeks is a function of it: a week joins the set at the Saturday
+// rollover with no Gold load, and its baseline must be taken then, not after the next load. When the
+// version is not known (the probe has not succeeded yet, or has been failing) it observes every tick,
+// as before: missing a real movement is worse than one redundant read.
 
 import type { Config } from "../../config.js";
 import { clearCache } from "../reporting/cache.js";
@@ -31,17 +33,19 @@ export interface VersionSource {
 }
 
 export function startSnapshotScheduler(config: Config, versionSource: VersionSource): SnapshotScheduler {
-  // The version at the last observation that COMPLETED. A failed pass leaves it alone, so the next tick retries.
-  let lastObservedVersion: string | null = null;
+  // "<version>|<London date>" at the last observation that fully PERSISTED. A pass that threw, or that
+  // could not persist a week, leaves it alone, so the next tick retries.
+  let lastObservedKey: string | null = null;
 
   const runOnce = async (): Promise<void> => {
     try {
       const version = versionSource.trustedVersion();
-      if (version !== null && version === lastObservedVersion) {
-        logger.info("Gold data version unchanged since the last week observation — skipping", { version });
+      const today = tzToday(new Date(), config.reporting.timeZone);
+      const key = version === null ? null : `${version}|${today}`;
+      if (key !== null && key === lastObservedKey) {
+        logger.info("Gold data version and date unchanged since the last week observation — skipping", { version, today });
         return;
       }
-      const today = tzToday(new Date(), config.reporting.timeZone);
       const loadedAt = await lastRefreshAt(config);
       const outcome = await recordClosedWeeks(config, today, loadedAt, new Date().toISOString());
       if (outcome.skipped) {
@@ -54,7 +58,11 @@ export function startSnapshotScheduler(config: Config, versionSource: VersionSou
       } else {
         logger.info("Week snapshots steady", { observed: outcome.observed });
       }
-      lastObservedVersion = version;
+      if (outcome.failed.length) {
+        logger.warn("Week observation not fully persisted — will retry on the next tick", { weeks: outcome.failed });
+      } else {
+        lastObservedKey = key;
+      }
     } catch (err) {
       // Never propagate: a snapshot failure must not take the board down.
       logger.error("Week snapshot pass failed", { err: String(err) });

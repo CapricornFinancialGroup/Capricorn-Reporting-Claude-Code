@@ -38,6 +38,8 @@ export interface Config {
     /** Key the dataset cache on the Gold data version (PBI 93610). false = pure wall-clock TTLs, i.e.
      *  the behaviour before 93610 — the rollback switch. */
     keyOnDataVersion: boolean;
+    /** How often the Gold data version is probed (seconds), steadily around the clock. Floor 30 s. */
+    versionProbeSeconds: number;
     /** Longest a version-keyed cache entry is served whatever the version says (seconds): the bound on
      *  anything the version cannot see. */
     versionedCacheMaxSeconds: number;
@@ -97,7 +99,8 @@ export function loadConfig(): Config {
       timeZone: optional(process.env.REPORTING_TIMEZONE, "Europe/London"),
       pacingMode: process.env.PACING_MODE === "drip" ? "drip" : "mtd",
       cacheTtlSeconds: parseInt(optional(process.env.REPORTING_CACHE_TTL_SECONDS, "45"), 10),
-      keyOnDataVersion: optional(process.env.REPORTING_KEY_ON_DATA_VERSION, "true").toLowerCase() !== "false",
+      keyOnDataVersion: !["false", "0", "no", "off"].includes((process.env.REPORTING_KEY_ON_DATA_VERSION ?? "").trim().toLowerCase()),
+      versionProbeSeconds: positiveInt(process.env.REPORTING_VERSION_PROBE_SECONDS, 600),
       versionedCacheMaxSeconds: positiveInt(process.env.REPORTING_VERSIONED_CACHE_MAX_SECONDS, 21_600),
     },
 
