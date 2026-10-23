@@ -114,6 +114,23 @@ its header comments once the repo is on its permanent GitHub home.
   first stamp appears, which is not a missed load — the stamp moves only when rows change. Every screen stamps `Data as of <date>`, which is a different
   thing again: the last COMPLETE day, deliberately not advancing intraday. If the stamp is stale ≥2
   days, the upstream `LoadGoldCapricornShare` notebook (Smartr Fabric, PBI 90576) is where to look.
+- **Dataset cache and the Gold data version (PBI 93610)**: the server caches every dataset keyed on
+  (Gold data version, London date), not on a timer, because the wall changes page every 20 s while Gold
+  changes four times a day (before this, ~113,000 Fabric statements a day per open screen, and the SQL
+  endpoint held allocated all day). The version is one statement that reads `MAX(_etl_modified)` (for
+  `lender`, `_etl_created`) and `COUNT_BIG(*)` for each of the eight tables the board reads, hashed;
+  `services/reporting/share-version.ts` lists them and a test fails if a query reads a table that is
+  not in the list. It is read on a timer, never per request: every 10 minutes while a load is
+  expected (windows in UTC: 05:00-06:30, 08:15-11:45, 13:30-15:15, 16:30-18:15), stopping once a load
+  has landed and held for one more probe, and every 2 hours otherwise. About 45 probes a day. A new
+  load therefore reaches the screens within about 10 minutes. If the load schedule moves, edit the
+  windows in that file; the 2-hour backstop still catches every load within 2 hours meanwhile. If the
+  version cannot be read the cache falls back to `REPORTING_CACHE_TTL_SECONDS` (45 s), exactly as
+  before. `REPORTING_KEY_ON_DATA_VERSION=false` switches the whole thing off (no probe) as a rollback;
+  `REPORTING_VERSIONED_CACHE_MAX_SECONDS` (default 21600) bounds how long any entry is served whatever
+  the version says. Uploading targets and a closed week moving both drop the cache directly, since the
+  version cannot see them. The probe logs `Gold data version changed` (with the tables that moved),
+  `Gold data version probe failed` and `Gold data version no longer trusted`.
 - **Env var reference**: see `.env.example` — all app settings are set by the Bicep; `PACING_MODE`
   is reserved (`mtd` today; `drip` would replay the latest day across a synthetic working day if
   Capricorn ever wants the intraday illusion).

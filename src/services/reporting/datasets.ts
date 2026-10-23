@@ -1,6 +1,8 @@
 // Dataset facade — the single source both route prefixes (/api/reporting/* behind Easy Auth,
-// /api/kiosk token-gated) resolve through. One composite payload per screen; a short server-side
-// TTL cache means N wall TVs cost ~one Fabric query set per dataset per TTL.
+// /api/kiosk token-gated) resolve through. One composite payload per screen. The server-side cache is
+// keyed on the Gold data version and the London date (cache.ts, share-version.ts; PBI 93610), so a wall
+// rotating pages costs Fabric one query set per Gold load, not one per page change. Each call site's
+// TTL below is the FALLBACK, used only while no version is known.
 //
 // Chase model (Conor's weekly principles, 2026-07-06): the run chase is WEEK-TO-DATE vs weekly
 // targets with weighted days (Mon–Thu 20.83% each, Fri 16.67%), measured through the latest
@@ -66,6 +68,8 @@ function q<T>(config: Config, query: BuiltQuery): Promise<T[]> {
   return run<T>(lakePool(config), query);
 }
 
+/** The wall-clock FALLBACK TTL. With a Gold data version known the cache ignores it (cache.ts); it
+ *  applies before the first version probe lands and whenever the probe has been failing. */
 function ttl(config: Config): number {
   return Math.max(0, config.reporting.cacheTtlSeconds) * 1000;
 }

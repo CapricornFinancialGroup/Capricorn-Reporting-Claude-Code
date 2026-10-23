@@ -37,8 +37,11 @@ navy header, Inter, colour only for meaning — *"Formula One mission control de
   [src/domain/targets.ts](src/domain/targets.ts) (seeded from the strawman numbers — placeholders
   pending Capricorn's real targets) and [src/domain/offices.ts](src/domain/offices.ts)
   (adviser username → office; unmapped advisers surface as "Unassigned" by design).
-- **No app database.** Everything is computed on read from the lake with a short in-memory cache
-  (~45s), so N wall TVs cost ~one Fabric query set per dataset per cache window.
+- **No app database.** Everything is computed on read from the lake and held in an in-memory cache
+  keyed on the Gold data version (`services/reporting/share-version.ts`, PBI 93610): a probe on its own
+  timer reads one cheap version of the tables the board reads, and a payload is served until that
+  version or the London date moves. Gold reloads ~4× a day, so N wall TVs cost one Fabric query set per
+  load, not per page change. If the version cannot be read the cache falls back to a ~45 s TTL.
 
 ## Metric definitions
 

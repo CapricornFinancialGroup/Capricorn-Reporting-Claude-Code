@@ -46,8 +46,8 @@ const ROTATION = selectedRotation();
  *   • "Targets: placeholder"     — would survive a successful upload until someone rebooted the TV.
  *   • "N weeks changed"          — the closed-week alert could never appear at all.
  *
- * Cheap to poll: dataAsOf and the revised-week count are cached 5 minutes server-side, the load
- * stamp 60 seconds, so this costs at most one small query a minute across every TV in the business.
+ * Cheap to poll: the server answers `meta` from its Gold-data-version-keyed cache (PBI 93610), so
+ * between Gold loads this costs Fabric nothing, across every TV in the business.
  */
 const META_REFRESH_MS = 60_000;
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { cached, clearCache, setCacheScope } from "../reporting/cache.js";
 import { OFFICES } from "../../domain/offices.js";
 import { DAILY_TARGETS, OFFICE_DAILY_TARGETS, WRITTEN_WEEKLY_TARGET } from "../../domain/targets.js";
 import type { ParsedTargets } from "./parse.js";
@@ -194,5 +195,33 @@ describe("store — getCurrentAsParsedTargets", () => {
     };
     activateTargets(parsed, "arman@capricornfinancial.co.uk", "2026-07-06T09:00:00.000Z");
     expect(getCurrentAsParsedTargets("2026-07-08")).toBe(parsed);
+  });
+});
+
+describe("store — activateTargets and the dataset cache (PBI 93610)", () => {
+  // Cached dataset payloads embed the active targets. They used to refresh within 45 s; keyed on the
+  // Gold data version they would otherwise keep the OLD targets until the next Gold load.
+  it("drops cached dataset payloads, so an upload shows on the wall immediately", async () => {
+    setCacheScope(() => "v1|2026-10-23");
+    clearCache();
+    let loads = 0;
+    const load = async () => ++loads;
+    await cached("ds-daily-run-chase", 45_000, load);
+    await cached("ds-daily-run-chase", 45_000, load);
+    expect(loads).toBe(1);
+
+    activateTargets(
+      {
+        effectiveWeek: "2026-10-17",
+        offices: Object.fromEntries(OFFICES.map((o) => [o.name, { leads: 50, applications: 10, referrals: 5, sales: 5, existingCases: 0 }])),
+        writtenWeekly: { mortgage: 200_000, insurance: 50_000 },
+      },
+      "admin@example.test",
+      "2026-10-23T09:00:00.000Z",
+    );
+
+    await cached("ds-daily-run-chase", 45_000, load);
+    expect(loads).toBe(2);
+    setCacheScope(null);
   });
 });

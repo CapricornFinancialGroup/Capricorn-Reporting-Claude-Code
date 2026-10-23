@@ -7,6 +7,7 @@
 // does `dailyTarget * 5` to get back to weekly — that idiom doesn't change, only its source does.
 
 import { OFFICES } from "../../domain/offices.js";
+import { clearCache } from "../reporting/cache.js";
 import { DAILY_TARGETS, KPI_KEYS, OFFICE_DAILY_TARGETS, TARGETED_KPI_KEYS, WRITTEN_WEEKLY_TARGET, type KpiKey, type KpiTargets, type WrittenTargets } from "../../domain/targets.js";
 import type { ParsedTargets } from "./parse.js";
 
@@ -172,6 +173,10 @@ export function activateTargets(
     provenance: { source: "upload", effectiveWeek: parsed.effectiveWeek, uploadedBy, uploadedAt, note, captured: merged },
     lastParsed: parsed,
   };
+  // Cached dataset payloads embed the active targets. They are keyed on the Gold data version, which an
+  // upload does not move (PBI 93610), so drop them here or the wall would keep the old targets until
+  // the next Gold load.
+  clearCache();
 }
 
 /** The currently-active targets, reconstructed as a full WEEKLY `ParsedTargets` (i.e. undoing the
