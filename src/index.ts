@@ -1,12 +1,15 @@
 // Production entrypoint. App Service runs `node dist/index.js` (see Bicep appCommandLine).
-// Datasets are computed on read (with a short server-side cache) — the app is a read-through HTTP
-// server over the lake. The one background job is the week-snapshot observer, which has to run on a
-// timer rather than on read: it exists to catch a closed week's figures moving while nobody is
-// watching. See services/snapshots/history.ts for what that failure looked like.
+// Datasets are computed on read through a server-side cache keyed on the Gold data version (see
+// services/reporting/share-version.ts) — the app is a read-through HTTP server over the lake. Two
+// background jobs run on timers rather than on read: the data-version probe, and the week-snapshot
+// observer, which exists to catch a closed week's figures moving while nobody is watching (see
+// services/snapshots/history.ts for what that failure looked like).
 
 import { loadConfig } from "./config.js";
 import { buildApp } from "./server/app.js";
 import { logger } from "./services/logger.js";
+import { setCacheScope } from "./services/reporting/cache.js";
+import { startShareVersionWatcher } from "./services/reporting/share-version.js";
 import { hydrateFromStorage } from "./services/targets/blob.js";
 import { activateTargets, unconfirmedFrom } from "./services/targets/store.js";
 import { startSnapshotScheduler } from "./services/snapshots/scheduler.js";
@@ -46,11 +49,18 @@ async function main(): Promise<void> {
   await app.listen({ port: config.port, host: "0.0.0.0" });
   logger.info("Capricorn Growth OS listening", { port: config.port, env: config.nodeEnv });
 
-  const snapshots = startSnapshotScheduler(config);
+  // The Gold data version (PBI 93610): one cheap probe on its own timer, and the scope the dataset cache
+  // is keyed on. Off (REPORTING_KEY_ON_DATA_VERSION=false) = no probe, no scope, pure wall-clock TTLs.
+  const shareVersion = config.reporting.keyOnDataVersion ? startShareVersionWatcher(config) : null;
+  if (shareVersion) setCacheScope(() => shareVersion.cacheScope(), config.reporting.versionedCacheMaxSeconds * 1000);
+  else logger.warn("Dataset cache is NOT keyed on the Gold data version (REPORTING_KEY_ON_DATA_VERSION=false)");
+
+  const snapshots = startSnapshotScheduler(config, { trustedVersion: () => shareVersion?.trustedVersion() ?? null });
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info("Shutting down", { signal });
     snapshots.stop();
+    shareVersion?.stop();
     await app.close();
     process.exit(0);
   };

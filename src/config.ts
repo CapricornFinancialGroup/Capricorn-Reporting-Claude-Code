@@ -31,8 +31,18 @@ export interface Config {
     /** Pacing model: "mtd" (month-to-date, day-grained — the lake is day-grained even though it
      *  reloads 4× daily, so the chase stays at day resolution). */
     pacingMode: "mtd" | "drip";
-    /** Server-side dataset cache TTL (seconds). */
+    /** Server-side dataset cache TTL (seconds) — the FALLBACK. Entries are normally keyed on the Gold
+     *  data version (share-version.ts) and outlive this; it only applies while no version is known
+     *  (before the first probe, or after the probe has been failing). */
     cacheTtlSeconds: number;
+    /** Key the dataset cache on the Gold data version (PBI 93610). false = pure wall-clock TTLs, i.e.
+     *  the behaviour before 93610 — the rollback switch. */
+    keyOnDataVersion: boolean;
+    /** How often the Gold data version is probed (seconds), steadily around the clock. Floor 30 s. */
+    versionProbeSeconds: number;
+    /** Longest a version-keyed cache entry is served whatever the version says (seconds): the bound on
+     *  anything the version cannot see. */
+    versionedCacheMaxSeconds: number;
   };
 
   /** Weekly targets upload (item 1, 2026-07-07). */
@@ -61,6 +71,11 @@ function optional(value: string | undefined, fallback: string): string {
   return value && value.trim() !== "" ? value : fallback;
 }
 
+function positiveInt(value: string | undefined, fallback: number): number {
+  const n = parseInt(optional(value, String(fallback)), 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 export function loadConfig(): Config {
   return {
     port: parseInt(optional(process.env.PORT ?? process.env.WEBSITES_PORT, "3000"), 10),
@@ -84,6 +99,9 @@ export function loadConfig(): Config {
       timeZone: optional(process.env.REPORTING_TIMEZONE, "Europe/London"),
       pacingMode: process.env.PACING_MODE === "drip" ? "drip" : "mtd",
       cacheTtlSeconds: parseInt(optional(process.env.REPORTING_CACHE_TTL_SECONDS, "45"), 10),
+      keyOnDataVersion: !["false", "0", "no", "off"].includes((process.env.REPORTING_KEY_ON_DATA_VERSION ?? "").trim().toLowerCase()),
+      versionProbeSeconds: positiveInt(process.env.REPORTING_VERSION_PROBE_SECONDS, 600),
+      versionedCacheMaxSeconds: positiveInt(process.env.REPORTING_VERSIONED_CACHE_MAX_SECONDS, 21_600),
     },
 
     targets: {

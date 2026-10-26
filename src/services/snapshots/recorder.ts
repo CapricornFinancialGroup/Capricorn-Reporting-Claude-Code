@@ -108,6 +108,10 @@ export async function observeWeeks(
 export interface RecordOutcome {
   observed: number;
   changed: string[];
+  /** Weeks whose observation could NOT be persisted (a storage error, or the write kept losing its race).
+   *  The pass still completes, but a caller that skips work when nothing has moved must not treat it as
+   *  done: the observation is missing. */
+  failed: string[];
   skipped: boolean;
 }
 
@@ -124,11 +128,12 @@ export async function recordClosedWeeks(
   now: string,
 ): Promise<RecordOutcome> {
   const account = config.snapshots.storageAccount;
-  if (!account) return { observed: 0, changed: [], skipped: true };
+  if (!account) return { observed: 0, changed: [], failed: [], skipped: true };
 
   const weeks = closedWeekStarts(today);
   const observations = await observeWeeks(config, weeks, lakeLoadedAt, now);
   const changed: string[] = [];
+  const failed: string[] = [];
 
   for (const weekStart of weeks) {
     const observation = observations.get(weekStart);
@@ -136,37 +141,53 @@ export async function recordClosedWeeks(
     try {
       // One retry: the only way this conflicts is another instance appending the same observation,
       // which the content dedupe then turns into a no-op.
-      for (let attempt = 0; attempt < 2; attempt++) {
+      let settled = false;
+      for (let attempt = 0; attempt < 2 && !settled; attempt++) {
         const { snapshot, etag } = await readSnapshot(account, weekStart);
         const next = appendObservation(snapshot, observation);
-        if (next === snapshot) break; // unchanged — nothing to write
-        if (await writeSnapshot(account, next, etag)) {
+        if (next === snapshot) {
+          settled = true; // unchanged — nothing to write
+        } else if (await writeSnapshot(account, next, etag)) {
           changed.push(weekStart);
-          break;
+          settled = true;
         }
       }
+      if (!settled) failed.push(weekStart); // lost the race twice running
     } catch (err) {
+      failed.push(weekStart);
       logger.error("Week snapshot failed", { weekStart, err: describeError(err) });
     }
   }
-  return { observed: weeks.length, changed, skipped: false };
+  return { observed: weeks.length, changed, failed, skipped: false };
 }
 
 /** Read back the stored history for a set of weeks and classify each one's movement. */
 export async function loadRevisions(config: Config, weekStarts: string[]): Promise<WeekRevision[]> {
+  return (await loadRevisionsChecked(config, weekStarts)).revisions;
+}
+
+/** As loadRevisions, but also says how many weeks could not be read (they are omitted from `revisions`).
+ *  A caller that caches the answer uses it to refuse to cache a degraded one. */
+export async function loadRevisionsChecked(
+  config: Config,
+  weekStarts: string[],
+): Promise<{ revisions: WeekRevision[]; failed: number }> {
   const account = config.snapshots.storageAccount;
-  if (!account) return [];
+  if (!account) return { revisions: [], failed: 0 };
+  let failed = 0;
   const snapshots = await Promise.all(
     weekStarts.map(async (w): Promise<WeekSnapshot | null> => {
       try {
         return (await readSnapshot(account, w)).snapshot;
       } catch (err) {
         logger.error("Week snapshot read failed", { weekStart: w, err: describeError(err) });
+        failed++;
         return null;
       }
     }),
   );
-  return snapshots
+  const revisions = snapshots
     .map((s) => (s ? revisionOf(s) : null))
     .filter((r): r is WeekRevision => r != null);
+  return { revisions, failed };
 }
