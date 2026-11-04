@@ -1,13 +1,17 @@
 # Deploy Capricorn Growth OS to Azure App Service.
 #
-# SKELETON — manual trigger only until this repo lands on its permanent GitHub home and a
-# federated credential is created. To activate:
+# Targets the app in CAPRICORN'S OWN Azure tenant (docs/capricorn-tenant-move.md). The original
+# Smartr365-hosted app is deployed by hand (scripts/deployment/deploy-manual.sh) until it is retired.
+#
+# SKELETON — manual trigger only until a federated credential is created. To activate, in
+# Capricorn's tenant:
 #   1. Create an Entra app registration (or reuse one) with a federated credential for this repo:
 #        az ad app federated-credential create --id <appId> --parameters '{
 #          "name":"github-deploy","issuer":"https://token.actions.githubusercontent.com",
-#          "subject":"repo:<org>/<repo>:ref:refs/heads/main","audiences":["api://AzureADTokenExchange"]}'
-#   2. Grant that identity Website Contributor on the app's resource group.
-#   3. Set repo secrets AZURE_CLIENT_ID / AZURE_TENANT_ID / AZURE_SUBSCRIPTION_ID.
+#          "subject":"repo:CapricornFinancialGroup/<repo>:ref:refs/heads/main","audiences":["api://AzureADTokenExchange"]}'
+#   2. Grant that identity Website Contributor on rg-capgrowth-prod.
+#   3. Set repo secrets AZURE_CLIENT_ID / AZURE_TENANT_ID (fa37ee9e-e248-4da9-a076-87139ff736da) /
+#      AZURE_SUBSCRIPTION_ID (5d09ba11-2848-4b53-8b6d-71aaefb0f1db).
 #   4. Change `on:` to include `push: { branches: [main] }`.
 
 name: deploy
@@ -16,7 +20,7 @@ on:
   workflow_dispatch:
 
 env:
-  AZURE_WEBAPP_NAME: smt-capgrowth-app-prod
+  AZURE_WEBAPP_NAME: capgrowth-app-prod
 
 permissions:
   id-token: write

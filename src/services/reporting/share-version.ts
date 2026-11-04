@@ -43,6 +43,7 @@ import { createHash } from "node:crypto";
 import type { Config } from "../../config.js";
 import { logger } from "../logger.js";
 import { tzToday } from "./pace.js";
+import { fabricPool } from "./fabric-auth.js";
 import { run, type BuiltQuery } from "./query.js";
 
 // ---------------------------------------------------------------------------
@@ -158,7 +159,7 @@ interface Candidate {
 /** Start the background probe. Never throws. The first probe runs at once; until it succeeds the cache
  *  scope is null and the board is on wall-clock TTLs. */
 export function startShareVersionWatcher(config: Config): ShareVersionWatcher {
-  const pool = { server: config.fabric.endpoint, database: config.fabric.database };
+  const pool = fabricPool(config);
   const query = buildVersionQuery();
   const configured = config.reporting.versionProbeSeconds;
   const intervalMs =

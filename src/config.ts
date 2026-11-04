@@ -14,6 +14,10 @@ export interface Config {
     endpoint: string;
     /** Lakehouse SQL database name, e.g. GAGold_Capricorn. */
     database: string;
+    /** Set when the app runs outside the share's tenant (Capricorn's own Azure): sign in to the
+     *  share's tenant as a multi-tenant app instead of with the app's own identity. null/absent =
+     *  same-tenant managed identity, the original behaviour. See services/reporting/fabric-auth.ts. */
+    crossTenant?: FabricCrossTenant | null;
   };
 
   /** When set, bypasses App Service Easy Auth and treats this email as the viewer (local dev only). */
@@ -67,6 +71,36 @@ export interface Config {
   };
 }
 
+/** Cross-tenant sign-in to the Fabric share (FABRIC_TENANT_ID + FABRIC_CLIENT_ID). */
+export interface FabricCrossTenant {
+  /** The tenant the share lives in (Smartr365's). */
+  tenantId: string;
+  /** The multi-tenant app registration's client id. */
+  clientId: string;
+  /** Fallback only. Set = sign in with this secret; empty = federated managed identity (no secret). */
+  clientSecret: string;
+  /** Client id of the user-assigned managed identity the app registration trusts. Empty = the
+   *  system-assigned identity. Ignored when clientSecret is set. */
+  managedIdentityClientId: string;
+}
+
+/** Both ids or neither: half a cross-tenant setup would silently fall back to the same-tenant
+ *  identity and fail at the share with a misleading login error, so it stops the app at startup. */
+function loadFabricCrossTenant(): FabricCrossTenant | null {
+  const tenantId = process.env.FABRIC_TENANT_ID?.trim() || "";
+  const clientId = process.env.FABRIC_CLIENT_ID?.trim() || "";
+  if (!tenantId && !clientId) return null;
+  if (!tenantId || !clientId) {
+    throw new Error("FABRIC_TENANT_ID and FABRIC_CLIENT_ID must be set together (cross-tenant Fabric sign-in).");
+  }
+  return {
+    tenantId,
+    clientId,
+    clientSecret: process.env.FABRIC_CLIENT_SECRET?.trim() || "",
+    managedIdentityClientId: process.env.FABRIC_MI_CLIENT_ID?.trim() || "",
+  };
+}
+
 function optional(value: string | undefined, fallback: string): string {
   return value && value.trim() !== "" ? value : fallback;
 }
@@ -88,6 +122,7 @@ export function loadConfig(): Config {
         "t43woyvlppeu7nhsptsxhz7zwq-43nhrvmg2hze7j3vqn2euun35u.datawarehouse.fabric.microsoft.com",
       ),
       database: optional(process.env.FABRIC_DATABASE, "GAGold_Capricorn"),
+      crossTenant: loadFabricCrossTenant(),
     },
 
     devUserEmail: process.env.DEV_USER_EMAIL?.trim() || null,

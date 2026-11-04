@@ -9,6 +9,7 @@
 // Pools are cached per server/database so the reporting endpoints (SmartrCS) and the revenue
 // endpoints (Fabric GAGold) each reuse one pool across requests rather than reconnecting.
 
+import type { TokenCredential } from "@azure/identity";
 import sql from "mssql";
 
 export interface PoolOpts {
@@ -17,6 +18,9 @@ export interface PoolOpts {
   database: string;
   /** User-assigned MI client id; empty/undefined = system-assigned MI / DefaultAzureCredential. */
   clientId?: string;
+  /** Sign in with this credential instead (tedious `token-credential`). Used for the cross-tenant
+   *  Fabric share, see fabric-auth.ts. Takes precedence over clientId. */
+  credential?: TokenCredential;
 }
 
 const pools = new Map<string, Promise<sql.ConnectionPool>>();
@@ -33,10 +37,12 @@ export function getPool(opts: PoolOpts): Promise<sql.ConnectionPool> {
     connectionTimeout: 30_000,
     requestTimeout: 30_000,
     options: { encrypt: true, trustServerCertificate: false },
-    authentication: {
-      type: "azure-active-directory-default",
-      options: opts.clientId ? { clientId: opts.clientId } : {},
-    },
+    authentication: opts.credential
+      ? { type: "token-credential", options: { credential: opts.credential } }
+      : {
+          type: "azure-active-directory-default",
+          options: opts.clientId ? { clientId: opts.clientId } : {},
+        },
   });
   const p = pool.connect().catch((err) => {
     pools.delete(key);

@@ -1,5 +1,10 @@
 # Deployment
 
+> **Moving house.** Growth OS is moving from Smartr365's Azure into Capricorn's own tenant. The
+> order of work, the new names and the cross-tenant data sign-in are in
+> [capricorn-tenant-move.md](capricorn-tenant-move.md). This page still describes the
+> Smartr365-hosted app until the cutover.
+
 Production: Azure App Service (Linux, Node 22) in its own resource group, Easy Auth for the
 dashboard, shared token for the kiosk, reading the Fabric lakehouse with the app's system-assigned
 managed identity. No database.

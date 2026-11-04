@@ -10,6 +10,7 @@ import type { Config } from "../../config.js";
 import { ORGANISATIONS } from "../../domain/firm.js";
 import { logger } from "../logger.js";
 import { mortgageWrittenByOrgDaily, protectionWrittenByOrgDaily, type ProtectionByOrgDaily, type WrittenByOrgDaily } from "../reporting/reconciliation.js";
+import { fabricPool } from "../reporting/fabric-auth.js";
 import { run } from "../reporting/query.js";
 import { shiftDays, weekStartOf } from "../reporting/trends.js";
 import { describeError, readSnapshot, writeSnapshot } from "./blob.js";
@@ -55,7 +56,7 @@ export async function observeWeeks(
 
   const from = weekStarts[0];
   const to = shiftDays(weekStarts[weekStarts.length - 1], 6);
-  const pool = { server: config.fabric.endpoint, database: config.fabric.database };
+  const pool = fabricPool(config);
 
   const [mortgage, protection] = await Promise.all([
     run<WrittenByOrgDaily>(pool, mortgageWrittenByOrgDaily(from, to)),

@@ -3,6 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import { buildInfo } from "../../build-info.js";
 import type { Config } from "../../config.js";
+import { fabricAuthMode, fabricPool } from "../../services/reporting/fabric-auth.js";
 import { run } from "../../services/reporting/query.js";
 
 const startedAt = Date.now();
@@ -17,18 +18,21 @@ export function registerHealthRoutes(app: FastifyInstance, config: Config): void
 
   // Lake readiness: proves the identity (managed identity in prod, az-cli locally) can reach the
   // Fabric SQL endpoint. This is the deployment gate — run it BEFORE pointing any TV at the app.
+  // `auth` names the sign-in route (fabric-auth.ts) so a cross-tenant deploy can prove which one ran.
+  const auth = fabricAuthMode(config.fabric.crossTenant);
   app.get("/healthz/lake", async (_req, reply) => {
     try {
       const rows = await run<{ ok: number }>(
-        { server: config.fabric.endpoint, database: config.fabric.database },
+        fabricPool(config),
         { text: "SELECT 1 AS ok", params: [] },
         { retries: 0 },
       );
-      return reply.send({ status: "ok", lake: config.fabric.database, ok: rows[0]?.ok === 1 });
+      return reply.send({ status: "ok", lake: config.fabric.database, auth, ok: rows[0]?.ok === 1 });
     } catch (err) {
       return reply.code(503).send({
         status: "unreachable",
         lake: config.fabric.database,
+        auth,
         detail: String((err as Error)?.message ?? err),
       });
     }
