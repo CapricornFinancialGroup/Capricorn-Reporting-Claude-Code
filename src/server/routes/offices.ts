@@ -15,6 +15,7 @@ import { isTargetsAdmin, resolveCsm } from "../../services/auth.js";
 import { logger } from "../../services/logger.js";
 import { activeAdvisers, capricornLogin, type ActiveAdviser } from "../../services/offices/queries.js";
 import { getLastOfficeChange, placeAdviser } from "../../services/offices/store.js";
+import { fabricPool } from "../../services/reporting/fabric-auth.js";
 import { run } from "../../services/reporting/query.js";
 import { shiftDays } from "../../services/reporting/trends.js";
 import { tzToday } from "../../services/reporting/pace.js";
@@ -35,7 +36,7 @@ export interface OfficeAdviserRow {
 }
 
 export function registerOfficesRoutes(app: FastifyInstance, config: Config): void {
-  const pool = { server: config.fabric.endpoint, database: config.fabric.database };
+  const pool = fabricPool(config);
 
   app.get("/api/offices", async (request, reply) => {
     const viewer = resolveCsm(request.headers, config.devUserEmail);

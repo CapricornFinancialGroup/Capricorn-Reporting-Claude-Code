@@ -44,6 +44,7 @@ import { kpiDaily, kpiDailyByAdviser, type AdviserDailyCount, type DailyCount } 
 import * as momentumQ from "./momentum.js";
 import { chaseStatus, computePace, paceInclPartDay, tzHour, tzToday, type ChaseStatus, type Pace } from "./pace.js";
 import { completeThrough, dataThroughDay, isTradingDay, isWeekendOnlyWeek, lastTradingDayOnOrBefore, weekDatesOf, weekDayIndex, weekElapsedFraction, weeklyPacing, type WeeklyPacingContext } from "./pacing.js";
+import { fabricPool } from "./fabric-auth.js";
 import { run, type BuiltQuery } from "./query.js";
 // `protectionCommissionByAdviser` is deliberately NOT imported any more: it credits a policy's whole
 // commission to its primary adviser, which is the 100%-to-the-protection-adviser behaviour the 60/40
@@ -61,7 +62,7 @@ import { divide, round } from "./util.js";
 // ---------------------------------------------------------------------------
 
 function lakePool(config: Config) {
-  return { server: config.fabric.endpoint, database: config.fabric.database };
+  return fabricPool(config);
 }
 
 function q<T>(config: Config, query: BuiltQuery): Promise<T[]> {

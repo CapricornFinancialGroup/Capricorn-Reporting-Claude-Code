@@ -2,16 +2,41 @@
 # Manual zip deploy for Capricorn Growth OS (until CI is wired to the repo host).
 #
 #   ./scripts/deployment/deploy-manual.sh [resource-group] [app-name]
+#   DEPLOY_TARGET=capricorn ./scripts/deployment/deploy-manual.sh
 #
 # Builds server + SPA, stages a production bundle (dist + prod node_modules), zips and deploys.
+#
+# DEPLOY_TARGET picks where it goes:
+#   smartr     (default) Smartr365's Azure, the original home: smt-rg-capgrowth-prod, "Production".
+#   capricorn  Capricorn's own Azure tenant (docs/capricorn-tenant-move.md): rg-capgrowth-prod in
+#              subscription 5d09ba11-…. Sign az in to that tenant first; a separate profile keeps it
+#              apart from any other az session: export AZURE_CONFIG_DIR=~/.azure-capricorn.
+# Explicit arguments and AZ_SUBSCRIPTION still override either.
 
 set -euo pipefail
 
-RG="${1:-smt-rg-capgrowth-prod}"
-APP="${2:-smt-capgrowth-app-prod}"
-# The resource group lives in the Production subscription, which is not the az CLI default. Passed
-# per command rather than via `az account set`, which would flip the default for every other shell.
-SUBSCRIPTION="${AZ_SUBSCRIPTION:-Production}"
+case "${DEPLOY_TARGET:-smartr}" in
+  smartr)
+    DEFAULT_RG="smt-rg-capgrowth-prod"
+    DEFAULT_APP="smt-capgrowth-app-prod"
+    # The resource group lives in the Production subscription, which is not the az CLI default.
+    DEFAULT_SUBSCRIPTION="Production"
+    ;;
+  capricorn)
+    DEFAULT_RG="rg-capgrowth-prod"
+    DEFAULT_APP="capgrowth-app-prod"
+    DEFAULT_SUBSCRIPTION="5d09ba11-2848-4b53-8b6d-71aaefb0f1db"
+    ;;
+  *)
+    echo "!! DEPLOY_TARGET must be 'smartr' or 'capricorn', not '${DEPLOY_TARGET}'." >&2
+    exit 1
+    ;;
+esac
+
+RG="${1:-$DEFAULT_RG}"
+APP="${2:-$DEFAULT_APP}"
+# Passed per command rather than via `az account set`, which would flip the default for every other shell.
+SUBSCRIPTION="${AZ_SUBSCRIPTION:-$DEFAULT_SUBSCRIPTION}"
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
@@ -32,6 +57,15 @@ fi
 if [ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]; then
   echo "!! REFUSED: HEAD is $(git rev-parse --short HEAD) on '$(git rev-parse --abbrev-ref HEAD)', not origin/main ($(git rev-parse --short origin/main))." >&2
   echo "   Merge your pull request, then: git switch main && git pull --ff-only, and deploy again." >&2
+  exit 1
+fi
+
+# Fail before the 3-minute build, not after it, if az is signed in to the wrong tenant.
+echo "==> Check: az can see $RG in subscription $SUBSCRIPTION"
+if ! az group show --subscription "$SUBSCRIPTION" -n "$RG" --query name -o tsv >/dev/null 2>&1; then
+  echo "!! REFUSED: az cannot see resource group $RG in subscription $SUBSCRIPTION." >&2
+  echo "   Signed in as: $(az account show --query user.name -o tsv 2>/dev/null || echo 'nobody')." >&2
+  echo "   For DEPLOY_TARGET=capricorn, sign in to Capricorn's tenant (AZURE_CONFIG_DIR=~/.azure-capricorn)." >&2
   exit 1
 fi
 

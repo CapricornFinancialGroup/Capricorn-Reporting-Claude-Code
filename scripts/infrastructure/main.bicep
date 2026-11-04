@@ -1,5 +1,10 @@
 // Infrastructure for Capricorn Growth OS.
 //
+// ONE template, two homes. The defaults describe the original deployment in Smartr365's Azure
+// (smt-* names, same-tenant Fabric access). capricorn.bicepparam deploys the same thing into
+// Capricorn's own tenant: no smt- prefix, UK South, and cross-tenant Fabric access through a
+// user-assigned identity (fabricClientId set). See docs/capricorn-tenant-move.md.
+//
 // Standalone deployment in its own resource group: a dedicated Linux App Service Plan, a Node web
 // app, Easy Auth (Entra) via authsettingsV2, and a Key Vault holding the kiosk token. The app reads
 // the Capricorn Fabric lakehouse share (GAGold_Capricorn) with its system-assigned managed
@@ -27,15 +32,23 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 param env string = 'prod'
 param projectName string = 'capgrowth'
-param appServiceName string = 'smt-${projectName}-app-${env}'
-param planName string = 'smt-${projectName}-plan-${env}'
+// 'smt-' in Smartr's Azure, '' in Capricorn's. Every name below derives from it.
+param namePrefix string = 'smt-'
+param appServiceName string = '${namePrefix}${projectName}-app-${env}'
+param planName string = '${namePrefix}${projectName}-plan-${env}'
 param planSku string = 'B1'
 param tenantId string = subscription().tenantId
-param keyVaultName string = 'smt-kv-${projectName}-${env}'
+param keyVaultName string = '${namePrefix}kv-${projectName}-${env}'
 
 // Weekly targets upload (item 1, 2026-07-07) — audit blob storage. Name must be globally unique,
-// lowercase letters+digits only, <=24 chars.
-param targetsStorageAccountName string = 'smt${projectName}targets${env}'
+// lowercase letters+digits only, <=24 chars. Also holds the adviser-offices and week-snapshots
+// containers.
+param targetsStorageAccountName string = '${replace(namePrefix, '-', '')}${projectName}targets${env}'
+
+// Creating role assignments needs Owner / RBAC Administrator, which Contributor lacks. false lets a
+// Contributor stand the resources up first; the grants are then made separately (the app cannot
+// read its Key Vault secret or blobs until they are).
+param grantRoles bool = true
 // Emails allowed to upload targets (comma-separated, lower-cased in config.ts). Empty = upload
 // disabled (fails closed) — collect Arman's + a backup's address before setting this for real.
 param targetsAdminEmails string = ''
@@ -43,6 +56,21 @@ param targetsAdminEmails string = ''
 // The Capricorn Fabric lakehouse share (read-only, rebuilt nightly).
 param fabricSqlEndpoint string = 't43woyvlppeu7nhsptsxhz7zwq-43nhrvmg2hze7j3vqn2euun35u.datawarehouse.fabric.microsoft.com'
 param fabricDatabase string = 'GAGold_Capricorn'
+
+// Cross-tenant Fabric access (only when the app runs outside Smartr365's tenant). Leave
+// fabricClientId empty for the original same-tenant managed identity. When set, a user-assigned
+// identity is created for the app; the multi-tenant app registration fabricClientId must trust it
+// through a federated credential (Entra, not ARM: see docs/capricorn-tenant-move.md), and that app's
+// service principal in fabricTenantId must hold Viewer on the share's workspace.
+param fabricTenantId string = ''
+param fabricClientId string = ''
+param fabricIdentityName string = '${namePrefix}id-${projectName}-fabric-${env}'
+var crossTenantFabric = !empty(fabricClientId)
+// FALLBACK ONLY: if Smartr's tenant refuses the federated credential, give the app registration a
+// client secret and pass it here. It goes to Key Vault and the app signs in with it instead.
+@secure()
+param fabricClientSecret string = ''
+var fabricUsesSecret = crossTenantFabric && !empty(fabricClientSecret)
 
 // Easy Auth (Entra). The app registration is created out-of-band; pass its details here.
 param entraClientId string
@@ -62,11 +90,32 @@ resource plan 'Microsoft.Web/serverfarms@2022-09-01' = {
   properties: { reserved: true } // Linux
 }
 
+// The identity the Fabric app registration trusts. User-assigned so its principal id (which the
+// federated credential names) survives the web app being deleted and recreated.
+resource fabricIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = if (crossTenantFabric) {
+  name: fabricIdentityName
+  location: location
+}
+
+// Storage and Key Vault stay on the system-assigned identity (DefaultAzureCredential uses it while
+// AZURE_CLIENT_ID is unset); the user-assigned one is only for the Fabric federated credential.
+var crossTenantSettings = crossTenantFabric ? [
+  { name: 'FABRIC_TENANT_ID', value: fabricTenantId }
+  { name: 'FABRIC_CLIENT_ID', value: fabricClientId }
+  { name: 'FABRIC_MI_CLIENT_ID', value: fabricIdentity!.properties.clientId }
+] : []
+var fabricSecretSettings = fabricUsesSecret ? [
+  { name: 'FABRIC_CLIENT_SECRET', value: '@Microsoft.KeyVault(VaultName=${keyVaultName};SecretName=capgrowth-fabric-client-secret)' }
+] : []
+
 resource app 'Microsoft.Web/sites@2022-09-01' = {
   name: appServiceName
   location: location
   kind: 'app,linux'
-  identity: { type: 'SystemAssigned' }
+  identity: crossTenantFabric ? {
+    type: 'SystemAssigned, UserAssigned'
+    userAssignedIdentities: { '${fabricIdentity.id}': {} }
+  } : { type: 'SystemAssigned' }
   properties: {
     httpsOnly: true
     serverFarmId: plan.id
@@ -78,7 +127,7 @@ resource app 'Microsoft.Web/sites@2022-09-01' = {
       ftpsState: 'Disabled'
       minTlsVersion: '1.2'
       appCommandLine: 'node dist/index.js'
-      appSettings: [
+      appSettings: concat([
         { name: 'NODE_ENV', value: 'production' }
         { name: 'LOG_LEVEL', value: 'info' }
         { name: 'FABRIC_SQL_ENDPOINT', value: fabricSqlEndpoint }
@@ -100,7 +149,7 @@ resource app 'Microsoft.Web/sites@2022-09-01' = {
         { name: 'SCM_DO_BUILD_DURING_DEPLOYMENT', value: 'false' }
         { name: 'TARGETS_ADMIN_EMAILS', value: targetsAdminEmails }
         { name: 'TARGETS_STORAGE_ACCOUNT', value: targetsStorageAccountName }
-      ]
+      ], crossTenantSettings, fabricSecretSettings)
     }
   }
 }
@@ -111,7 +160,8 @@ resource app 'Microsoft.Web/sites@2022-09-01' = {
 // exact path covers all datasets). NOTE: excludedPaths is EXACT-match only — no prefix/wildcard —
 // which is why the SPA is inlined into one file and the kiosk data path takes ?dataset=.
 // /healthz + /healthz/lake stay anonymous for probes. The dashboard (/dashboard, /api/reporting/*)
-// stays behind Easy Auth; Capricorn users sign in as B2B guests in this tenant.
+// stays behind Easy Auth. In Smartr365's tenant Capricorn users sign in as B2B guests; in Capricorn's
+// own tenant they sign in as themselves.
 resource auth 'Microsoft.Web/sites/config@2022-09-01' = {
   parent: app
   name: 'authsettingsV2'
@@ -156,8 +206,14 @@ resource kioskTokenSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   properties: { value: reportingKioskToken }
 }
 
+resource fabricSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (fabricUsesSecret) {
+  parent: kv
+  name: 'capgrowth-fabric-client-secret'
+  properties: { value: fabricClientSecret }
+}
+
 // Grant the app's managed identity read access to the vault's secrets (Key Vault Secrets User).
-resource kvSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource kvSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (grantRoles) {
   name: guid(kv.id, app.id, 'kv-secrets-user')
   scope: kv
   properties: {
@@ -193,9 +249,23 @@ resource targetsContainer 'Microsoft.Storage/storageAccounts/blobServices/contai
   properties: { publicAccess: 'None' }
 }
 
+// The app also creates these on first write (createIfNotExists); declaring them means a fresh
+// account can be loaded with copied blobs before the app has ever run.
+resource officesContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: targetsBlobService
+  name: 'adviser-offices'
+  properties: { publicAccess: 'None' }
+}
+
+resource snapshotsContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-01-01' = {
+  parent: targetsBlobService
+  name: 'week-snapshots'
+  properties: { publicAccess: 'None' }
+}
+
 // Grant the app's managed identity read/write on the container (same DefaultAzureCredential
 // pattern already used for the Fabric SQL pool — no new auth idiom).
-resource targetsBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+resource targetsBlobDataContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (grantRoles) {
   name: guid(targetsStorage.id, app.id, 'storage-blob-data-contributor')
   scope: targetsStorage
   properties: {
@@ -207,3 +277,9 @@ resource targetsBlobDataContributor 'Microsoft.Authorization/roleAssignments@202
 
 output appUrl string = 'https://${app.properties.defaultHostName}'
 output appPrincipalId string = app.identity.principalId
+// Grants to make by hand when grantRoles=false (scope ids for az role assignment create).
+output keyVaultId string = kv.id
+output storageAccountId string = targetsStorage.id
+// The federated credential's subject (empty when same-tenant).
+output fabricIdentityPrincipalId string = crossTenantFabric ? fabricIdentity!.properties.principalId : ''
+output storageAccountName string = targetsStorageAccountName

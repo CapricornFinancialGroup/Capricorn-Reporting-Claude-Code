@@ -62,3 +62,41 @@ describe("loadConfig — dataset cache settings", () => {
     expect(loadConfig().reporting.versionedCacheMaxSeconds).toBe(3600);
   });
 });
+
+describe("loadConfig — cross-tenant Fabric sign-in", () => {
+  const FABRIC = ["FABRIC_TENANT_ID", "FABRIC_CLIENT_ID", "FABRIC_CLIENT_SECRET", "FABRIC_MI_CLIENT_ID"] as const;
+  afterEach(() => {
+    for (const k of FABRIC) delete process.env[k];
+  });
+
+  it("unset: null, so the app keeps signing in with its own identity (today's Smartr-hosted behaviour)", () => {
+    expect(loadConfig().fabric.crossTenant).toBeNull();
+  });
+
+  it("tenant + client id (+ MI client id): federated, no secret", () => {
+    process.env.FABRIC_TENANT_ID = " 6267379f-7bab-4fc9-b4f2-7ce573e7f9b4 ";
+    process.env.FABRIC_CLIENT_ID = "app-id";
+    process.env.FABRIC_MI_CLIENT_ID = "uami-id";
+    expect(loadConfig().fabric.crossTenant).toEqual({
+      tenantId: "6267379f-7bab-4fc9-b4f2-7ce573e7f9b4",
+      clientId: "app-id",
+      clientSecret: "",
+      managedIdentityClientId: "uami-id",
+    });
+  });
+
+  it("carries the fallback secret when one is set", () => {
+    process.env.FABRIC_TENANT_ID = "t";
+    process.env.FABRIC_CLIENT_ID = "c";
+    process.env.FABRIC_CLIENT_SECRET = "s";
+    expect(loadConfig().fabric.crossTenant?.clientSecret).toBe("s");
+  });
+
+  it("half a setup stops startup rather than silently falling back to the wrong identity", () => {
+    process.env.FABRIC_TENANT_ID = "t";
+    expect(() => loadConfig()).toThrow(/FABRIC_TENANT_ID and FABRIC_CLIENT_ID/);
+    delete process.env.FABRIC_TENANT_ID;
+    process.env.FABRIC_CLIENT_ID = "c";
+    expect(() => loadConfig()).toThrow(/FABRIC_TENANT_ID and FABRIC_CLIENT_ID/);
+  });
+});

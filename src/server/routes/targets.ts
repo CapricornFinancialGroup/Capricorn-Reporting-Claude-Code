@@ -26,6 +26,7 @@ import { isTargetsAdmin, resolveCsm } from "../../services/auth.js";
 import { logger } from "../../services/logger.js";
 import { adviserRoster } from "../../services/reporting/advisers.js";
 import { tzToday } from "../../services/reporting/pace.js";
+import { fabricPool } from "../../services/reporting/fabric-auth.js";
 import { run } from "../../services/reporting/query.js";
 import { shiftDays } from "../../services/reporting/trends.js";
 import { uploadTargetsBlob } from "../../services/targets/blob.js";
@@ -133,7 +134,7 @@ export function registerTargetsRoutes(app: FastifyInstance, config: Config): voi
       return reply.code(422).send({ error: "Validation failed.", hardErrors: ["Could not read the file — is it a valid .xlsx?"], softWarnings: [] });
     }
 
-    const roster = await run<AdviserRosterEntry>({ server: config.fabric.endpoint, database: config.fabric.database }, adviserRoster());
+    const roster = await run<AdviserRosterEntry>(fabricPool(config), adviserRoster());
     const outcome = parseDatarailsWorkbook(workbook, weekSaturday, roster);
     if (!outcome.ok || !outcome.offices) {
       return reply.code(422).send({ error: "Validation failed.", hardErrors: outcome.hardErrors, softWarnings: outcome.softWarnings });
