@@ -3,8 +3,8 @@
 // office that does not exist swallowed two advisers. Both looked like quiet trading, not a bug.
 // These tests pin every ruling Capricorn has actually given us.
 
-import { describe, expect, it } from "vitest";
-import { OFFICES, UNASSIGNED, officeOf } from "./offices.js";
+import { afterEach, describe, expect, it } from "vitest";
+import { OFFICES, UNASSIGNED, getOfficeOverrides, officeOf, seedOfficeOf, setOfficeOverrides } from "./offices.js";
 
 describe("officeOf", () => {
   it("is case- and whitespace-insensitive (logins arrive both ways from the lake)", () => {
@@ -66,6 +66,17 @@ describe("Kyle's rulings", () => {
     expect(officeOf(login)).toBe(office);
   });
 
+  // 2026-10-28 (Arman) and 2026-11-03 (Kyle) — the last two rulings given by email.
+  it.each([
+    ["crystal@capricornint.co.uk", "Hong Kong"],
+    ["simran.bains@capricornfinancialmortgages.co.uk", "Mayfair"],
+    // Kyle's 2026-10-13 rulings, keyed once the logins appeared.
+    ["isabella.rechy@capricornfinancialmortgages.co.uk", "Mayfair"],
+    ["ian.kebblewhite@capricorncommercial.co.uk", "Hammersmith"],
+  ])("places %s in %s", (login, office) => {
+    expect(officeOf(login)).toBe(office);
+  });
+
   it("places Michael Ngoka, who carries £13,948 on Capricorn's own Written Report", () => {
     // He was invisible for weeks: the Unassigned card read only lead counts, and he is a protection
     // adviser who sources none. A mortgage-only audit could not have found him.
@@ -109,5 +120,34 @@ describe("office roster", () => {
   it("has no Türkiye office — Conor confirmed it does not exist", () => {
     expect(OFFICES.map((o) => o.name)).not.toContain("Türkiye");
     expect(officeOf("berkan.aksit@capricornint.co.uk")).toBe("Hammersmith");
+  });
+});
+
+describe("placements made on the board (the override layer)", () => {
+  const by = { setBy: "kyle@capricornfinancial.co.uk", setAt: "2026-11-04T10:00:00.000Z" };
+  afterEach(() => setOfficeOverrides({}));
+
+  it("places an adviser the seed has never heard of", () => {
+    expect(officeOf("new.adviser@capricornfinancialmortgages.co.uk")).toBe(UNASSIGNED);
+    setOfficeOverrides({ "New.Adviser@CapricornFinancialMortgages.co.uk": { office: "Mayfair", ...by } });
+    expect(officeOf(" new.adviser@capricornfinancialmortgages.co.uk ")).toBe("Mayfair");
+  });
+
+  it("wins over the seed, so an adviser the seed has wrong can be moved", () => {
+    setOfficeOverrides({ "crystal@capricornint.co.uk": { office: "Singapore", ...by } });
+    expect(officeOf("crystal@capricornint.co.uk")).toBe("Singapore");
+    expect(seedOfficeOf("crystal@capricornint.co.uk")).toBe("Hong Kong");
+  });
+
+  it("falls back to the seed once the placement is removed", () => {
+    setOfficeOverrides({ "crystal@capricornint.co.uk": { office: "Singapore", ...by } });
+    setOfficeOverrides({});
+    expect(officeOf("crystal@capricornint.co.uk")).toBe("Hong Kong");
+  });
+
+  it("ignores a placement in an office that no longer exists, rather than inventing the office", () => {
+    setOfficeOverrides({ "someone@capricornint.co.uk": { office: "Dubai", ...by } });
+    expect(officeOf("someone@capricornint.co.uk")).toBe(UNASSIGNED);
+    expect(getOfficeOverrides()).toEqual({});
   });
 });

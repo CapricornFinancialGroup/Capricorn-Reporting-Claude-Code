@@ -11,6 +11,7 @@ import { logger } from "./services/logger.js";
 import { setCacheScope } from "./services/reporting/cache.js";
 import { startShareVersionWatcher } from "./services/reporting/share-version.js";
 import { hydrateFromStorage } from "./services/targets/blob.js";
+import { hydrateOffices } from "./services/offices/store.js";
 import { activateTargets, unconfirmedFrom } from "./services/targets/store.js";
 import { startSnapshotScheduler } from "./services/snapshots/scheduler.js";
 
@@ -43,6 +44,7 @@ async function hydrateTargets(storageAccount: string): Promise<void> {
 async function main(): Promise<void> {
   const config = loadConfig();
   await hydrateTargets(config.targets.storageAccount);
+  await hydrateOffices(config.targets.storageAccount);
   const app = await buildApp(config);
 
   // Bind 0.0.0.0 so App Service's front end can reach the container.

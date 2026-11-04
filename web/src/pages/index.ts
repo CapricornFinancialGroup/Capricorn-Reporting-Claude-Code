@@ -10,6 +10,7 @@ import { MarketMomentum } from "./MarketMomentum.js";
 import { Reconciliation } from "./Reconciliation.js";
 import { Targets } from "./Targets.js";
 import { Glossary } from "./Glossary.js";
+import { Offices } from "./Offices.js";
 
 export interface PageDef {
   id: string;
@@ -49,6 +50,7 @@ export const PAGES: PageDef[] = [
   { id: "momentum", label: "Market Momentum", Component: MarketMomentum },
   { id: "reconciliation", label: "Reconciliation", Component: Reconciliation, wallExcluded: true },
   { id: "targets", label: "Targets", Component: Targets, adminOnly: true },
+  { id: "adviser-offices", label: "Adviser Offices", Component: Offices, adminOnly: true },
   { id: "glossary", label: "Glossary", Component: Glossary, adminOnly: true },
 ];
 
