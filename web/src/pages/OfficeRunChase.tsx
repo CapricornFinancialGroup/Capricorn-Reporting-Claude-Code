@@ -124,10 +124,12 @@ export function OfficeRunChase({ meta, filters, mode, refreshMs }: PageProps) {
                       them makes the row actionable: Capricorn read the list and tell us where each
                       one belongs. Kyle asked "what the 19 unassigned related to?" (2026-08-06). */}
                   {o.members && o.members.length > 0 && (
-                    <div className="office-members" title="These advisers have no office recorded in the dashboard's mapping, so their business lands here instead of in their real office. Send us the office for each and they move.">
+                    <div className="office-members" title="These advisers have no office recorded in the dashboard's mapping, so their business lands here instead of in their real office. Choose their office on the Adviser Offices tab and they move.">
                       No office on file:{" "}
                       {o.members.slice(0, 6).map((m) => `${m.name} (${m.leads})`).join(", ")}
                       {o.members.length > 6 && ` +${o.members.length - 6} more`}
+                      {/* Only where it can be acted on: an admin, in the browser. Never on a wall TV. */}
+                      {meta.isTargetsAdmin && mode === "dashboard" && <> · <a href="#adviser-offices">Place them</a></>}
                     </div>
                   )}
                 </div>

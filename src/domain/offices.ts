@@ -8,8 +8,9 @@
 // what flows through `officeOf(adv.Username)`. Unmapped advisers roll up under "Unassigned" —
 // deliberately VISIBLE on the leaderboards so a stale mapping is obvious.
 //
-// To refresh: re-run the name-match when Capricorn sends the promised adviser-email list (a direct
-// email join will replace the name match and pick up the ~3 gaps).
+// New advisers are placed by Capricorn themselves on the Adviser Offices admin page (2026-11-04), which
+// layers its placements over this list — see "PLACEMENTS MADE ON THE BOARD" below. Edit this list only
+// to record a ruling given some other way; it is the seed, not the only source.
 
 export interface Office {
   name: string;
@@ -218,12 +219,70 @@ export const ADVISER_OFFICE: Record<string, string> = {
   // guessed from a name never matches (see aran.purewal above).
   "rakesh.kapur@capricorncommercial.co.uk": "Hammersmith", // Commercial adviser, Team Other
   "josh.palmer@capricornfinancialmortgages.co.uk": "Hammersmith", // Protection adviser, Team Tim
+  // Ruled by Arman 2026-10-28 ("Crystal is Hong Kong Office (Team Gavin)") and Kyle 2026-11-03
+  // ("Simran Bains – Mayfair (Mortgage Adviser – Team Alex)"). Logins verified in dbo.useraccount
+  // 2026-11-04: Crystal Chiao is UserAccountKey 3183764 (4 cases from 16 Oct); Simran's account
+  // 3238230 was created 30 Oct and carries 335 cases back to 2010, so they were moved onto it.
+  "crystal@capricornint.co.uk": "Hong Kong", // Team Gavin
+  "simran.bains@capricornfinancialmortgages.co.uk": "Mayfair", // Mortgage adviser, Team Alex
+  // Two of Kyle's 2026-10-13 names that had no login then. Both now do and were showing under
+  // Unassigned on 2026-11-04 (Isabella 13 cases to 3 Nov, Ian 1 case on 30 Oct). Hari Patel still has none.
+  "isabella.rechy@capricornfinancialmortgages.co.uk": "Mayfair", // Mortgage adviser, Team Manny
+  "ian.kebblewhite@capricorncommercial.co.uk": "Hammersmith", // Commercial adviser, Team Other
 };
+
+/**
+ * PLACEMENTS MADE ON THE BOARD (the Offices admin page), layered over ADVISER_OFFICE.
+ *
+ * Until 2026-11-04 every ruling above went Capricorn → email → Luke → code edit → manual deploy, four
+ * rounds of it in the "GrowthOS - Unassigned" thread alone (8 Oct to 3 Nov). The people who know where
+ * an adviser sits now place them directly; the list above stays as the seed and as the record of every
+ * ruling given by email.
+ *
+ * An override WINS over the seed, so the page can also move an adviser the seed has wrong. Removing an
+ * override falls back to the seed (or to Unassigned if the seed has nothing). Held in memory, hydrated
+ * from blob storage at startup and replaced wholesale on every save — see services/offices/store.ts.
+ */
+export interface OfficeAssignment {
+  office: string;
+  /** Capricorn's team ("Team Alex"). Recorded, not reported on: the board has no team dimension. */
+  team?: string;
+  setBy: string;
+  setAt: string;
+}
+
+let overrides: Record<string, OfficeAssignment> = {};
+
+const loginKey = (username: string): string => username.trim().toLowerCase();
+
+export function isOfficeName(name: string): boolean {
+  return OFFICES.some((o) => o.name === name);
+}
+
+/** Replace the override layer. Keys are lower-cased; entries naming an office that no longer exists are
+ *  dropped rather than honoured, so a retired office can never quietly hold advisers (see Dubai above). */
+export function setOfficeOverrides(next: Record<string, OfficeAssignment>): void {
+  overrides = Object.fromEntries(
+    Object.entries(next)
+      .filter(([, a]) => isOfficeName(a.office))
+      .map(([k, a]) => [loginKey(k), a]),
+  );
+}
+
+export function getOfficeOverrides(): Readonly<Record<string, OfficeAssignment>> {
+  return overrides;
+}
+
+/** The seed office for a login, ignoring overrides — what removing an override falls back to. */
+export function seedOfficeOf(username: string): string {
+  return ADVISER_OFFICE[loginKey(username)] ?? UNASSIGNED;
+}
 
 /** Resolve an adviser's office; unmapped advisers group under UNASSIGNED. */
 export function officeOf(username: string | null | undefined): string {
   if (!username) return UNASSIGNED;
-  return ADVISER_OFFICE[username.trim().toLowerCase()] ?? UNASSIGNED;
+  const key = loginKey(username);
+  return overrides[key]?.office ?? ADVISER_OFFICE[key] ?? UNASSIGNED;
 }
 
 /**

@@ -9,6 +9,7 @@ import { registerHealthRoutes } from "./routes/health.js";
 import { registerReportingRoutes } from "./routes/reporting-api.js";
 import { registerKioskRoutes } from "./routes/kiosk.js";
 import { registerTargetsRoutes } from "./routes/targets.js";
+import { registerOfficesRoutes } from "./routes/offices.js";
 import { registerSpaRoutes } from "./static.js";
 
 export async function buildApp(config: Config): Promise<FastifyInstance> {
@@ -27,6 +28,7 @@ export async function buildApp(config: Config): Promise<FastifyInstance> {
   registerReportingRoutes(app, config);
   registerKioskRoutes(app, config);
   registerTargetsRoutes(app, config);
+  registerOfficesRoutes(app, config);
   registerSpaRoutes(app);
 
   return app;
